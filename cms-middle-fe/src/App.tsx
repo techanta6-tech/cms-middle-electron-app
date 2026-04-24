@@ -248,6 +248,13 @@ function Dashboard() {
       device_type: string
     }
   }[]>([]);
+  const [appVersion, setAppVersion] = useState<string>('');
+
+  useEffect(() => {
+    if (window.electronAPI?.getAppVersion) {
+      setAppVersion(window.electronAPI.getAppVersion());
+    }
+  }, []);
 
   const toggleServer = (id: string) =>
     setSelectedServers(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });

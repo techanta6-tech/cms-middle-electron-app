@@ -5,6 +5,7 @@ declare global {
     electronAPI?: {
       getLocalIP: () => string;
       getBePort: () => number | null;
+      getAppVersion: () => string;
     };
   }
 }

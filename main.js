@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -109,6 +110,56 @@ function createWindow() {
   });
 }
 
+// ─── Auto Updater Logic ──────────────────────────────────────────────────
+function setupAutoUpdater() {
+  // Chỉ chạy auto-update nếu app đã được packaged (trong môi trường Production)
+  if (isDev) return;
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[Updater] Checking for update...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[Updater] Update available:', info.version);
+    // Có thể thông báo cho người dùng ở đây
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[Updater] Update not available.');
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[Updater] Error in auto-updater: ', err);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    let log_message = "Download speed: " + progressObj.bytesPerSecond;
+    log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
+    log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
+    console.log('[Updater] ' + log_message);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[Updater] Update downloaded');
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Cập nhật sẵn sàng',
+      message: 'Phiên bản mới đã được tải xuống. Bạn có muốn khởi động lại để cài đặt ngay không?',
+      buttons: ['Bây giờ', 'Để sau']
+    }).then((result) => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  // Bắt đầu kiểm tra update
+  autoUpdater.checkForUpdatesAndNotify();
+}
+
 let resolvedBePort = null;
 
 app.whenReady().then(async () => {
@@ -120,6 +171,10 @@ app.whenReady().then(async () => {
     event.returnValue = resolvedBePort;
   });
 
+  ipcMain.on('get-app-version', (event) => {
+    event.returnValue = app.getVersion();
+  });
+
   if (!isDev) {
     // Start backend in production
     resolvedBePort = await findFreePort(5050);
@@ -127,6 +182,7 @@ app.whenReady().then(async () => {
   }
 
   createWindow();
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

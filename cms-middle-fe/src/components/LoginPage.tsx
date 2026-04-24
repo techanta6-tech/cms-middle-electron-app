@@ -30,6 +30,13 @@ const LoginPage: React.FC = () => {
   const [beHost, setBeHost] = useState(localStorage.getItem('BE_HOST') || import.meta.env.VITE_BE_HOST || 'localhost');
   const [bePort, setBePort] = useState(localStorage.getItem('BE_PORT') || import.meta.env.VITE_BE_PORT || '5050');
   const [beStatus, setBeStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+  const [appVersion, setAppVersion] = useState('');
+
+  useEffect(() => {
+    if (window.electronAPI?.getAppVersion) {
+      setAppVersion(window.electronAPI.getAppVersion());
+    }
+  }, []);
 
   useEffect(() => {
     const onConnect = () => setBeStatus('connected');
@@ -298,7 +305,7 @@ const LoginPage: React.FC = () => {
           </Accordion>
         </Paper>
         <Typography variant="body2" sx={{ mt: 4, color: '#475569', textAlign: 'center' }}>
-          &copy; {new Date().getFullYear()} CMS Middle VMS. Secure Node.
+          &copy; CMS Middle VMS V{appVersion}
         </Typography>
       </Container>
     </Box>

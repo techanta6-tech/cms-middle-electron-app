@@ -1,6 +1,6 @@
 {
   "name": "cms-electron-app",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "CMS Middle Electron App",
   "main": "main.js",
   "scripts": {
@@ -12,9 +12,12 @@
     "dev": "node scripts/detect-ip.js && concurrently --kill-others \"yarn dev:be\" \"yarn dev:fe\" \"yarn dev:electron\"",
     "build:fe": "cd cms-middle-fe && yarn build",
     "build:be": "cd cms-middle-be && yarn build",
-    "build": "yarn build:fe && yarn build:be && electron-builder"
+    "build": "yarn build:fe && yarn build:be && electron-builder",
+    "build-publish": "yarn build:fe && yarn build:be && electron-builder --publish always"
   },
-  "dependencies": {},
+  "dependencies": {
+    "electron-updater": "^6.8.3"
+  },
   "devDependencies": {
     "concurrently": "^9.1.2",
     "electron": "^34.0.0",
@@ -43,6 +46,13 @@
     ],
     "win": {
       "target": "nsis"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "techanta6-tech",
+        "repo": "cms-middle-electron-app"
+      }
+    ]
   }
 }
