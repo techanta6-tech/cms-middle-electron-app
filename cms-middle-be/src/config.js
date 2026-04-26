@@ -25,4 +25,10 @@ const declaredRoutes = [
   '/api/v1/devices',
 ];
 
-module.exports = { port, getCMSBackendURL, declaredRoutes, SVMS_PORT_LIST, CONNECTIVITY_TIMEOUT_MS };
+const mqttConfig = {
+  brokerUrl: process.env.MQTT_BROKER_URL || 'mqtt://192.168.1.93:1883',
+  appId: process.env.MQTT_APPLICATION_ID || '32dc910f-33ae-4526-ac0b-6344e378f00f',
+  deviceEui: process.env.MQTT_DEVICE_EUI || '24e124806e515126',
+};
+
+module.exports = { port, getCMSBackendURL, declaredRoutes, SVMS_PORT_LIST, CONNECTIVITY_TIMEOUT_MS, mqttConfig };

@@ -12,6 +12,7 @@ const socketState = require('./src/socketState');
 const setupSocketEvents = require('./src/socketEvents');
 const { startMonitoring } = require('./src/services/check-server.service');
 const connectivityMonitor = require('./src/services/connectivity-monitor.service');
+const { initMqtt } = require('./src/services/mqtt.service');
 
 const httpServer = createServer(app);
 
@@ -28,6 +29,9 @@ httpServer.listen(port, '0.0.0.0', () => {
 
   // Start server monitoring cron job
   startMonitoring();
+  
+  // Initialize MQTT Client
+  initMqtt();
 
   // Log connectivity monitor config
   console.log(`\n🔌 CONNECTIVITY MONITOR INITIALIZED`);

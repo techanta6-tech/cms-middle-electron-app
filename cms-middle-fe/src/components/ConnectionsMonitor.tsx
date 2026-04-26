@@ -202,6 +202,29 @@ export function ConnectionsMonitor({
                 </div>
               </div>
               <div className="w-px h-8 bg-outline-variant/10"></div>
+              
+              <div className="flex flex-col gap-1">
+                <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
+                  MQTT Fall Logs
+                </span>
+                <div className="flex items-center gap-2 h-full">
+                  <button 
+                    onClick={() => {
+                        apiClient.get('/api/v1/mqtt-logs').then(res => {
+                           console.log("=== THÔNG TIN LOG TỪ MQTT ===", res.data);
+                           alert("Đã in ra console trình duyệt (F12) và console của Backend!");
+                        }).catch(e => {
+                           console.error("Lỗi lấy MQTT logs", e);
+                           alert("Lỗi khi lấy MQTT logs, kiểm tra server.");
+                        });
+                    }}
+                    className="px-3 py-1 bg-primary text-on-primary text-[10px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity"
+                  >
+                    XEM DATA TRẢ VỀ
+                  </button>
+                </div>
+              </div>
+              <div className="w-px h-8 bg-outline-variant/10"></div>
 
             </div>
 
