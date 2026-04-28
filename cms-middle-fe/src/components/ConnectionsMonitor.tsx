@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData } from '../types';
-import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry } from '../types';
+import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight, Radio } from 'lucide-react';
 import { AddExternalServer } from './AddExternalServer';
 import { ConfigSystem } from './ConfigSystem';
 import apiClient from '../api/apiClient';
@@ -21,7 +21,7 @@ function InfoTooltip({ children, content, side = "top" }: { children: React.Reac
 }
 
 export function ConnectionsMonitor({
-  isConnected, logs, sendServers, receiveServers, onSave, systemConfig, onSaveSystemConfig, onRemoveConnection, servers, devices
+  isConnected, logs, sendServers, receiveServers, onSave, onSaveMqtt, systemConfig, onSaveSystemConfig, onRemoveConnection, servers, devices, mqttServers, mqttLogs
 }: {
   socket: any,
   isConnected: boolean,
@@ -31,7 +31,10 @@ export function ConnectionsMonitor({
   systemConfig: SystemConfig;
   servers: Record<string, ServerData>;
   devices: Record<string, DeviceData>;
+  mqttServers: MqttServerConfig[];
+  mqttLogs: MqttLogEntry[];
   onSave: (ip: string, port: string, mode: 'receive' | 'send') => void,
+  onSaveMqtt: (config: MqttServerConfig) => void,
   onSaveSystemConfig: (config: SystemConfig) => void,
   onRemoveConnection: (ip: string, port: string, mode: 'receive' | 'send') => void,
 }) {
@@ -67,6 +70,7 @@ export function ConnectionsMonitor({
   const deviceLogStats = useMemo(() => {
     const stats: Record<string, { serverId: string; serverSerial: string; deviceName: string; deviceIp: string; logCount: number }> = {};
     (logs || []).forEach(log => {
+      if (log.source === 'mqtt') return; // MQTT logs handled by MqttServerCard
       const sId = log.server?.server_id || '';
       const sSerial = log.server?.serial || '';
       const dName = log.device_name || '';
@@ -120,6 +124,32 @@ export function ConnectionsMonitor({
     return orphans;
   }, [deviceLogStats, servers, devices]);
 
+  // Extract unique MQTT devices per server from mqttLogs
+  const mqttDevicesByServer = useMemo(() => {
+    const map: Record<string, { devEui: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[]> = {};
+    (mqttLogs || []).forEach(log => {
+      const serverId = log.mqttServerId;
+      const di = log.payload?.deviceInfo;
+      if (!serverId || !di?.devEui) return;
+      if (!map[serverId]) map[serverId] = [];
+      const existing = map[serverId].find(d => d.devEui === di.devEui);
+      const eventCount = log.payload?.object?.events?.length || 0;
+      if (existing) {
+        existing.alarmCount += eventCount;
+        existing.lastSeen = log.time;
+      } else {
+        map[serverId].push({
+          devEui: di.devEui,
+          deviceName: di.deviceName || 'Unknown',
+          deviceProfileName: di.deviceProfileName || 'Unknown',
+          alarmCount: eventCount,
+          lastSeen: log.time,
+        });
+      }
+    });
+    return map;
+  }, [mqttLogs]);
+
 
 
   const [initState, setInitState] = useState<'receive' | 'send'>('receive')
@@ -133,6 +163,7 @@ export function ConnectionsMonitor({
       {isNetworkFormOpen && (
         <AddExternalServer
           onSave={onSave}
+          onSaveMqtt={onSaveMqtt}
           initialIp='192.168.1.'
           initialPort='5050'
           initialMode={initState}
@@ -202,21 +233,31 @@ export function ConnectionsMonitor({
                 </div>
               </div>
               <div className="w-px h-8 bg-outline-variant/10"></div>
-              
+
               <div className="flex flex-col gap-1">
                 <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
                   MQTT Fall Logs
                 </span>
                 <div className="flex items-center gap-2 h-full">
-                  <button 
+                  <button
                     onClick={() => {
-                        apiClient.get('/api/v1/mqtt-logs').then(res => {
-                           console.log("=== THÔNG TIN LOG TỪ MQTT ===", res.data);
-                           alert("Đã in ra console trình duyệt (F12) và console của Backend!");
-                        }).catch(e => {
-                           console.error("Lỗi lấy MQTT logs", e);
-                           alert("Lỗi khi lấy MQTT logs, kiểm tra server.");
-                        });
+                      console.log(logs);
+                      console.log(devices);
+                      console.log(servers);
+                      // console.log().
+                      apiClient.get('/api/v1/mqtt-logs').then(res => {
+                        console.log("=== THÔNG TIN LOG TỪ MQTT ===", res.data);
+                        if (res.data.devTimeData) {
+                          console.log("=== API THỜI GIAN (/getDevTime) ===", res.data.devTimeData);
+                        }
+                        const msg = res.data.devTimeData
+                          ? `Đã in ra console! (Cả logs và Thời gian thiết bị: ${JSON.stringify(res.data.devTimeData)})`
+                          : `Đã in ra console trình duyệt và Backend!`;
+                        alert(msg);
+                      }).catch(e => {
+                        console.error("Lỗi lấy MQTT logs", e);
+                        alert("Lỗi khi lấy MQTT logs, kiểm tra server.");
+                      });
                     }}
                     className="px-3 py-1 bg-primary text-on-primary text-[10px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity"
                   >
@@ -264,14 +305,15 @@ export function ConnectionsMonitor({
           <div className="flex-1 overflow-y-auto custom-scrollbar bg-surface-container/20 border border-outline-variant/30 rounded-lg p-5">
             {activeTab === 'input' && (
               <div className="flex flex-col gap-4">
-                {Object.keys(servers).length === 0 && orphanDevices.length === 0 ? (
+                {Object.keys(servers).length === 0 && orphanDevices.length === 0 && mqttServers.length === 0 ? (
                   <div className="py-12 flex flex-col items-center justify-center opacity-40 gap-3 border border-dashed border-outline-variant/20 rounded-md bg-surface-container-lowest/50">
                     <Inbox className="w-8 h-8 text-on-surface-variant" />
                     <span className="text-[10px] uppercase tracking-widest font-bold">No input connections</span>
                   </div>
                 ) : (
                   <>
-                    {Object.values(servers).map((srv, idx) => {
+                    {/* SVMS Servers */}
+                    {Object.values(servers).filter(srv => srv.type !== 'mqtt').map((srv, idx) => {
                       const serverId = srv.id || srv.serial || srv.server_ip || srv.svms_ipv4_ip || '';
                       const matchedDevices = devices[serverId] || devices[srv.id] || devices[srv.serial];
                       return (
@@ -283,6 +325,16 @@ export function ConnectionsMonitor({
                         />
                       );
                     })}
+
+                    {/* MQTT Servers */}
+                    {mqttServers.map((ms) => (
+                      <MqttServerCard
+                        key={ms.id}
+                        server={ms}
+                        devices={mqttDevicesByServer[ms.id] || []}
+                      />
+                    ))}
+
                     <UnknownDevicesCard orphanDevices={orphanDevices} />
                   </>
                 )}
@@ -684,6 +736,124 @@ function ServerInputCard({ srv, matchedDevices, deviceLogStats }: { srv: any, ma
             <div className="px-3 py-3 text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-widest flex items-center justify-center gap-2 bg-surface-container-lowest/30 rounded-sm border border-dashed border-outline-variant/10">
               <Activity className="w-3 h-3 opacity-50" />
               No devices mapped from this server
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MqttServerCard({ server, devices }: {
+  server: MqttServerConfig;
+  devices: { devEui: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[];
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const status = server.status || 'disconnected';
+  const isConnected = status === 'connected';
+  const isConnecting = status === 'connecting';
+
+  const statusConfig = {
+    connected:    { dot: 'bg-secondary ring-secondary/20', badge: 'text-secondary bg-secondary/10 border-secondary/20', label: 'CONNECTED',    border: 'border-l-secondary/60' },
+    connecting:   { dot: 'bg-amber-400 ring-amber-400/20', badge: 'text-amber-400 bg-amber-400/10 border-amber-400/20', label: 'CONNECTING',   border: 'border-l-amber-400/60' },
+    disconnected: { dot: 'bg-tertiary ring-tertiary/20',   badge: 'text-tertiary bg-tertiary/10 border-tertiary/20',   label: 'DISCONNECTED', border: 'border-l-tertiary/60' },
+    error:        { dot: 'bg-red-500 ring-red-500/20',     badge: 'text-red-500 bg-red-500/10 border-red-500/20',     label: 'ERROR',        border: 'border-l-red-500/60' },
+  } as const;
+
+  const cfg = statusConfig[status] || statusConfig.disconnected;
+  const totalAlarms = devices.reduce((sum, d) => sum + d.alarmCount, 0);
+
+  return (
+    <div className={`mqtt-server-card bg-surface-container border border-outline-variant/10 px-4 py-3 pb-4 rounded-md border-l-[3px] ${cfg.border} shadow-sm transition-all hover:bg-surface-container-high/40 group`}>
+      {/* Header */}
+      <div
+        className="flex items-center justify-between border-b border-outline-variant/5 cursor-pointer select-none"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-start gap-3">
+          <div className={`p-2 ${isConnected ? 'bg-secondary/10' : 'bg-tertiary/10'} rounded-lg shrink-0`}>
+            <Radio className={`w-4 h-4 ${isConnected ? 'text-secondary' : 'text-tertiary'}`} />
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-1">
+                <InfoTooltip content="MQTT Broker">
+                  <span className={`text-[14px] font-black tracking-wide leading-none group-hover:text-primary transition-colors ${status === 'disconnected' ? 'text-on-surface/60' : 'text-on-surface'}`}>
+                    {server.protocol}://{server.brokerHost}:{server.brokerPort}
+                  </span>
+                </InfoTooltip>
+                <div className='flex gap-1 items-center'>
+                  <InfoTooltip content="MQTT Server ID">
+                    <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{server.id}</span>
+                  </InfoTooltip>
+                  <span className="w-1 h-1 rounded-full bg-outline-variant/30"></span>
+                  <InfoTooltip content="Topic đang subscribe">
+                    <span className="text-[10px] font-mono font-medium text-on-surface-variant truncate max-w-[300px] block">{server.topic || server.defaultTopic || '(no topic)'}</span>
+                  </InfoTooltip>
+                </div>
+              </div>
+              {/* Status Badge */}
+              <InfoTooltip content={`Trạng thái: ${cfg.label}`}>
+                <span className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${cfg.badge}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${isConnecting ? 'animate-pulse' : ''}`}></span>
+                  {cfg.label}
+                </span>
+              </InfoTooltip>
+              {/* Type Badge */}
+              <InfoTooltip content="Kết nối MQTT">
+                <span className="inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border text-cyan-500 bg-cyan-500/10 border-cyan-500/20">
+                  <Radio className="w-2.5 h-2.5" />
+                  MQTT
+                </span>
+              </InfoTooltip>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">DEVICES</span>
+            <span className="text-[14px] font-black font-mono text-on-surface leading-none">{devices.length}</span>
+          </div>
+          <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">ALARMS</span>
+            <span className={`text-[14px] font-black font-mono leading-none ${totalAlarms > 0 ? 'text-tertiary' : 'text-on-surface-variant/40'}`}>{totalAlarms}</span>
+          </div>
+          <ChevronDown className={`w-4 h-4 text-on-surface-variant transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+        </div>
+      </div>
+
+      {/* Devices list */}
+      <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
+        <div className={`min-h-0 ${isExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
+          {devices.length > 0 ? (
+            <div className="grid gap-2 border-l-2 border-outline-variant/10 pl-2 ml-1">
+              {devices.map((device) => (
+                <div key={device.devEui} className="flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border border-outline-variant/5 hover:border-outline-variant/20 transition-colors">
+                  <InfoTooltip content="Device Profile" side="bottom">
+                    <span className="text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20">
+                      {device.deviceProfileName}
+                    </span>
+                  </InfoTooltip>
+                  <InfoTooltip content="Tên thiết bị" side="bottom">
+                    <span className="text-[11px] font-bold tracking-wide flex-1 truncate max-w-[200px] block text-on-surface-variant">{device.deviceName}</span>
+                  </InfoTooltip>
+                  <div className="flex w-full items-center justify-between gap-4">
+                    <InfoTooltip content="DevEUI (Mã định danh thiết bị)" side="bottom">
+                      <span className="text-[10px] font-mono font-medium text-on-surface-variant/70 min-w-[100px] bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/5">{device.devEui}</span>
+                    </InfoTooltip>
+                    <InfoTooltip content="Tổng alarm events nhận được">
+                      <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${device.alarmCount > 0 ? 'text-tertiary bg-tertiary/15 ring-1 ring-tertiary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
+                        {device.alarmCount} alarms
+                      </span>
+                    </InfoTooltip>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-3 py-3 text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-widest flex items-center justify-center gap-2 bg-surface-container-lowest/30 rounded-sm border border-dashed border-outline-variant/10">
+              <Activity className="w-3 h-3 opacity-50" />
+              Chưa nhận được data từ broker — waiting for events
             </div>
           )}
         </div>

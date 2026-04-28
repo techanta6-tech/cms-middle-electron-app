@@ -12,6 +12,7 @@ const authRoutes = require('./routes/auth.routes');
 const logsRoutes = require('./routes/logs.routes');
 const connectionsRoutes = require('./routes/connections.routes');
 const serverRoutes = require('./routes/server.routes');
+const mqttRoutes = require('./routes/mqtt.routes');
 const { getClientSockets } = require('./socketState');
 
 const app = express();
@@ -149,16 +150,10 @@ app.use((req, res, next) => {
 
 // ─── Mount Routes ────────────────────────────────────────────────────────────
 app.use(healthRoutes);
-app.get('/api/v1/mqtt-logs', (req, res) => {
-  const { getFallDetectionLogs } = require('./services/mqtt.service');
-  const logs = getFallDetectionLogs();
-  console.log(`[MQTT] Console logging ${logs.length} logs from via API requested by user.`);
-  console.log(JSON.stringify(logs, null, 2));
-  res.json({ count: logs.length, logs: logs });
-});
 app.use(authRoutes);
 app.use(logsRoutes);
 app.use(connectionsRoutes);
 app.use(serverRoutes.router);
+app.use(mqttRoutes);
 
 module.exports = app;

@@ -223,7 +223,10 @@ function Dashboard() {
     selectedEventType,
     setSelectedEventType,
     totalLogCount,
-    KEEP_TOTAL_LOG_COUNT
+    KEEP_TOTAL_LOG_COUNT,
+    handleAddMqttServer,
+    mqttServers,
+    mqttLogs,
   } = useSocketManager();
 
   const displayLogCount = KEEP_TOTAL_LOG_COUNT ? totalLogCount : logs.length;
@@ -339,7 +342,10 @@ function Dashboard() {
                 servers={servers}
                 devices={devices}
                 onSave={handleAddExternalServer}
+                onSaveMqtt={handleAddMqttServer}
                 onRemoveConnection={handleRemoveConnection}
+                mqttServers={mqttServers}
+                mqttLogs={mqttLogs}
               />
             )}
           </div>

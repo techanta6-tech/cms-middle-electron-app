@@ -29,6 +29,12 @@ const servers = new Map();
 const devices = new Map();
 
 /**
+ * In-memory store for dynamic MQTT server configs.
+ * Structure: [{ id, brokerHost, brokerPort, protocol, topic, defaultTopic, status, logs[] }]
+ */
+const mqttServers = [];
+
+/**
  * Global variable to hold the Socket.IO server instance.
  */
 let clientSockets = null;
@@ -49,4 +55,4 @@ const init = (httpServer) => {
  */
 const getClientSockets = () => clientSockets;
 
-module.exports = { init, getClientSockets, connections, servers, devices };
+module.exports = { init, getClientSockets, connections, servers, devices, mqttServers };
