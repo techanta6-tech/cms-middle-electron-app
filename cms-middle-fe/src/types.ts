@@ -95,6 +95,18 @@ export interface MqttServerConfig {
   logCount?: number;
 }
 
+export interface MqttDeviceConfig {
+  id: string;
+  mqttServerId: string;
+  type: 'sunell';
+  cameraIp: string;
+  cameraPort: number;
+  cameraUser: string;
+  rtspUrl: string | null;
+  status: 'connecting' | 'connected' | 'error' | 'disconnected';
+  handle: number | null;
+}
+
 // ─── MQTT Log Types ──────────────────────────────────────────────────────────
 
 /** Một alarm event trong trường object.events */

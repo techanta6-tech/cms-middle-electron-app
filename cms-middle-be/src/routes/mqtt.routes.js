@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { mqttServers } = require('../socketState');
-const { connectMqttServer, disconnectMqttServer, getMqttServersList, getMqttServerLogs } = require('../services/mqtt.service');
+const { connectMqttServer, disconnectMqttServer, getMqttServersList, getMqttServerLogs, addMqttDevice, removeMqttDevice, updateMqttDevice, getMqttDevicesList } = require('../services/mqtt.service');
 const authMiddleware = require('../middleware/auth.middleware');
 
 const router = express.Router();
@@ -103,6 +103,51 @@ router.delete('/api/v1/mqtt-servers/:id', (req, res) => {
   }
 
   res.json({ success: true, message: `MQTT server '${id}' removed` });
+});
+
+// ─── MQTT Device Routes ──────────────────────────────────────────────────────
+
+// POST /api/v1/mqtt-devices — Add camera device linked to MQTT server
+router.post('/api/v1/mqtt-devices', async (req, res) => {
+  const { mqttServerId, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl } = req.body;
+
+  if (!mqttServerId) {
+    return res.status(400).json({ success: false, message: 'Missing mqttServerId' });
+  }
+  if (!cameraIp) {
+    return res.status(400).json({ success: false, message: 'Missing cameraIp' });
+  }
+
+  try {
+    const result = await addMqttDevice({ mqttServerId, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl });
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || String(err) });
+  }
+});
+
+// GET /api/v1/mqtt-devices — List all mqtt devices (optional ?mqttServerId=xxx)
+router.get('/api/v1/mqtt-devices', (req, res) => {
+  const list = getMqttDevicesList(req.query.mqttServerId);
+  res.json({ success: true, devices: list });
+});
+
+// DELETE /api/v1/mqtt-devices/:id — Remove device
+router.delete('/api/v1/mqtt-devices/:id', (req, res) => {
+  const result = removeMqttDevice(req.params.id);
+  if (!result.success) {
+    return res.status(404).json(result);
+  }
+  res.json(result);
+});
+
+// PATCH /api/v1/mqtt-devices/:id — Update device fields (rtspUrl, etc.)
+router.patch('/api/v1/mqtt-devices/:id', (req, res) => {
+  const result = updateMqttDevice(req.params.id, req.body);
+  if (!result.success) {
+    return res.status(404).json(result);
+  }
+  res.json(result);
 });
 
 module.exports = router;

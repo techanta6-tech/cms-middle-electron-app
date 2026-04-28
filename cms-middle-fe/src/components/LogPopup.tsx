@@ -3,7 +3,10 @@ import type { LogData } from '../types';
 import { TriangleAlert, Cloud, X } from 'lucide-react';
 
 export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }) {
-  const snapshot = log.raw?.body?.snapshot;
+  const rawSnapshot = log.snapshot || log.raw?.body?.snapshot;
+  const snapshot = rawSnapshot
+    ? (rawSnapshot.startsWith('data:') ? rawSnapshot : `data:image/jpeg;base64,${rawSnapshot}`)
+    : null;
   const onClickOutside = (e: React.MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget) onClose() }
   // console.log("log ", log)
   const [isShowImgRaw, setIsShowImgRaw] = useState<Boolean>(false)
@@ -75,7 +78,7 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
                 <div className="aspect-video bg-black rounded-sm overflow-hidden border border-outline-variant/20 relative shadow-inner">
                   {snapshot ? (
                     <img
-                      src={`data:image/jpeg;base64,${snapshot}`}
+                      src={snapshot}
                       alt="Event Evidence"
                       className="w-full h-full object-contain"
                     />

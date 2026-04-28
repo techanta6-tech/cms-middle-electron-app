@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { socket, updateSocketUrlAsync } from '../socket';
-import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry } from '../types';
+import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig } from '../types';
 import apiClient from '../api/apiClient';
 import axios from 'axios';
 
@@ -21,6 +21,7 @@ export function useSocketManager() {
   const [totalLogCount, setTotalLogCount] = useState(0);
   const [eventTypes, setEventTypes] = useState<string[]>([]);
   const [mqttLogs, setMqttLogs] = useState<MqttLogEntry[]>([]);
+  const [mqttCameraDevices, setMqttCameraDevices] = useState<MqttDeviceConfig[]>([]);
 
   // ─── Log Batching: buffer incoming logs and flush every 500ms ───────────────
   const logBufferRef = useRef<LogData[]>([]);
@@ -460,6 +461,11 @@ export function useSocketManager() {
       setMqttServers(mqttData);
     };
 
+    const onUpdateMqttDevices = (devices: MqttDeviceConfig[]) => {
+      console.log('%c[SOCKET] 📷 update-mqtt-devices — Nhận danh sách camera devices cập nhật', 'color: #06b6d4; font-weight: bold');
+      setMqttCameraDevices(devices);
+    };
+
     const onReceiveMqttLog = (raw: any) => {
       const isSystem = raw.type === 'system';
       const color = isSystem ? '#f59e0b' : '#22c55e';
@@ -486,6 +492,7 @@ export function useSocketManager() {
           type: raw.type || 'data',
           topic: raw.topic || '',
           payload: raw.payload,
+          snapshot: raw.snapshot || undefined,
           mqttServerId: raw.mqttServerId,
           brokerHost: raw.brokerHost,
           brokerPort: raw.brokerPort,
@@ -493,10 +500,10 @@ export function useSocketManager() {
         mqttLogBufferRef.current.push(mqttLogEntry);
       }
 
-      // Also push to generic LogData for the log table
+      // Use individual event (1 log = 1 event now)
       const deviceInfo = raw.payload?.deviceInfo;
-      const events = raw.payload?.object?.events;
-      const eventDesc = events?.map((e: any) => `${e.alarm_type}:${e.alarm_status}`).join(', ') || '';
+      const event = raw.event;
+      const eventDesc = event ? `${event.alarm_type}:${event.alarm_status}` : '';
       const newLog: LogData = {
         id: crypto.randomUUID(),
         time: Math.floor(new Date(raw.time || Date.now()).getTime() / 1000),
@@ -506,6 +513,7 @@ export function useSocketManager() {
         device_name: deviceInfo?.deviceName || 'MQTT Device',
         log_type: raw.type || 'data',
         description: eventDesc || `MQTT - ${raw.type || 'data'}`,
+        snapshot: raw.snapshot || undefined,
         server: { server_id: `mqtt-${raw.mqttServerId}`, serial: deviceInfo?.devEui || '' },
         ip: raw.brokerHost || '',
         raw: raw,
@@ -530,6 +538,7 @@ export function useSocketManager() {
     socket.on('server-connection-status', onServerConnectionStatus);
     socket.on('device-connection-status', onDeviceConnectionStatus);
     socket.on('update-mqtt-servers', onUpdateMqttServers);
+    socket.on('update-mqtt-devices', onUpdateMqttDevices);
     socket.on('receive-mqtt-log', onReceiveMqttLog);
 
     return () => {
@@ -546,6 +555,7 @@ export function useSocketManager() {
       socket.off('server-connection-status', onServerConnectionStatus);
       socket.off('device-connection-status', onDeviceConnectionStatus);
       socket.off('update-mqtt-servers', onUpdateMqttServers);
+      socket.off('update-mqtt-devices', onUpdateMqttDevices);
       socket.off('receive-mqtt-log', onReceiveMqttLog);
     };
   }, []);
@@ -571,6 +581,7 @@ export function useSocketManager() {
     KEEP_TOTAL_LOG_COUNT: env.KEEP_TOTAL_LOG_COUNT,
     mqttServers,
     mqttLogs,
+    mqttCameraDevices,
     handleAddMqttServer,
     handleRemoveMqttServer,
     handleUpdateMqttServer,

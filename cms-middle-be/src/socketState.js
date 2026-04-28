@@ -35,6 +35,12 @@ const devices = new Map();
 const mqttServers = [];
 
 /**
+ * In-memory store for camera devices linked to MQTT servers.
+ * Structure: [{ id, mqttServerId, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl, snapshotDir, sdkPath, status, handle }]
+ */
+const mqttDevices = [];
+
+/**
  * Global variable to hold the Socket.IO server instance.
  */
 let clientSockets = null;
@@ -55,4 +61,4 @@ const init = (httpServer) => {
  */
 const getClientSockets = () => clientSockets;
 
-module.exports = { init, getClientSockets, connections, servers, devices, mqttServers };
+module.exports = { init, getClientSockets, connections, servers, devices, mqttServers, mqttDevices };
