@@ -30,10 +30,13 @@ export interface LogData {
   ip: string;
   raw?: any;
   cameraIp?: string;
+  source?: 'svms' | 'mqtt';
+  mqttServerId?: string;
 }
 
 export interface AddExternalServerProps {
   onSave: (ip: string, port: string, mode: 'receive' | 'send') => void;
+  onSaveMqtt: (config: MqttServerConfig) => void;
   onClose: () => void;
   initialIp?: string;
   initialPort?: string;
@@ -56,9 +59,10 @@ export interface ServerData {
   // new datas
   svms_ipv4_ip?: string;
   // connectivity monitor fields
-  type?: 'direct' | 'forwarded';
-  connectionStatus?: 'connected' | 'disconnected';
+  type?: 'direct' | 'forwarded' | 'mqtt';
+  connectionStatus?: 'connected' | 'disconnected' | 'connecting';
   lastLogReceived?: string;
+  mqttTopic?: string;
 }
 
 export interface DeviceItem {
@@ -78,4 +82,102 @@ export interface DeviceData {
   devices: DeviceItem[];
   sender_ip?: string;
   lastSeen?: string;
+}
+
+export interface MqttServerConfig {
+  id: string;
+  brokerHost: string;
+  brokerPort: string;
+  protocol: 'mqtt' | 'mqtts';
+  topic: string;
+  defaultTopic: string;
+  status?: 'connecting' | 'connected' | 'disconnected' | 'error';
+  logCount?: number;
+}
+
+export interface MqttDeviceConfig {
+  id: string;
+  mqttServerId: string;
+  type: 'sunell';
+  cameraIp: string;
+  cameraPort: number;
+  cameraUser: string;
+  rtspUrl: string | null;
+  status: 'connecting' | 'connected' | 'error' | 'disconnected';
+  handle: number | null;
+}
+
+// ─── MQTT Log Types ──────────────────────────────────────────────────────────
+
+/** Một alarm event trong trường object.events */
+export interface MqttLogEvent {
+  alarm_type: string;   // VD: 'dwell', 'fall', 'stay', ...
+  alarm_id: number;
+  alarm_status: string; // VD: 'alarm_triggered', 'alarm_canceled'
+}
+
+/** Thông tin thiết bị gửi data (deviceInfo) — dùng để định danh device */
+export interface MqttDeviceInfo {
+  tenantId: string;
+  tenantName: string;
+  applicationId: string;
+  applicationName: string;
+  deviceProfileId: string;
+  deviceProfileName: string; // VD: 'Radar_LivingRoom'
+  deviceName: string;        // VD: 'Radar_test'
+  devEui: string;            // Unique device ID — dùng để đối chiếu
+  deviceClassEnabled: string;
+  tags: Record<string, string>;
+}
+
+/** Toàn bộ raw payload nhận từ MQTT (ChirpStack uplink format) */
+export interface MqttLogPayload {
+  deduplicationId: string;
+  time: string;
+  deviceInfo: MqttDeviceInfo;
+  devAddr: string;
+  adr: boolean;
+  dr: number;
+  fCnt: number;
+  fPort: number;
+  confirmed: boolean;
+  data: string;             // Base64-encoded raw LoRa payload
+  object: {
+    events: MqttLogEvent[];
+    [key: string]: any;     // Các trường khác trong object (region, respiratory, ...)
+  };
+  rxInfo: Array<{
+    gatewayId: string;
+    uplinkId: number;
+    gwTime: string;
+    nsTime: string;
+    rssi: number;
+    snr: number;
+    location?: { latitude: number; longitude: number };
+    context: string;
+    crcStatus: string;
+  }>;
+  txInfo: {
+    frequency: number;
+    modulation: {
+      lora: {
+        bandwidth: number;
+        spreadingFactor: number;
+        codeRate: string;
+      };
+    };
+  };
+  regionConfigId: string;
+}
+
+/** Log entry được BE emit qua socket — bao gồm metadata để đối chiếu MQTT server */
+export interface MqttLogEntry {
+  time: string;
+  type: 'data' | 'system';
+  topic: string;            // MQTT topic nhận message
+  payload: MqttLogPayload;  // Raw payload gốc
+  snapshot?: string;        // Base64 image snapshot (nếu có)
+  mqttServerId: string;     // ID của MqttServerConfig — key để đối chiếu
+  brokerHost?: string;
+  brokerPort?: string;
 }

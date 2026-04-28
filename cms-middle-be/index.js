@@ -29,6 +29,8 @@ httpServer.listen(port, '0.0.0.0', () => {
   // Start server monitoring cron job
   startMonitoring();
 
+  // MQTT is now managed via UI — no auto-init from .env
+
   // Log connectivity monitor config
   console.log(`\n🔌 CONNECTIVITY MONITOR INITIALIZED`);
   console.log(`   ├─ Timeout: ${CONNECTIVITY_TIMEOUT_MS}ms`);

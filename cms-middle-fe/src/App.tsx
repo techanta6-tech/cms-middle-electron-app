@@ -223,7 +223,11 @@ function Dashboard() {
     selectedEventType,
     setSelectedEventType,
     totalLogCount,
-    KEEP_TOTAL_LOG_COUNT
+    KEEP_TOTAL_LOG_COUNT,
+    handleAddMqttServer,
+    mqttServers,
+    mqttLogs,
+    mqttCameraDevices,
   } = useSocketManager();
 
   const displayLogCount = KEEP_TOTAL_LOG_COUNT ? totalLogCount : logs.length;
@@ -346,7 +350,11 @@ function Dashboard() {
                 servers={servers}
                 devices={devices}
                 onSave={handleAddExternalServer}
+                onSaveMqtt={handleAddMqttServer}
                 onRemoveConnection={handleRemoveConnection}
+                mqttServers={mqttServers}
+                mqttLogs={mqttLogs}
+                mqttCameraDevices={mqttCameraDevices}
               />
             )}
           </div>
@@ -404,7 +412,7 @@ function Dashboard() {
               <div className="app-logs-container flex-1 overflow-y-auto custom-scrollbar p-0 bg-surface-container-low/10">
                 {filteredLogs.length > 0 ? (
                   <div className="flex flex-col">
-                    {filteredLogs.slice(0, visibleAlerts).map((log, idx) => (
+                    {[...filteredLogs].reverse().slice(0, visibleAlerts).map((log, idx) => (
                       <div key={log.id || idx} className="border-b border-outline-variant/5">
                         <LogEntry log={log} onClick={() => setSelectedLog(log)} />
                       </div>
