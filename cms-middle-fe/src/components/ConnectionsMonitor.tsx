@@ -242,23 +242,13 @@ export function ConnectionsMonitor({
                 <div className="flex items-center gap-2 h-full">
                   <button
                     onClick={() => {
-                      console.log(logs);
-                      console.log(devices);
-                      console.log(servers);
-                      // console.log().
-                      apiClient.get('/api/v1/mqtt-logs').then(res => {
-                        console.log("=== THÔNG TIN LOG TỪ MQTT ===", res.data);
-                        if (res.data.devTimeData) {
-                          console.log("=== API THỜI GIAN (/getDevTime) ===", res.data.devTimeData);
-                        }
-                        const msg = res.data.devTimeData
-                          ? `Đã in ra console! (Cả logs và Thời gian thiết bị: ${JSON.stringify(res.data.devTimeData)})`
-                          : `Đã in ra console trình duyệt và Backend!`;
-                        alert(msg);
-                      }).catch(e => {
-                        console.error("Lỗi lấy MQTT logs", e);
-                        alert("Lỗi khi lấy MQTT logs, kiểm tra server.");
-                      });
+                      console.log("=== THÔNG TIN CHUNG TỪ PROVIDER ===");
+                      console.log("1. MQTT Servers:", mqttServers);
+                      console.log("2. MQTT Logs (Realtime):", mqttLogs);
+                      console.log("3. Camera Devices:", cameraDevices);
+                      console.log("4. SVMS Servers:", servers);
+                      console.log("5. SVMS/System Logs:", logs);
+                      alert(`Đã in ra console trình duyệt!\n\nTổng MQTT Logs: ${mqttLogs.length}\nTổng MQTT Servers: ${mqttServers.length}\nTổng Camera Devices: ${cameraDevices.length}`);
                     }}
                     className="px-3 py-1 bg-primary text-on-primary text-[10px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity"
                   >
@@ -834,34 +824,24 @@ function MqttServerCard({ server, devices, allCameras }: {
                   </InfoTooltip>
                 </div>
               </div>
-              {/* Status Badge */}
-              <InfoTooltip content={`Trạng thái: ${cfg.label}`}>
-                <span className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${cfg.badge}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${isConnecting ? 'animate-pulse' : ''}`}></span>
-                  {cfg.label}
-                </span>
-              </InfoTooltip>
-              {/* Type Badge */}
-              <InfoTooltip content="Kết nối MQTT">
-                <span className="inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border text-cyan-500 bg-cyan-500/10 border-cyan-500/20">
-                  <Radio className="w-2.5 h-2.5" />
-                  MQTT
-                </span>
-              </InfoTooltip>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
-            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">BOUND CAMERA</span>
-            <span className={`text-[12px] font-black font-mono leading-none ${boundCamera ? 'text-cyan-500' : 'text-on-surface-variant/40'}`}>
-              {boundCamera ? `${boundCamera.cameraIp}` : 'NONE'}
+          {/* Status Badge */}
+          <InfoTooltip content={`Trạng thái: ${cfg.label}`}>
+            <span className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${cfg.badge}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${isConnecting ? 'animate-pulse' : ''}`}></span>
+              {cfg.label}
             </span>
-          </div>
-          <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
-            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">ALARMS</span>
-            <span className={`text-[14px] font-black font-mono leading-none ${totalAlarms > 0 ? 'text-tertiary' : 'text-on-surface-variant/40'}`}>{totalAlarms}</span>
-          </div>
+          </InfoTooltip>
+          {/* Type Badge */}
+          <InfoTooltip content="Kết nối MQTT">
+            <span className="inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border text-cyan-500 bg-cyan-500/10 border-cyan-500/20">
+              <Radio className="w-2.5 h-2.5" />
+              MQTT
+            </span>
+          </InfoTooltip>
           <ChevronDown className={`w-4 h-4 text-on-surface-variant transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
         </div>
       </div>
@@ -869,7 +849,7 @@ function MqttServerCard({ server, devices, allCameras }: {
       {/* Expandable body */}
       <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
         <div className={`min-h-0 ${isExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
-          
+
           <div className="mb-3 px-3 py-2 bg-surface-container-lowest/40 rounded border border-outline-variant/5">
             <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
               <Cpu className="w-3 h-3" /> Bound Camera
@@ -881,7 +861,7 @@ function MqttServerCard({ server, devices, allCameras }: {
             >
               <option value="">-- No Camera (Disabled Snapshot) --</option>
               {allCameras.map(cam => (
-                <option key={cam.id} value={cam.id}>{cam.type.toUpperCase()} - {cam.cameraIp}:{cam.cameraPort}</option>
+                <option key={cam.id} value={cam.id}>{cam.type.toUpperCase()} - {cam.cameraIp}:{cam.cameraPort} - {cam.status}</option>
               ))}
             </select>
             <p className="text-[9px] text-on-surface-variant/60 mt-1">
@@ -938,7 +918,7 @@ function CameraDevicesList({ cameras }: { cameras: MqttDeviceConfig[] }) {
   const [isAddingDevice, setIsAddingDevice] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [addDeviceForm, setAddDeviceForm] = useState({
-    type: 'sunell' as const,
+    type: 'sunell' as 'sunell' | 'other',
     cameraIp: '192.168.1.207',
     cameraPort: '30001',
     cameraUser: 'admin',

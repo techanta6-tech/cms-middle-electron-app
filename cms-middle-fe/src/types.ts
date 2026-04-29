@@ -93,6 +93,7 @@ export interface MqttServerConfig {
   defaultTopic: string;
   status?: 'connecting' | 'connected' | 'disconnected' | 'error';
   logCount?: number;
+  cameraId?: string;
 }
 
 export interface MqttDeviceConfig {

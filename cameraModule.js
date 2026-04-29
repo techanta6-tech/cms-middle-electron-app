@@ -128,7 +128,11 @@ class CameraDevice {
 
         if (!ffmpegPath) {
             try {
-                ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+                try {
+                    ffmpegPath = require(path.join(__dirname, 'cms-middle-be', 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
+                } catch (err) {
+                    ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+                }
             } catch (e) {
                 return Promise.reject(new Error('Không tìm thấy @ffmpeg-installer/ffmpeg.'));
             }
@@ -202,7 +206,13 @@ class CameraDevice {
                     const edgeJsPath = path.join(path.dirname(process.execPath), 'node_modules', 'edge-js');
                     edge = require(edgeJsPath);
                 } else {
-                    edge = require('edge-js');
+                    try {
+                        // Trực tiếp require từ thư mục backend nơi edge-js được cài đặt
+                        const beEdgePath = path.join(__dirname, 'cms-middle-be', 'node_modules', 'edge-js');
+                        edge = require(beEdgePath);
+                    } catch (err) {
+                        edge = require('edge-js');
+                    }
                 }
             } catch (e) {
                 this.cameraError = e.message;

@@ -11,11 +11,11 @@ export function CameraForm({ onCancel, onSuccess }: CameraFormProps) {
   const [addDeviceForm, setAddDeviceForm] = useState({
     name: '',
     type: 'sunell' as 'sunell' | 'other',
-    cameraIp: '',
-    cameraPort: '',
-    cameraUser: '',
-    cameraPass: '',
-    rtspUrl: ''
+    cameraIp: '192.168.1.207',
+    cameraPort: '30001',
+    cameraUser: 'admin',
+    cameraPass: 'admin1234',
+    rtspUrl: 'rtsp://admin:admin1234@192.168.1.207:555/snl/live/1/1'
   });
 
   const handleSubmitDevice = async () => {

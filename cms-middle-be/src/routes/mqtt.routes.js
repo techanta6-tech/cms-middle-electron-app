@@ -37,10 +37,10 @@ router.post('/api/v1/mqtt-servers', (req, res) => {
   const id = crypto.randomUUID().slice(0, 8);
   const serverConfig = {
     id,
-    brokerHost,
-    brokerPort: String(brokerPort),
+    brokerHost: brokerHost.trim(),
+    brokerPort: String(brokerPort).trim(),
     protocol: protocol || 'mqtt',
-    topic: topic || '',
+    topic: topic ? topic.trim() : '',
     defaultTopic: defaultTopic || 'application/{appId}/device/{deviceEui}/event/up',
     status: 'connecting',
     cameraId: cameraId || null,
@@ -69,10 +69,10 @@ router.put('/api/v1/mqtt-servers/:id', (req, res) => {
   // Update config
   const updated = {
     ...mqttServers[idx],
-    brokerHost: brokerHost || mqttServers[idx].brokerHost,
-    brokerPort: String(brokerPort || mqttServers[idx].brokerPort),
+    brokerHost: brokerHost ? brokerHost.trim() : mqttServers[idx].brokerHost,
+    brokerPort: brokerPort ? String(brokerPort).trim() : mqttServers[idx].brokerPort,
     protocol: protocol || mqttServers[idx].protocol,
-    topic: topic !== undefined ? topic : mqttServers[idx].topic,
+    topic: topic !== undefined ? topic.trim() : mqttServers[idx].topic,
     defaultTopic: defaultTopic || mqttServers[idx].defaultTopic,
     cameraId: cameraId !== undefined ? cameraId : mqttServers[idx].cameraId,
     status: 'connecting',
@@ -84,6 +84,30 @@ router.put('/api/v1/mqtt-servers/:id', (req, res) => {
   connectMqttServer(updated);
 
   res.json({ success: true, message: `MQTT server '${id}' updated and reconnecting`, server: { ...updated, logs: undefined } });
+});
+
+// ─── PATCH /api/v1/mqtt-servers/:id — Partially update MQTT server config ─────
+router.patch('/api/v1/mqtt-servers/:id', (req, res) => {
+  const { id } = req.params;
+  const idx = mqttServers.findIndex(s => s.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, message: 'MQTT server not found' });
+  }
+
+  const { cameraId } = req.body;
+
+  if (cameraId !== undefined) {
+    mqttServers[idx].cameraId = cameraId;
+  }
+
+  // Emit updated list to FE
+  const { getClientSockets } = require('../socketState');
+  const clientSockets = getClientSockets();
+  if (clientSockets) {
+    clientSockets.emit('update-mqtt-servers', getMqttServersList());
+  }
+
+  res.json({ success: true, message: `MQTT server '${id}' partially updated`, server: { ...mqttServers[idx], logs: undefined } });
 });
 
 // ─── DELETE /api/v1/mqtt-servers/:id — Remove MQTT server ────────────────────
