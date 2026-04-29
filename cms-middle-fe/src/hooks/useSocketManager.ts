@@ -557,6 +557,12 @@ export function useSocketManager() {
     socket.on('update-cameras', onUpdateCameras);
     socket.on('receive-mqtt-log', onReceiveMqttLog);
 
+    // DEBUG: Camera snapshot pipeline logs
+    const onDebugCameraSnapshot = (data: { time: string; message: string }) => {
+      console.log(`%c[CAMERA-SNAPSHOT] ${data.message}`, 'color: #ff6b6b; font-weight: bold; background: #1a1a2e; padding: 2px 6px; border-radius: 3px');
+    };
+    socket.on('debug-camera-snapshot', onDebugCameraSnapshot);
+
     return () => {
       socket.off('external-server-connecting', onConnectingExternalServer);
       socket.off('external-server-connect', onConnectedExternalServer);
@@ -573,6 +579,7 @@ export function useSocketManager() {
       socket.off('update-mqtt-servers', onUpdateMqttServers);
       socket.off('update-cameras', onUpdateCameras);
       socket.off('receive-mqtt-log', onReceiveMqttLog);
+      socket.off('debug-camera-snapshot', onDebugCameraSnapshot);
     };
   }, []);
 

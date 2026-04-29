@@ -8,7 +8,7 @@ try {
   try {
     cameraModule = require('../../cameraModule');
   } catch (err2) {
-    cameraModule = { init: () => {} };
+    cameraModule = { init: () => { } };
   }
 }
 
@@ -98,6 +98,16 @@ const connectMqttServer = (serverConfig) => {
         const parsedBody = JSON.parse(message.toString());
         const dataTarget = parsedBody.payload || parsedBody;
 
+        // ── DEBUG: In cấu trúc payload để chuẩn đoán ──
+        console.log(`[MQTT][${id}] Payload keys:`, Object.keys(parsedBody));
+        if (parsedBody.object) {
+          console.log(`[MQTT][${id}] object keys:`, Object.keys(parsedBody.object));
+          console.log(`[MQTT][${id}] object.events:`, JSON.stringify(parsedBody.object.events)?.substring(0, 300));
+        } else {
+          console.log(`[MQTT][${id}] ⚠️  parsedBody.object is MISSING`);
+        }
+        // ── END DEBUG ──
+
         if (dataTarget && dataTarget.object && dataTarget.object.events) {
           const events = dataTarget.object.events;
           // Lấy snapshot 1 lần duy nhất cho tất cả events dựa trên cameraId được config
@@ -121,12 +131,28 @@ const connectMqttServer = (serverConfig) => {
             _emitMqttLog(id, logEntry);
           }
         } else {
-          // Valid JSON but missing object.events — skip
-          console.log(`[MQTT][${id}] Skipped: message has no object.events structure`);
+          // DEBUG: Valid JSON nhưng không có object.events — vẫn tạo log fake + yêu cầu snapshot
+          console.log(`[MQTT][${id}] Forward raw payload (no object.events) — requesting snapshot for DEBUG`);
+          let snapshot = null;
+          if (entry && entry.cameraId) {
+            snapshot = await getSnapshotForCamera(entry.cameraId);
+            console.log(`[MQTT][${id}] DEBUG snapshot result:`, snapshot ? `OK (${snapshot.length} chars)` : 'null');
+          }
+          const logEntry = {
+            time: new Date().toISOString(),
+            type: 'raw',
+            topic: msgTopic,
+            payload: parsedBody,
+            event: { alarm_type: 'debug_raw', alarm_status: 'raw_payload', alarm_id: 0 },
+            snapshot: snapshot || null,
+            mqttServerId: id,
+          };
+          _pushDataLog(id, logEntry);
+          _emitMqttLog(id, logEntry);
         }
       } catch (e) {
         // Binary/Protobuf — skip
-        console.log(`[MQTT][${id}] Skipped: non-JSON payload (binary/protobuf)`);
+        console.log(`[MQTT][${id}] Skipped: non-JSON payload (binary/protobuf)`, e.message);
       }
     });
 

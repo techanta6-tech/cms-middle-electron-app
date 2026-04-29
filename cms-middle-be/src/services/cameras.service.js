@@ -2,7 +2,8 @@ const path = require('path');
 const { cameraDevices, getClientSockets } = require('../socketState');
 let CameraDevice;
 try {
-  const mod = require('../../cameraModule');
+  // cms-middle-be/src/services/ → ../../../ = repo root
+  const mod = require('../../../cameraModule');
   CameraDevice = mod.CameraDevice;
 } catch (err) {
   console.warn('[Cameras-Service] cameraModule load failed:', err.message);
@@ -20,7 +21,7 @@ async function addCameraDevice(deviceConfig) {
   const baseWritableDir = process.env.USER_DATA_PATH || process.cwd();
   const snapshotDir = path.join(baseWritableDir, 'snapshots');
   const isPackaged = process.env.IS_PACKAGED === 'true' || process.pkg;
-  const sdkPath = isPackaged 
+  const sdkPath = isPackaged
     ? path.join(path.dirname(process.execPath), 'module', 'sunell')
     : path.join(__dirname, '..', '..', '..', 'module', 'sunell'); // fixed path to sdk
 
@@ -54,8 +55,8 @@ async function addCameraDevice(deviceConfig) {
     cameraUser: cameraUser || 'admin',
     cameraPass: cameraPass || 'admin1234',
     onAlarm: (payload) => {
-        // Tương lai: broadcast websocket nếu cần
-        console.log(`[Camera-${id}] Báo động SDK:`, payload.substring(0, 100));
+      // Tương lai: broadcast websocket nếu cần
+      console.log(`[Camera-${id}] Báo động SDK:`, payload.substring(0, 100));
     }
   });
 
@@ -149,28 +150,35 @@ function _emitCamerasUpdate() {
 }
 
 async function getSnapshotForCamera(cameraId) {
+  const clientSockets = getClientSockets();
+  const _debugFE = (msg) => {
+    console.log(msg);
+    if (clientSockets) clientSockets.emit('debug-camera-snapshot', { time: new Date().toISOString(), message: msg });
+  };
+
   const device = cameraDevices.find(d => d.id === cameraId);
   if (!device) {
-    console.log(`[Camera-Snapshot] Camera '${cameraId}' not found`);
+    _debugFE(`[Camera-Snapshot] Camera '${cameraId}' not found. Available: ${cameraDevices.map(d => d.id).join(', ') || 'none'}`);
     return null;
   }
 
   if (device.type === 'sunell' && device.status !== 'connected') {
-    console.log(`[Camera-Snapshot] Camera '${cameraId}' is sunell but not connected`);
+    _debugFE(`[Camera-Snapshot] Camera '${cameraId}' is sunell but not connected (status: ${device.status})`);
     return null;
   }
 
   if (!device.instance) {
-    console.log(`[Camera-Snapshot] Camera '${cameraId}' has no instance`);
+    _debugFE(`[Camera-Snapshot] Camera '${cameraId}' has no instance`);
     return null;
   }
 
-  console.log(`[Camera-Snapshot] Capturing from camera '${device.id}' (${device.type}) ...`);
+  _debugFE(`[Camera-Snapshot] Capturing from camera '${device.id}' (${device.type}) ...`);
   try {
     const base64 = await device.instance.captureSnapshotBase64();
+    _debugFE(`[Camera-Snapshot] Result: ${base64 ? `OK (${base64.length} chars)` : 'null/empty'}`);
     return base64;
   } catch (err) {
-    console.error(`[Camera-Snapshot] Capture failed for camera '${device.id}':`, err.message);
+    _debugFE(`[Camera-Snapshot] Capture FAILED for camera '${device.id}': ${err.message}`);
     return null;
   }
 }
