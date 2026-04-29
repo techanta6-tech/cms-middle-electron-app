@@ -59,7 +59,7 @@ let backendProcess = null;
 
 function startBackend(bePort) {
   const osPlatform = os.platform();
-  const beExecutableName = osPlatform === 'win32' ? 'cms-ai-vms-middle.exe' : 'cms-ai-vms-middle';
+  const beExecutableName = osPlatform === 'win32' ? 'node.exe' : 'node';
 
   const binaryPath = isDev
     ? path.join(__dirname, 'build-be', beExecutableName)

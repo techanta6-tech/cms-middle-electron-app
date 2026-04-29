@@ -21,7 +21,7 @@ export function useSocketManager() {
   const [totalLogCount, setTotalLogCount] = useState(0);
   const [eventTypes, setEventTypes] = useState<string[]>([]);
   const [mqttLogs, setMqttLogs] = useState<MqttLogEntry[]>([]);
-  const [mqttCameraDevices, setMqttCameraDevices] = useState<MqttDeviceConfig[]>([]);
+  const [cameraDevices, setCameraDevices] = useState<MqttDeviceConfig[]>([]);
 
   // ─── Log Batching: buffer incoming logs and flush every 500ms ───────────────
   const logBufferRef = useRef<LogData[]>([]);
@@ -129,6 +129,22 @@ export function useSocketManager() {
       console.error('[FETCH_MQTT_SERVERS] Failed:', err);
     }
   }, [systemConfig.be.ip, systemConfig.be.port]);
+
+  const fetchCameras = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get('/api/v1/cameras');
+      setCameraDevices(data.cameras || []);
+      console.log('[FETCH_CAMERAS] Synced from BE:', data.cameras);
+    } catch (err) {
+      console.error('[FETCH_CAMERAS] Failed:', err);
+    }
+  }, [systemConfig.be.ip, systemConfig.be.port]);
+
+  useEffect(() => {
+    fetchCameras();
+    socket.on('connect', fetchCameras);
+    return () => { socket.off('connect', fetchCameras); };
+  }, [fetchCameras]);
 
   // ─── Delta updates via socket events ────────────────────────────────────────
 
@@ -461,9 +477,9 @@ export function useSocketManager() {
       setMqttServers(mqttData);
     };
 
-    const onUpdateMqttDevices = (devices: MqttDeviceConfig[]) => {
-      console.log('%c[SOCKET] 📷 update-mqtt-devices — Nhận danh sách camera devices cập nhật', 'color: #06b6d4; font-weight: bold');
-      setMqttCameraDevices(devices);
+    const onUpdateCameras = (devices: MqttDeviceConfig[]) => {
+      console.log('%c[SOCKET] 📷 update-cameras — Nhận danh sách camera devices cập nhật', 'color: #06b6d4; font-weight: bold');
+      setCameraDevices(devices);
     };
 
     const onReceiveMqttLog = (raw: any) => {
@@ -538,7 +554,7 @@ export function useSocketManager() {
     socket.on('server-connection-status', onServerConnectionStatus);
     socket.on('device-connection-status', onDeviceConnectionStatus);
     socket.on('update-mqtt-servers', onUpdateMqttServers);
-    socket.on('update-mqtt-devices', onUpdateMqttDevices);
+    socket.on('update-cameras', onUpdateCameras);
     socket.on('receive-mqtt-log', onReceiveMqttLog);
 
     return () => {
@@ -555,7 +571,7 @@ export function useSocketManager() {
       socket.off('server-connection-status', onServerConnectionStatus);
       socket.off('device-connection-status', onDeviceConnectionStatus);
       socket.off('update-mqtt-servers', onUpdateMqttServers);
-      socket.off('update-mqtt-devices', onUpdateMqttDevices);
+      socket.off('update-cameras', onUpdateCameras);
       socket.off('receive-mqtt-log', onReceiveMqttLog);
     };
   }, []);
@@ -581,9 +597,10 @@ export function useSocketManager() {
     KEEP_TOTAL_LOG_COUNT: env.KEEP_TOTAL_LOG_COUNT,
     mqttServers,
     mqttLogs,
-    mqttCameraDevices,
+    cameraDevices,
     handleAddMqttServer,
     handleRemoveMqttServer,
     handleUpdateMqttServer,
+    fetchCameras
   };
 }

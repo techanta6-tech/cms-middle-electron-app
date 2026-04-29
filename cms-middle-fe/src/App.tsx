@@ -11,6 +11,7 @@ import type { LogData, ServerData, DeviceData } from './types';
 import LoginPage from './components/LoginPage';
 import { authApi } from './api/authApi';
 import { AlertWall } from './components/AlertWall';
+import { CameraForm } from './components/CameraForm';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   if (!authApi.isAuthenticated()) {
@@ -227,7 +228,8 @@ function Dashboard() {
     handleAddMqttServer,
     mqttServers,
     mqttLogs,
-    mqttCameraDevices,
+    cameraDevices,
+    fetchCameras
   } = useSocketManager();
 
   const displayLogCount = KEEP_TOTAL_LOG_COUNT ? totalLogCount : logs.length;
@@ -240,6 +242,7 @@ function Dashboard() {
   const [visibleAlerts, setVisibleAlerts] = useState<number>(30);
   const [gridCols, setGridCols] = useState<number>(3);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
+  const [isAddingDevice, setIsAddingDevice] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const isNarrow = windowWidth < 800;
   const [grids, setGrids] = useState<{
@@ -347,7 +350,7 @@ function Dashboard() {
                 onRemoveConnection={handleRemoveConnection}
                 mqttServers={mqttServers}
                 mqttLogs={mqttLogs}
-                mqttCameraDevices={mqttCameraDevices}
+                cameraDevices={cameraDevices}
               />
             )}
           </div>
@@ -478,6 +481,13 @@ function Dashboard() {
                   Auto Config
                 </button>
               </div>
+              
+              {/* SVMS Camera Devices Section */}
+              <div className="flex items-center gap-2 mb-1 px-1">
+                <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">SVMS Camera Devices</span>
+                <div className="flex-1 h-px bg-primary/10"></div>
+              </div>
+              
               {Object.values(devices).flatMap(server => server.devices?.map(dev => {
                 const assignedGrids = grids.filter(g => g.device.server_id === server.server.server_id && g.device.device_ip === dev.ip && g.device.device_name === dev.name);
                 const assignedText = assignedGrids.map(g => g.gridID + 1).join(', ');
@@ -512,11 +522,77 @@ function Dashboard() {
                   </div>
                 )
               }))}
+
               {!Object.values(devices).some(s => s.devices?.length > 0) && (
-                <div className="p-10 flex flex-col items-center justify-center opacity-30 gap-2 h-full text-center">
-                  <MonitorSmartphone className="w-8 h-8" />
-                  <span className="text-[10px] uppercase font-bold tracking-widest">No Devices Found</span>
+                <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
+                  <span className="text-[9px] uppercase font-bold tracking-widest">No SVMS Devices</span>
                 </div>
+              )}
+
+              {/* Independent Camera Devices Section */}
+              <div className="flex items-center gap-2 mt-4 mb-1 px-1">
+                <span className="text-[10px] font-black uppercase tracking-widest text-cyan-500/80">Camera Devices</span>
+                <div className="flex-1 h-px bg-cyan-500/10"></div>
+              </div>
+
+              {cameraDevices.map(cam => {
+                const assignedGrids = grids.filter(g => g.device.server_id === 'LOCAL_CAMERA' && g.device.device_ip === cam.cameraIp && g.device.device_name === cam.id);
+                const assignedText = assignedGrids.map(g => g.gridID + 1).join(', ');
+                return (
+                  <div
+                    key={cam.id}
+                    draggable
+                    title={assignedGrids.length > 0 ? `Đang hiển thị trên ô: ${assignedText}` : undefined}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/json', JSON.stringify({
+                        server_serial: 'LOCAL_CAMERA',
+                        server_id: 'LOCAL_CAMERA',
+                        device_ip: cam.cameraIp,
+                        device_name: cam.id,
+                        device_type: cam.type || 'camera'
+                      }));
+                    }}
+                    className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-cyan-500/5 border-cyan-500/20' : 'bg-surface-container border-outline-variant/10'}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-cyan-500 transition-colors truncate">Camera: {cam.cameraIp}</span>
+                        <div className="flex gap-0.5 overflow-hidden">
+                          <span className="text-[9px] text-on-surface-variant/70 font-mono">
+                            {cam.id}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium">{cam.type}</span>
+                        <span className={`text-[8px] px-1 py-0.5 rounded uppercase font-bold ${cam.status === 'connected' ? 'bg-secondary/20 text-secondary' : 'bg-amber-400/20 text-amber-400'}`}>{cam.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+
+              {cameraDevices.length === 0 && !isAddingDevice && (
+                <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
+                  <span className="text-[9px] uppercase font-bold tracking-widest">No Camera Devices</span>
+                </div>
+              )}
+
+              {/* Add Device Form / Button */}
+              {isAddingDevice ? (
+                <CameraForm 
+                  onCancel={() => setIsAddingDevice(false)} 
+                  onSuccess={() => {
+                    setIsAddingDevice(false);
+                    fetchCameras(); // refresh list
+                  }} 
+                />
+              ) : (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setIsAddingDevice(true); }}
+                  className="mt-2 w-full py-2.5 border border-dashed border-cyan-500/30 text-cyan-500 hover:bg-cyan-500/10 bg-cyan-500/5 rounded-md flex justify-center items-center gap-2 text-[9px] uppercase font-bold tracking-widest transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Thêm Camera Mới
+                </button>
               )}
             </div>
           )}

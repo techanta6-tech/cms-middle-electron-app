@@ -32,7 +32,6 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
         topic: useDefaultTopic ? defaultTopicTemplate : mqttTopic,
         defaultTopic: defaultTopicTemplate,
       };
-      alert("1")
       onSaveMqtt(config);
     }
     onClose();

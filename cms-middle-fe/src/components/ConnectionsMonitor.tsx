@@ -21,7 +21,7 @@ function InfoTooltip({ children, content, side = "top" }: { children: React.Reac
 }
 
 export function ConnectionsMonitor({
-  isConnected, logs, sendServers, receiveServers, onSave, onSaveMqtt, systemConfig, onSaveSystemConfig, onRemoveConnection, servers, devices, mqttServers, mqttLogs, mqttCameraDevices
+  isConnected, logs, sendServers, receiveServers, onSave, onSaveMqtt, systemConfig, onSaveSystemConfig, onRemoveConnection, servers, devices, mqttServers, mqttLogs, cameraDevices
 }: {
   socket: any,
   isConnected: boolean,
@@ -33,7 +33,7 @@ export function ConnectionsMonitor({
   devices: Record<string, DeviceData>;
   mqttServers: MqttServerConfig[];
   mqttLogs: MqttLogEntry[];
-  mqttCameraDevices: MqttDeviceConfig[];
+  cameraDevices: MqttDeviceConfig[];
   onSave: (ip: string, port: string, mode: 'receive' | 'send') => void,
   onSaveMqtt: (config: MqttServerConfig) => void,
   onSaveSystemConfig: (config: SystemConfig) => void,
@@ -41,7 +41,7 @@ export function ConnectionsMonitor({
 }) {
   const [isNetworkFormOpen, setIsNetworkFormOpen] = useState(false);
   const [isConfigSystemOpen, setIsConfigSystemOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'input' | 'output'>('input');
+  const [activeTab, setActiveTab] = useState<'input' | 'output' | 'cameras'>('input');
 
   const [isLogSaving, setIsLogSaving] = useState(() => {
     const saved = localStorage.getItem('SAVE_LOG_FILES');
@@ -300,6 +300,18 @@ export function ConnectionsMonitor({
                 )}
               </div>
             </button>
+            <button
+              onClick={() => setActiveTab('cameras')}
+              className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'cameras' ? 'border-cyan-500 text-cyan-500 bg-cyan-500/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
+            >
+              <Radio className="w-4 h-4" />
+              <div className="flex flex-col text-left">
+                <span>Cameras</span>
+                {cameraDevices.length > 0 && (
+                  <span className="text-[9px] text-cyan-500/70 tracking-normal font-mono leading-none">{cameraDevices.length} devices</span>
+                )}
+              </div>
+            </button>
           </div>
 
           {/* Tab Content */}
@@ -333,7 +345,7 @@ export function ConnectionsMonitor({
                         key={ms.id}
                         server={ms}
                         devices={mqttDevicesByServer[ms.id] || []}
-                        cameraDevices={mqttCameraDevices.filter(d => d.mqttServerId === ms.id)}
+                        allCameras={cameraDevices}
                       />
                     ))}
 
@@ -369,6 +381,21 @@ export function ConnectionsMonitor({
                 >
                   <Plus className="w-4 h-4" /> Add Output Connection
                 </button>
+              </div>
+            )}
+
+            {activeTab === 'cameras' && (
+              <div className="flex flex-col gap-4">
+                {cameraDevices.length === 0 ? (
+                  <div className="py-12 flex flex-col items-center justify-center opacity-40 gap-3 border border-dashed border-outline-variant/20 rounded-md bg-surface-container-lowest/50">
+                    <Radio className="w-8 h-8 text-on-surface-variant" />
+                    <span className="text-[10px] uppercase tracking-widest font-bold">No cameras added</span>
+                  </div>
+                ) : (
+                  <>
+                    <CameraDevicesList cameras={cameraDevices} />
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -746,22 +773,12 @@ function ServerInputCard({ srv, matchedDevices, deviceLogStats }: { srv: any, ma
   );
 }
 
-function MqttServerCard({ server, devices, cameraDevices }: {
+function MqttServerCard({ server, devices, allCameras }: {
   server: MqttServerConfig;
   devices: { devEui: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[];
-  cameraDevices: MqttDeviceConfig[];
+  allCameras: MqttDeviceConfig[];
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isAddingDevice, setIsAddingDevice] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [addDeviceForm, setAddDeviceForm] = useState({
-    type: 'sunell' as const,
-    cameraIp: '192.168.1.207',
-    cameraPort: '30001',
-    cameraUser: 'admin',
-    cameraPass: 'admin1234',
-    rtspUrl: 'rtsp://admin:admin1234@192.168.1.207:555/snl/live/1/1',
-  });
 
   const status = server.status || 'disconnected';
   const isConnected = status === 'connected';
@@ -776,36 +793,15 @@ function MqttServerCard({ server, devices, cameraDevices }: {
 
   const cfg = statusConfig[status] || statusConfig.disconnected;
   const totalAlarms = devices.reduce((sum, d) => sum + d.alarmCount, 0);
-  const connectedCameras = cameraDevices.filter(d => d.status === 'connected').length;
 
-  const handleSubmitDevice = async () => {
-    setIsSubmitting(true);
-    try {
-      const res = await apiClient.post('/api/v1/mqtt-devices', {
-        mqttServerId: server.id,
-        type: addDeviceForm.type,
-        cameraIp: addDeviceForm.cameraIp,
-        cameraPort: parseInt(addDeviceForm.cameraPort) || 30001,
-        cameraUser: addDeviceForm.cameraUser,
-        cameraPass: addDeviceForm.cameraPass,
-        rtspUrl: addDeviceForm.rtspUrl,
-      });
-      console.log('[MQTT-Device] Added:', res.data);
-      setIsAddingDevice(false);
-    } catch (err: any) {
-      console.error('[MQTT-Device] Add failed:', err);
-      alert(`Lỗi thêm thiết bị: ${err?.response?.data?.error || err.message}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const boundCamera = allCameras.find(c => c.id === server.cameraId);
 
-  const handleDeleteDevice = async (deviceId: string) => {
+  const handleAssignCamera = async (cameraId: string) => {
     try {
-      await apiClient.delete(`/api/v1/mqtt-devices/${deviceId}`);
-      console.log('[MQTT-Device] Deleted:', deviceId);
+      await apiClient.patch(`/api/v1/mqtt-servers/${server.id}`, { cameraId: cameraId || null });
+      console.log('[MQTT-Server] Assigned camera:', cameraId);
     } catch (err: any) {
-      console.error('[MQTT-Device] Delete failed:', err);
+      console.error('[MQTT-Server] Assign camera failed:', err);
     }
   };
 
@@ -857,13 +853,10 @@ function MqttServerCard({ server, devices, cameraDevices }: {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
-            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">CAMERAS</span>
-            <div className="flex items-center gap-1">
-              <span className="text-[14px] font-black font-mono text-on-surface leading-none">{cameraDevices.length}</span>
-              {connectedCameras > 0 && (
-                <span className="text-[9px] font-black font-mono text-secondary bg-secondary/10 px-1 rounded">{connectedCameras} online</span>
-              )}
-            </div>
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">BOUND CAMERA</span>
+            <span className={`text-[12px] font-black font-mono leading-none ${boundCamera ? 'text-cyan-500' : 'text-on-surface-variant/40'}`}>
+              {boundCamera ? `${boundCamera.cameraIp}` : 'NONE'}
+            </span>
           </div>
           <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
             <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">ALARMS</span>
@@ -876,55 +869,25 @@ function MqttServerCard({ server, devices, cameraDevices }: {
       {/* Expandable body */}
       <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
         <div className={`min-h-0 ${isExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
-          {/* Camera Devices Section */}
-          {cameraDevices.length > 0 && (
-            <div className="mb-3">
-              <div className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                <Cpu className="w-3 h-3" /> Camera Devices
-              </div>
-              <div className="grid gap-1.5 border-l-2 border-cyan-500/20 pl-2 ml-1">
-                {cameraDevices.map((cam) => (
-                  <div key={cam.id} className="flex flex-col gap-1.5 px-3 py-2 bg-surface-container-lowest/40 rounded border border-outline-variant/5 hover:border-outline-variant/20 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <InfoTooltip content={cam.status === 'connected' ? 'SDK connected' : cam.status} side="bottom">
-                        <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${cam.status === 'connected' ? 'bg-secondary ring-secondary/20' : cam.status === 'error' ? 'bg-red-500 ring-red-500/20' : 'bg-amber-400 ring-amber-400/20 animate-pulse'}`}></div>
-                      </InfoTooltip>
-                      <span className="text-[9.5px] font-mono font-medium min-w-[50px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 uppercase">
-                        {cam.type}
-                      </span>
-                      <span className="text-[11px] font-bold tracking-wide text-on-surface-variant flex-1 truncate">{cam.cameraIp}:{cam.cameraPort}</span>
-                      <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${cam.status === 'connected' ? 'text-secondary bg-secondary/10 border-secondary/20' : cam.status === 'error' ? 'text-red-500 bg-red-500/10 border-red-500/20' : 'text-amber-400 bg-amber-400/10 border-amber-400/20'}`}>{cam.status}</span>
-                      <button
-                        onClick={() => handleDeleteDevice(cam.id)}
-                        className="p-1 text-on-surface-variant/40 hover:text-tertiary transition-colors"
-                        title="Xóa thiết bị"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                    {/* Editable RTSP URL */}
-                    <div className="flex items-center gap-1.5 pl-5">
-                      <span className="text-[8px] font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">RTSP</span>
-                      <input
-                        defaultValue={cam.rtspUrl || ''}
-                        className="text-[10px] font-mono bg-surface-container/60 border border-outline-variant/15 rounded px-1.5 py-0.5 text-on-surface-variant flex-1 focus:border-cyan-500/40 focus:outline-none transition-colors"
-                        placeholder="rtsp://..."
-                        onBlur={async (e) => {
-                          const newUrl = e.target.value;
-                          if (newUrl !== (cam.rtspUrl || '')) {
-                            try {
-                              await apiClient.patch(`/api/v1/mqtt-devices/${cam.id}`, { rtspUrl: newUrl });
-                            } catch (err) { console.error('RTSP update failed:', err); }
-                          }
-                        }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          
+          <div className="mb-3 px-3 py-2 bg-surface-container-lowest/40 rounded border border-outline-variant/5">
+            <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+              <Cpu className="w-3 h-3" /> Bound Camera
+            </label>
+            <select
+              value={server.cameraId || ''}
+              onChange={(e) => handleAssignCamera(e.target.value)}
+              className="w-full text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
+            >
+              <option value="">-- No Camera (Disabled Snapshot) --</option>
+              {allCameras.map(cam => (
+                <option key={cam.id} value={cam.id}>{cam.type.toUpperCase()} - {cam.cameraIp}:{cam.cameraPort}</option>
+              ))}
+            </select>
+            <p className="text-[9px] text-on-surface-variant/60 mt-1">
+              If bound, when an MQTT alarm triggers, the server will try to extract a snapshot from this camera.
+            </p>
+          </div>
 
           {/* MQTT Sensor Devices */}
           {devices.length > 0 && (
@@ -959,103 +922,191 @@ function MqttServerCard({ server, devices, cameraDevices }: {
             </div>
           )}
 
-          {devices.length === 0 && cameraDevices.length === 0 && !isAddingDevice && (
+          {devices.length === 0 && (
             <div className="px-3 py-3 text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-widest flex items-center justify-center gap-2 bg-surface-container-lowest/30 rounded-sm border border-dashed border-outline-variant/10">
               <Activity className="w-3 h-3 opacity-50" />
               Chưa nhận được data từ broker — waiting for events
             </div>
           )}
-
-          {/* Add Device Form */}
-          {isAddingDevice && (
-            <div className="mt-2 p-3 bg-surface-container-lowest/60 border border-cyan-500/20 rounded-md">
-              <div className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest mb-3">Thêm Camera Device</div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Type</label>
-                  <select
-                    value={addDeviceForm.type}
-                    onChange={e => setAddDeviceForm(f => ({ ...f, type: e.target.value as 'sunell' }))}
-                    className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
-                  >
-                    <option value="sunell">Sunell</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Camera IP</label>
-                  <input
-                    value={addDeviceForm.cameraIp}
-                    onChange={e => setAddDeviceForm(f => ({ ...f, cameraIp: e.target.value }))}
-                    className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
-                    placeholder="192.168.1.xxx"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Camera Port</label>
-                  <input
-                    value={addDeviceForm.cameraPort}
-                    onChange={e => setAddDeviceForm(f => ({ ...f, cameraPort: e.target.value }))}
-                    className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
-                    placeholder="30001"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Username</label>
-                  <input
-                    value={addDeviceForm.cameraUser}
-                    onChange={e => setAddDeviceForm(f => ({ ...f, cameraUser: e.target.value }))}
-                    className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
-                    placeholder="admin"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Password</label>
-                  <input
-                    value={addDeviceForm.cameraPass}
-                    onChange={e => setAddDeviceForm(f => ({ ...f, cameraPass: e.target.value }))}
-                    className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
-                    placeholder="admin1234"
-                    type="password"
-                  />
-                </div>
-                <div className="flex flex-col gap-1 col-span-2">
-                  <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">RTSP URL</label>
-                  <input
-                    value={addDeviceForm.rtspUrl}
-                    onChange={e => setAddDeviceForm(f => ({ ...f, rtspUrl: e.target.value }))}
-                    className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface w-full"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-2 mt-3">
-                <button
-                  onClick={handleSubmitDevice}
-                  disabled={isSubmitting || !addDeviceForm.cameraIp}
-                  className="px-4 py-1.5 bg-cyan-500 text-white text-[10px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity disabled:opacity-40"
-                >
-                  {isSubmitting ? 'Đang kết nối...' : 'Kết nối'}
-                </button>
-                <button
-                  onClick={() => setIsAddingDevice(false)}
-                  className="px-4 py-1.5 text-on-surface-variant text-[10px] font-bold uppercase tracking-widest rounded border border-outline-variant/20 hover:bg-surface-container transition-colors"
-                >
-                  Hủy
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Add Device Button */}
-          {!isAddingDevice && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setIsAddingDevice(true); }}
-              className="mt-2 w-full py-2.5 border border-dashed border-cyan-500/30 text-cyan-500 hover:bg-cyan-500/10 bg-cyan-500/5 rounded-md flex justify-center items-center gap-2 text-[9px] uppercase font-bold tracking-widest transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" /> Thêm Camera Device
-            </button>
-          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function CameraDevicesList({ cameras }: { cameras: MqttDeviceConfig[] }) {
+  const [isAddingDevice, setIsAddingDevice] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [addDeviceForm, setAddDeviceForm] = useState({
+    type: 'sunell' as const,
+    cameraIp: '192.168.1.207',
+    cameraPort: '30001',
+    cameraUser: 'admin',
+    cameraPass: 'admin1234',
+    rtspUrl: 'rtsp://admin:admin1234@192.168.1.207:555/snl/live/1/1',
+  });
+
+  const handleSubmitDevice = async () => {
+    setIsSubmitting(true);
+    try {
+      const res = await apiClient.post('/api/v1/cameras', {
+        type: addDeviceForm.type,
+        cameraIp: addDeviceForm.cameraIp,
+        cameraPort: parseInt(addDeviceForm.cameraPort) || 30001,
+        cameraUser: addDeviceForm.cameraUser,
+        cameraPass: addDeviceForm.cameraPass,
+        rtspUrl: addDeviceForm.rtspUrl,
+      });
+      console.log('[Camera-Device] Added:', res.data);
+      setIsAddingDevice(false);
+    } catch (err: any) {
+      console.error('[Camera-Device] Add failed:', err);
+      alert(`Lỗi thêm thiết bị: ${err?.response?.data?.error || err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteDevice = async (deviceId: string) => {
+    try {
+      await apiClient.delete(`/api/v1/cameras/${deviceId}`);
+      console.log('[Camera-Device] Deleted:', deviceId);
+    } catch (err: any) {
+      console.error('[Camera-Device] Delete failed:', err);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {cameras.map((cam) => (
+        <div key={cam.id} className="flex flex-col gap-1.5 px-3 py-2 bg-surface-container-lowest/40 rounded border border-outline-variant/5 hover:border-outline-variant/20 transition-colors">
+          <div className="flex items-center gap-3">
+            <InfoTooltip content={cam.status === 'connected' ? 'Connected' : cam.status} side="bottom">
+              <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${cam.status === 'connected' ? 'bg-secondary ring-secondary/20' : cam.status === 'error' ? 'bg-red-500 ring-red-500/20' : 'bg-amber-400 ring-amber-400/20 animate-pulse'}`}></div>
+            </InfoTooltip>
+            <span className="text-[9.5px] font-mono font-medium min-w-[50px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 uppercase">
+              {cam.type}
+            </span>
+            <span className="text-[11px] font-bold tracking-wide text-on-surface-variant flex-1 truncate">{cam.cameraIp}:{cam.cameraPort}</span>
+            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${cam.status === 'connected' ? 'text-secondary bg-secondary/10 border-secondary/20' : cam.status === 'error' ? 'text-red-500 bg-red-500/10 border-red-500/20' : 'text-amber-400 bg-amber-400/10 border-amber-400/20'}`}>{cam.status}</span>
+            <button
+              onClick={() => handleDeleteDevice(cam.id)}
+              className="p-1 text-on-surface-variant/40 hover:text-tertiary transition-colors"
+              title="Xóa thiết bị"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+          {/* Editable RTSP URL */}
+          <div className="flex items-center gap-1.5 pl-5">
+            <span className="text-[8px] font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">RTSP</span>
+            <input
+              defaultValue={cam.rtspUrl || ''}
+              className="text-[10px] font-mono bg-surface-container/60 border border-outline-variant/15 rounded px-1.5 py-0.5 text-on-surface-variant flex-1 focus:border-cyan-500/40 focus:outline-none transition-colors"
+              placeholder="rtsp://..."
+              onBlur={async (e) => {
+                const newUrl = e.target.value;
+                if (newUrl !== (cam.rtspUrl || '')) {
+                  try {
+                    await apiClient.patch(`/api/v1/cameras/${cam.id}`, { rtspUrl: newUrl });
+                  } catch (err) { console.error('RTSP update failed:', err); }
+                }
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            />
+          </div>
+        </div>
+      ))}
+
+      {/* Add Device Form */}
+      {isAddingDevice && (
+        <div className="mt-2 p-3 bg-surface-container-lowest/60 border border-cyan-500/20 rounded-md">
+          <div className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest mb-3">Thêm Camera Device</div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Type</label>
+              <select
+                value={addDeviceForm.type}
+                onChange={e => setAddDeviceForm(f => ({ ...f, type: e.target.value as 'sunell' | 'other' }))}
+                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
+              >
+                <option value="sunell">Sunell (SDK + RTSP)</option>
+                <option value="other">Other (RTSP Only)</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Camera IP</label>
+              <input
+                value={addDeviceForm.cameraIp}
+                onChange={e => setAddDeviceForm(f => ({ ...f, cameraIp: e.target.value }))}
+                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
+                placeholder="192.168.1.xxx"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Camera Port</label>
+              <input
+                value={addDeviceForm.cameraPort}
+                onChange={e => setAddDeviceForm(f => ({ ...f, cameraPort: e.target.value }))}
+                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
+                placeholder={addDeviceForm.type === 'sunell' ? "30001" : "554"}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Username</label>
+              <input
+                value={addDeviceForm.cameraUser}
+                onChange={e => setAddDeviceForm(f => ({ ...f, cameraUser: e.target.value }))}
+                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
+                placeholder="admin"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Password</label>
+              <input
+                value={addDeviceForm.cameraPass}
+                onChange={e => setAddDeviceForm(f => ({ ...f, cameraPass: e.target.value }))}
+                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
+                placeholder="admin1234"
+                type="password"
+              />
+            </div>
+            <div className="flex flex-col gap-1 col-span-2">
+              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">RTSP URL</label>
+              <input
+                value={addDeviceForm.rtspUrl}
+                onChange={e => setAddDeviceForm(f => ({ ...f, rtspUrl: e.target.value }))}
+                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface w-full"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              onClick={handleSubmitDevice}
+              disabled={isSubmitting || !addDeviceForm.cameraIp}
+              className="px-4 py-1.5 bg-cyan-500 text-white text-[10px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity disabled:opacity-40"
+            >
+              {isSubmitting ? 'Đang lưu...' : 'Lưu Camera'}
+            </button>
+            <button
+              onClick={() => setIsAddingDevice(false)}
+              className="px-4 py-1.5 text-on-surface-variant text-[10px] font-bold uppercase tracking-widest rounded border border-outline-variant/20 hover:bg-surface-container transition-colors"
+            >
+              Hủy
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add Device Button */}
+      {!isAddingDevice && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setIsAddingDevice(true); }}
+          className="mt-2 w-full py-2.5 border border-dashed border-cyan-500/30 text-cyan-500 hover:bg-cyan-500/10 bg-cyan-500/5 rounded-md flex justify-center items-center gap-2 text-[9px] uppercase font-bold tracking-widest transition-colors cursor-pointer"
+        >
+          <Plus className="w-3.5 h-3.5" /> Thêm Camera Mới
+        </button>
+      )}
     </div>
   );
 }

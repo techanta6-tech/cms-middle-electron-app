@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { mqttServers } = require('../socketState');
-const { connectMqttServer, disconnectMqttServer, getMqttServersList, getMqttServerLogs, addMqttDevice, removeMqttDevice, updateMqttDevice, getMqttDevicesList } = require('../services/mqtt.service');
+const { connectMqttServer, disconnectMqttServer, getMqttServersList, getMqttServerLogs } = require('../services/mqtt.service');
 const authMiddleware = require('../middleware/auth.middleware');
 
 const router = express.Router();
@@ -20,7 +20,7 @@ router.get('/api/v1/mqtt-servers/:id/logs', (req, res) => {
 
 // ─── POST /api/v1/mqtt-servers — Add new MQTT server & connect ───────────────
 router.post('/api/v1/mqtt-servers', (req, res) => {
-  const { brokerHost, brokerPort, protocol, topic, defaultTopic } = req.body;
+  const { brokerHost, brokerPort, protocol, topic, defaultTopic, cameraId } = req.body;
 
   if (!brokerHost || !brokerPort) {
     return res.status(400).json({ success: false, message: 'Missing brokerHost or brokerPort' });
@@ -43,6 +43,7 @@ router.post('/api/v1/mqtt-servers', (req, res) => {
     topic: topic || '',
     defaultTopic: defaultTopic || 'application/{appId}/device/{deviceEui}/event/up',
     status: 'connecting',
+    cameraId: cameraId || null,
     logs: [],
   };
 
@@ -60,7 +61,7 @@ router.put('/api/v1/mqtt-servers/:id', (req, res) => {
     return res.status(404).json({ success: false, message: 'MQTT server not found' });
   }
 
-  const { brokerHost, brokerPort, protocol, topic, defaultTopic } = req.body;
+  const { brokerHost, brokerPort, protocol, topic, defaultTopic, cameraId } = req.body;
 
   // Disconnect old
   disconnectMqttServer(id);
@@ -73,6 +74,7 @@ router.put('/api/v1/mqtt-servers/:id', (req, res) => {
     protocol: protocol || mqttServers[idx].protocol,
     topic: topic !== undefined ? topic : mqttServers[idx].topic,
     defaultTopic: defaultTopic || mqttServers[idx].defaultTopic,
+    cameraId: cameraId !== undefined ? cameraId : mqttServers[idx].cameraId,
     status: 'connecting',
     logs: mqttServers[idx].logs || [], // preserve logs
   };
@@ -103,51 +105,6 @@ router.delete('/api/v1/mqtt-servers/:id', (req, res) => {
   }
 
   res.json({ success: true, message: `MQTT server '${id}' removed` });
-});
-
-// ─── MQTT Device Routes ──────────────────────────────────────────────────────
-
-// POST /api/v1/mqtt-devices — Add camera device linked to MQTT server
-router.post('/api/v1/mqtt-devices', async (req, res) => {
-  const { mqttServerId, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl } = req.body;
-
-  if (!mqttServerId) {
-    return res.status(400).json({ success: false, message: 'Missing mqttServerId' });
-  }
-  if (!cameraIp) {
-    return res.status(400).json({ success: false, message: 'Missing cameraIp' });
-  }
-
-  try {
-    const result = await addMqttDevice({ mqttServerId, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl });
-    res.status(201).json(result);
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message || String(err) });
-  }
-});
-
-// GET /api/v1/mqtt-devices — List all mqtt devices (optional ?mqttServerId=xxx)
-router.get('/api/v1/mqtt-devices', (req, res) => {
-  const list = getMqttDevicesList(req.query.mqttServerId);
-  res.json({ success: true, devices: list });
-});
-
-// DELETE /api/v1/mqtt-devices/:id — Remove device
-router.delete('/api/v1/mqtt-devices/:id', (req, res) => {
-  const result = removeMqttDevice(req.params.id);
-  if (!result.success) {
-    return res.status(404).json(result);
-  }
-  res.json(result);
-});
-
-// PATCH /api/v1/mqtt-devices/:id — Update device fields (rtspUrl, etc.)
-router.patch('/api/v1/mqtt-devices/:id', (req, res) => {
-  const result = updateMqttDevice(req.params.id, req.body);
-  if (!result.success) {
-    return res.status(404).json(result);
-  }
-  res.json(result);
 });
 
 module.exports = router;

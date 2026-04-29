@@ -10,7 +10,7 @@
   "scripts": {
     "test": "node index.js",
     "dev": "nodemon index.js",
-    "build": "pkg . --targets node18-win-x64 --out-path ../build-be"
+    "build": "pkg . --targets node18-win-x64 --output ../build-be/node.exe && xcopy node_modules\\edge-js ..\\build-be\\node_modules\\edge-js\\ /E /I /Y && xcopy node_modules\\edge-cs ..\\build-be\\node_modules\\edge-cs\\ /E /I /Y && xcopy src\\module\\sunell ..\\build-be\\module\\sunell\\ /E /I /Y"
   },
   "pkg": {
     "assets": [

@@ -1,0 +1,184 @@
+const path = require('path');
+const { cameraDevices, getClientSockets } = require('../socketState');
+let CameraDevice;
+try {
+  const mod = require('../../cameraModule');
+  CameraDevice = mod.CameraDevice;
+} catch (err) {
+  console.warn('[Cameras-Service] cameraModule load failed:', err.message);
+  CameraDevice = class DummyCamera {
+    constructor() { this.initialized = true; }
+    connectCamera() { return Promise.resolve({ online: false, error: 'cameraModule not available' }); }
+    captureSnapshotBase64() { return Promise.resolve(null); }
+  };
+}
+
+async function addCameraDevice(deviceConfig) {
+  const { name, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl } = deviceConfig;
+
+  const id = `cam-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const baseWritableDir = process.env.USER_DATA_PATH || process.cwd();
+  const snapshotDir = path.join(baseWritableDir, 'snapshots');
+  const isPackaged = process.env.IS_PACKAGED === 'true' || process.pkg;
+  const sdkPath = isPackaged 
+    ? path.join(path.dirname(process.execPath), 'module', 'sunell')
+    : path.join(__dirname, '..', '..', '..', 'module', 'sunell'); // fixed path to sdk
+
+  const device = {
+    id,
+    name: name || `Camera ${id.slice(-4)}`,
+    type: type || 'sunell',
+    cameraIp,
+    cameraPort: cameraPort || 30001,
+    cameraUser: cameraUser || 'admin',
+    cameraPass: cameraPass || 'admin1234',
+    rtspUrl,
+    snapshotDir,
+    sdkPath,
+    status: type === 'sunell' ? 'connecting' : 'ready',
+    handle: null,
+    instance: null
+  };
+
+  cameraDevices.push(device);
+  console.log(`[Camera-Device] Added device '${id}' (${type})`);
+
+  // Khởi tạo instance cho TẤT CẢ các loại để gọi được captureSnapshotBase64
+  device.instance = new CameraDevice({
+    id,
+    rtspUrl,
+    snapshotDir,
+    sdkPath,
+    cameraIp,
+    cameraPort: cameraPort || 30001,
+    cameraUser: cameraUser || 'admin',
+    cameraPass: cameraPass || 'admin1234',
+    onAlarm: (payload) => {
+        // Tương lai: broadcast websocket nếu cần
+        console.log(`[Camera-${id}] Báo động SDK:`, payload.substring(0, 100));
+    }
+  });
+
+  let sdkResult = null;
+  if (type === 'sunell') {
+    try {
+      sdkResult = await device.instance.connectCamera();
+      device.status = sdkResult.online ? 'connected' : 'error';
+      device.handle = sdkResult.handle || null;
+      console.log(`[Camera-Device] SDK connect result for '${id}':`, sdkResult);
+    } catch (err) {
+      device.status = 'error';
+      sdkResult = { online: false, error: err.message || String(err) };
+      console.error(`[Camera-Device] SDK connect error for '${id}':`, err);
+    }
+  }
+
+  _emitCamerasUpdate();
+  return { success: true, device: _sanitizeDevice(device), sdkResult };
+}
+
+function removeCameraDevice(deviceId) {
+  const idx = cameraDevices.findIndex(d => d.id === deviceId);
+  if (idx === -1) return { success: false, error: 'Device not found' };
+
+  // TODO: Nếu là sunell, gọi disconnect SDK nếu SDK hỗ trợ
+  cameraDevices.splice(idx, 1);
+  console.log(`[Camera-Device] Removed device '${deviceId}'`);
+  _emitCamerasUpdate();
+  return { success: true };
+}
+
+function updateCameraDevice(deviceId, updates) {
+  const device = cameraDevices.find(d => d.id === deviceId);
+  if (!device) return { success: false, error: 'Device not found' };
+
+  if (updates.name !== undefined) device.name = updates.name;
+  if (updates.rtspUrl !== undefined) {
+    device.rtspUrl = updates.rtspUrl;
+    if (device.instance) device.instance.rtspUrl = updates.rtspUrl;
+  }
+  if (updates.cameraIp !== undefined) {
+    device.cameraIp = updates.cameraIp;
+    if (device.instance) device.instance.cameraIp = updates.cameraIp;
+  }
+  if (updates.cameraPort !== undefined) {
+    device.cameraPort = updates.cameraPort;
+    if (device.instance) device.instance.cameraPort = updates.cameraPort;
+  }
+  if (updates.cameraUser !== undefined) {
+    device.cameraUser = updates.cameraUser;
+    if (device.instance) device.instance.cameraUser = updates.cameraUser;
+  }
+  if (updates.cameraPass !== undefined) {
+    device.cameraPass = updates.cameraPass;
+    if (device.instance) device.instance.cameraPass = updates.cameraPass;
+  }
+  if (updates.type !== undefined) {
+    device.type = updates.type;
+    if (updates.type === 'other') device.status = 'ready';
+  }
+
+  console.log(`[Camera-Device] Updated device '${deviceId}':`, JSON.stringify(updates));
+  _emitCamerasUpdate();
+  return { success: true, device: _sanitizeDevice(device) };
+}
+
+function getCamerasList() {
+  return cameraDevices.map(_sanitizeDevice);
+}
+
+function _sanitizeDevice(d) {
+  return {
+    id: d.id,
+    name: d.name,
+    type: d.type,
+    cameraIp: d.cameraIp,
+    cameraPort: d.cameraPort,
+    cameraUser: d.cameraUser,
+    rtspUrl: d.rtspUrl || null,
+    status: d.status,
+    handle: d.handle,
+  };
+}
+
+function _emitCamerasUpdate() {
+  const clientSockets = getClientSockets();
+  if (clientSockets) {
+    clientSockets.emit('update-cameras', getCamerasList());
+  }
+}
+
+async function getSnapshotForCamera(cameraId) {
+  const device = cameraDevices.find(d => d.id === cameraId);
+  if (!device) {
+    console.log(`[Camera-Snapshot] Camera '${cameraId}' not found`);
+    return null;
+  }
+
+  if (device.type === 'sunell' && device.status !== 'connected') {
+    console.log(`[Camera-Snapshot] Camera '${cameraId}' is sunell but not connected`);
+    return null;
+  }
+
+  if (!device.instance) {
+    console.log(`[Camera-Snapshot] Camera '${cameraId}' has no instance`);
+    return null;
+  }
+
+  console.log(`[Camera-Snapshot] Capturing from camera '${device.id}' (${device.type}) ...`);
+  try {
+    const base64 = await device.instance.captureSnapshotBase64();
+    return base64;
+  } catch (err) {
+    console.error(`[Camera-Snapshot] Capture failed for camera '${device.id}':`, err.message);
+    return null;
+  }
+}
+
+module.exports = {
+  addCameraDevice,
+  removeCameraDevice,
+  updateCameraDevice,
+  getCamerasList,
+  getSnapshotForCamera
+};
