@@ -1,12 +1,23 @@
 const path = require('path');
 const { cameraDevices, getClientSockets } = require('../socketState');
 let CameraDevice;
+let _cameraModuleSource = 'DummyCamera'; // track which module is loaded
 try {
-  // cms-middle-be/src/services/ → ../../../ = repo root
-  const mod = require('../../../cameraModule');
-  CameraDevice = mod.CameraDevice;
+  if (process.pkg) {
+    // Production: cameraModule.js nằm cạnh file exe
+    const mod = require(path.join(path.dirname(process.execPath), 'cameraModule.js'));
+    CameraDevice = mod.CameraDevice;
+    _cameraModuleSource = 'pkg/cameraModule.js';
+  } else {
+    // Dev: cms-middle-be/src/services/ → ../../../ = repo root
+    const mod = require('../../../cameraModule');
+    CameraDevice = mod.CameraDevice;
+    _cameraModuleSource = 'dev/cameraModule.js';
+  }
+  console.log(`[Cameras-Service] ✅ cameraModule loaded from: ${_cameraModuleSource}`);
 } catch (err) {
-  console.warn('[Cameras-Service] cameraModule load failed:', err.message);
+  console.warn('[Cameras-Service] ❌ cameraModule load failed:', err.message);
+  console.warn(`[Cameras-Service] Using DummyCamera (snapshots will return null)`);
   CameraDevice = class DummyCamera {
     constructor() { this.initialized = true; }
     connectCamera() { return Promise.resolve({ online: false, error: 'cameraModule not available' }); }

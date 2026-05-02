@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import type { DeviceData, LogData } from '../types';
+import type { DeviceData, LogData, MqttDeviceConfig, MqttServerConfig } from '../types';
 import { CameraOff, Plus, Minus, X, Settings, Camera } from 'lucide-react';
 import { CameraFeed } from './CameraFeed';
 
 export function AlertWall({
   logs,
   cameras,
+  cameraDevices,
+  mqttServers,
   onSelectLog,
   gridCols,
   setGridCols,
@@ -14,6 +16,8 @@ export function AlertWall({
 }: {
   logs: LogData[],
   cameras: DeviceData[],
+  cameraDevices: MqttDeviceConfig[],
+  mqttServers: MqttServerConfig[],
   onSelectLog: (log: LogData) => void,
   gridCols: number,
   setGridCols: React.Dispatch<React.SetStateAction<number>>,
@@ -40,13 +44,22 @@ export function AlertWall({
 }) {
   const [showGridSettings, setShowGridSettings] = useState(false);
   const colsBreakPoints = [5, 5];
-  const cameraList = cameras.flatMap(server =>
-    (server.devices || []).map(dev => ({
-      ...dev,
-      server_serial: server.server.serial,
-      server_id: server.server.server_id
+  const cameraList = [
+    ...cameras.flatMap(server =>
+      (server.devices || []).map(dev => ({
+        ...dev,
+        server_serial: server.server.serial,
+        server_id: server.server.server_id
+      }))
+    ).filter(dev => dev.type === "camera"),
+    ...cameraDevices.map(cam => ({
+      ip: cam.cameraIp,
+      name: cam.id,
+      server_serial: 'LOCAL_CAMERA',
+      server_id: 'LOCAL_CAMERA',
+      type: 'camera'
     }))
-  ).filter(dev => dev.type === "camera");
+  ];
   // KHU VỰC 1: KHUNG CONTAINER & BỐ CỤC LƯỚI (GRID LAYOUT)
   // flex-1 để chiếm toàn bộ không gian. overflow-y-auto để cuộn nếu lưới bị quá to
   return (
@@ -80,10 +93,22 @@ export function AlertWall({
               && dev.server_serial === gridItem.device.server_serial
             )
             : undefined;
-          // const camera = undefined;
-          const cameraLog = logs.find((log) => log.device_ip === camera?.ip && log.device_name === camera?.name && log.server.server_id === camera?.server_id && log.server.serial === camera?.server_serial)
-          // console.log("camera", idx, gridItem, cameraList);
-          // console.log("end here")
+
+          let cameraLog = undefined;
+          if (camera) {
+            if (camera.server_id === 'LOCAL_CAMERA') {
+              const matchingMqttServer = mqttServers.find(s => s.cameraId === camera.name);
+              if (matchingMqttServer) {
+                cameraLog = logs.find(log => log.mqttServerId === matchingMqttServer.id && log.snapshot);
+              }
+              if (!cameraLog) {
+                // Fallback nếu chưa map nhưng có log snapshot
+                cameraLog = logs.find(log => log.snapshot);
+              }
+            } else {
+              cameraLog = logs.find((log) => log.device_ip === camera.ip && log.device_name === camera.name && log.server.server_id === camera.server_id && log.server.serial === camera.server_serial);
+            }
+          }
           // KHU VỰC 3: LOGIC SỰ KIỆN KÉO THẢ (DRAG & DROP) CHO TỪNG Ô COMPONENT
           return (
             <div

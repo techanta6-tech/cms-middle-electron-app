@@ -4,7 +4,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { ConnectionsMonitor } from './components/ConnectionsMonitor';
 import { LogPopup } from './components/LogPopup';
 import { useSocketManager } from './hooks/useSocketManager';
-import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Camera, CameraOff, Plus, Minus, X, Settings, Monitor, Network, PanelRightOpen, PanelRightClose } from 'lucide-react';
+import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Camera, CameraOff, Plus, Minus, X, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Globe, Languages } from 'lucide-react';
+import { ConfigSystem } from './components/ConfigSystem';
+import apiClient from './api/apiClient';
 import { LogEntry } from './components/LogEntry';
 import { CameraFeed } from './components/CameraFeed';
 import type { LogData, ServerData, DeviceData } from './types';
@@ -12,6 +14,7 @@ import LoginPage from './components/LoginPage';
 import { authApi } from './api/authApi';
 import { AlertWall } from './components/AlertWall';
 import { CameraForm } from './components/CameraForm';
+import { DevicesManager } from './components/DevicesManager';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   if (!authApi.isAuthenticated()) {
@@ -238,13 +241,31 @@ function Dashboard() {
   const [selectedServers, setSelectedServers] = useState<Set<string>>(new Set());
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
   const [rightTab, setRightTab] = useState<'logs' | 'devices'>('logs');
-  const [mainTab, setMainTab] = useState<'alert' | 'connections'>('alert');
+  const [mainTab, setMainTab] = useState<'alert' | 'connections' | 'devices'>('alert');
   const [visibleAlerts, setVisibleAlerts] = useState<number>(30);
   const [gridCols, setGridCols] = useState<number>(3);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [isAddingDevice, setIsAddingDevice] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const isNarrow = windowWidth < 800;
+  const [isConfigSystemOpen, setIsConfigSystemOpen] = useState(false);
+  const [isLogSaving, setIsLogSaving] = useState(() => {
+    const saved = localStorage.getItem('SAVE_LOG_FILES');
+    return saved !== 'false';
+  });
+  const [langOpen, setLangOpen] = useState(false);
+  const [currentLang, setCurrentLang] = useState('EN');
+
+  const toggleLogSaving = async () => {
+    const newState = !isLogSaving;
+    setIsLogSaving(newState);
+    localStorage.setItem('SAVE_LOG_FILES', String(newState));
+    try {
+      await apiClient.post('/api/v1/config/log-saving', { enabled: newState });
+    } catch (e) {
+      console.error('Failed to toggle log saving', e);
+    }
+  };
   const [grids, setGrids] = useState<{
     gridID: number,
     device: {
@@ -303,9 +324,9 @@ function Dashboard() {
 
   return (
     <div className="app-dashboard-root flex flex-col h-screen overflow-hidden bg-background text-on-surface font-sans selection:bg-primary/30 antialiased">
-      <main className={`app-dashboard-main flex-1 overflow-hidden ${isNarrow ? 'flex flex-col' : 'grid grid-cols-4 gap-0'}`}>
+      <main className={`app-dashboard-main flex-1 overflow-hidden ${isNarrow ? 'flex flex-col' : mainTab === 'alert' ? 'grid grid-cols-4 gap-0' : 'flex'}`}>
         {/* Main Section */}
-        <div className={`app-dashboard-left-section overflow-hidden bg-background border-outline-variant/20 ${isNarrow ? 'flex-1 border-b' : 'col-span-3 grid grid-rows-[1fr] h-full border-r'}`}>
+        <div className={`app-dashboard-left-section overflow-hidden bg-background border-outline-variant/20 ${isNarrow ? 'flex-1 border-b' : mainTab === 'alert' ? 'col-span-3 grid grid-rows-[1fr] h-full border-r' : 'flex-1 h-full'}`}>
           <div className="flex flex-col overflow-hidden h-full">
             <div className={`flex items-center border-b border-outline-variant/10 shrink-0 ${isNarrow ? '' : 'px-6 gap-4'}`}>
               <button
@@ -322,19 +343,29 @@ function Dashboard() {
                 <Network className={`w-5 h-5 ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`} />
                 <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`}>Connections Monitor</h2>
               </button>
+              <button
+                className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                onClick={() => setMainTab('devices')}
+              >
+                <Cpu className={`w-5 h-5 ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`} />
+                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`}>Devices</h2>
+              </button>
             </div>
             {/* <button onClick={() => console.log(servers)}>CLick</button> */}
-            {mainTab === 'alert' ? (
+            {mainTab === 'alert' && (
               <AlertWall
                 logs={logs}
                 cameras={Object.values(devices).flatMap(server => server || [])}
+                cameraDevices={cameraDevices}
+                mqttServers={mqttServers}
                 onSelectLog={setSelectedLog}
                 gridCols={gridCols}
                 setGridCols={setGridCols}
                 grids={grids}
                 setGrids={setGrids}
               />
-            ) : (
+            )}
+            {mainTab === 'connections' && (
               <ConnectionsMonitor
                 socket={socket}
                 isConnected={isConnected}
@@ -353,11 +384,23 @@ function Dashboard() {
                 cameraDevices={cameraDevices}
               />
             )}
+            {mainTab === 'devices' && (
+              <DevicesManager
+                servers={servers}
+                devices={devices}
+                mqttServers={mqttServers}
+                mqttLogs={mqttLogs}
+                cameraDevices={cameraDevices}
+                fetchCameras={fetchCameras}
+                handleAddMqttServer={handleAddMqttServer}
+                handleAddExternalServer={handleAddExternalServer}
+              />
+            )}
           </div>
         </div>
 
-        {/* Right Section — fixed bottom drawer on narrow screens */}
-        {isNarrow && (
+        {/* Right Section — only visible on Alert Wall tab */}
+        {mainTab === 'alert' && isNarrow && (
           <button
             onClick={() => setRightPanelVisible(v => !v)}
             className="app-right-panel-toggle fixed bottom-4 right-4 z-50 flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary text-white shadow-lg text-[11px] font-bold tracking-wide transition-all hover:bg-primary/90 active:scale-95"
@@ -367,8 +410,9 @@ function Dashboard() {
               : <><PanelRightOpen className="w-4 h-4" /></>}
           </button>
         )}
+        {mainTab === 'alert' && (
         <aside
-          className={`app-dashboard-right-section bg-surface-container-lowest flex flex-col overflow-hidden shadow-2xl z-10 transition-transform duration-300 ${isNarrow
+          className={`alert-wall-right-section bg-surface-container-lowest flex flex-col overflow-hidden shadow-2xl z-10 transition-transform duration-300 ${isNarrow
             ? `fixed bottom-0 left-0 right-0 h-1/4 border-t border-outline-variant/20 ${rightPanelVisible ? 'translate-y-0' : 'translate-y-full'}`
             : 'col-span-1 relative w-full'
             }`}
@@ -597,7 +641,79 @@ function Dashboard() {
             </div>
           )}
         </aside>
+        )}
       </main>
+
+      {/* ── Footer Bar ──────────────────────────────────────────────────── */}
+      <footer className="app-footer shrink-0 h-6 bg-surface-container border-t border-outline-variant/10 flex items-center px-3 gap-4 text-[9px] font-mono select-none z-20">
+        {/* System binding host */}
+        <div className="flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-secondary' : 'bg-red-500 animate-pulse'}`} />
+          <span className="text-on-surface-variant/60 uppercase tracking-widest font-bold text-[8px]">Host</span>
+          <span className="text-on-surface font-bold">{systemConfig.be.ip}:{systemConfig.be.port}</span>
+          <button
+            onClick={() => setIsConfigSystemOpen(true)}
+            className={`p-0.5 rounded transition-colors cursor-pointer ${isConnected ? 'text-secondary hover:bg-secondary/10' : 'text-red-500 hover:bg-red-500/10'}`}
+            title="System Config"
+          >
+            <Settings className="w-3 h-3" />
+          </button>
+        </div>
+
+        <div className="w-px h-3 bg-outline-variant/15" />
+
+        {/* Save logs toggle */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-on-surface-variant/60 uppercase tracking-widest font-bold text-[8px]">Save Logs</span>
+          <div
+            onClick={toggleLogSaving}
+            className={`relative w-6 h-3.5 rounded-full cursor-pointer transition-colors duration-200 ${isLogSaving ? 'bg-secondary' : 'bg-outline-variant/30'}`}
+          >
+            <div className={`absolute top-0.5 left-0.5 w-2.5 h-2.5 bg-white rounded-full shadow-sm transition-transform duration-200 ${isLogSaving ? 'translate-x-2.5' : 'translate-x-0'}`} />
+          </div>
+          <span className={`font-bold text-[8px] uppercase tracking-widest ${isLogSaving ? 'text-secondary' : 'text-on-surface-variant/40'}`}>{isLogSaving ? 'ON' : 'OFF'}</span>
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Language dropdown (UI placeholder) */}
+        <div className="relative">
+          <button
+            onClick={() => setLangOpen(v => !v)}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer text-on-surface-variant/70 hover:text-on-surface"
+          >
+            <Languages className="w-3 h-3" />
+            <span className="text-[8px] font-bold uppercase tracking-widest">{currentLang}</span>
+          </button>
+          {langOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setLangOpen(false)} />
+              <div className="absolute bottom-full right-0 mb-1 z-50 bg-surface-container-high border border-outline-variant/20 rounded shadow-lg min-w-[100px] animate-in fade-in slide-in-from-bottom-2 duration-150">
+                {['EN', 'VI', 'JP', 'KR'].map(lang => (
+                  <button
+                    key={lang}
+                    onClick={() => { setCurrentLang(lang); setLangOpen(false); }}
+                    className={`w-full text-left px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-colors cursor-pointer ${
+                      currentLang === lang ? 'text-primary bg-primary/10' : 'text-on-surface-variant hover:bg-surface-container'
+                    }`}
+                  >
+                    {lang === 'EN' ? '🇺🇸 English' : lang === 'VI' ? '🇻🇳 Tiếng Việt' : lang === 'JP' ? '🇯🇵 日本語' : '🇰🇷 한국어'}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </footer>
+
+      {/* Config System Modal */}
+      {isConfigSystemOpen && (
+        <ConfigSystem
+          initialConfig={systemConfig}
+          onSave={(config) => { setSystemConfig(config); setIsConfigSystemOpen(false); }}
+          onClose={() => setIsConfigSystemOpen(false)}
+        />
+      )}
 
       {selectedLog && (
         <LogPopup

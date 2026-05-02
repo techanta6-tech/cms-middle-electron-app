@@ -1,6 +1,7 @@
 const mqtt = require('mqtt');
 
-const brokerUrl = 'mqtt://192.168.1.93:1883';
+// const brokerUrl = 'mqtt://192.168.1.93:1883';
+const brokerUrl = 'mqtt://localhost:1883';
 const topic = 'application/32dc910f-33ae-4526-ac0b-6344e378f00f/device/24e124806e515126/event/up';
 
 console.log(`Connecting to ${brokerUrl}...`);

@@ -128,10 +128,15 @@ class CameraDevice {
 
         if (!ffmpegPath) {
             try {
-                try {
-                    ffmpegPath = require(path.join(__dirname, 'cms-middle-be', 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
-                } catch (err) {
-                    ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+                if (process.pkg) {
+                    // Production: ffmpeg cạnh file exe
+                    ffmpegPath = require(path.join(path.dirname(process.execPath), 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
+                } else {
+                    try {
+                        ffmpegPath = require(path.join(__dirname, 'cms-middle-be', 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
+                    } catch (err) {
+                        ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+                    }
                 }
             } catch (e) {
                 return Promise.reject(new Error('Không tìm thấy @ffmpeg-installer/ffmpeg.'));
@@ -177,6 +182,13 @@ class CameraDevice {
         if (!url) {
             this.log('IN', 'captureSnapshotBase64: RTSP URL chưa cấu hình');
             return null;
+        }
+
+        if (url.includes('fake') || this.cameraIp === '127.0.0.1') {
+            this.log('IN', `[MOCK RTSP] Trả về ảnh giả lập cho: ${url || this.cameraIp}`);
+            // Chuỗi Base64 của một bức ảnh 1x1 đỏ mẫu
+            const fakeImageBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+            return fakeImageBase64;
         }
 
         const tmpDir = this.snapshotDir;

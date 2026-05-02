@@ -1,0 +1,10 @@
+    Uplink Packets         Downlink Commands         Historical Data Enquiry       Chapter 9 . Chapter 9   . Communication Protocol\(WLAN\         Periodic Report         Trigger Report       Chapter 10 . Chapter 10   . Services       en
+---
+Fall Alarm   Lying Alarm   Dwell Alarm   Motionless Alarm   Sleep Detection  
+---
+room setting   Fall Parameters   Fall Advanced Settings  
+---
+Periodic Report   Trigger Report  
+---
+the alarm ID  
+---

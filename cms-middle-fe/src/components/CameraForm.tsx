@@ -10,12 +10,12 @@ export function CameraForm({ onCancel, onSuccess }: CameraFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [addDeviceForm, setAddDeviceForm] = useState({
     name: '',
-    type: 'sunell' as 'sunell' | 'other',
+    type: 'other' as 'sunell' | 'other',
     cameraIp: '192.168.1.207',
-    cameraPort: '30001',
+    cameraPort: '554',
     cameraUser: 'admin',
     cameraPass: 'admin1234',
-    rtspUrl: 'rtsp://admin:admin1234@192.168.1.207:555/snl/live/1/1'
+    rtspUrl: 'rtsp://fake-camera:554/stream'
   });
 
   const handleSubmitDevice = async () => {
@@ -56,7 +56,6 @@ export function CameraForm({ onCancel, onSuccess }: CameraFormProps) {
             onChange={e => setAddDeviceForm(f => ({ ...f, type: e.target.value as 'sunell' | 'other' }))}
             className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface focus:border-cyan-500/50 outline-none"
           >
-            <option value="sunell">Sunell (SDK + RTSP)</option>
             <option value="other">Other (RTSP Only)</option>
           </select>
         </div>
