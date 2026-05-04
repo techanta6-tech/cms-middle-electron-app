@@ -21,6 +21,11 @@ export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }
   }
 
   let displayDesc = log.description;
+  if (displayDesc) {
+    const descKey = displayDesc.toLowerCase().replace(/ /g, '_').replace(/\./g, '');
+    displayDesc = t(`app.logtype.${descKey}`, { defaultValue: displayDesc });
+  }
+
   if (log.source === 'mqtt') {
     let evt = log.raw?.event;
     if (!evt && log.raw?.payload?.object?.events?.length > 0) {
@@ -34,7 +39,7 @@ export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }
     }
   }
 
-  let displayType = typeof log.log_type === 'string' ? log.log_type.toUpperCase() : 'INFO';
+  let displayType = typeof log.log_type === 'string' ? t(`app.logtype.${log.log_type.toLowerCase()}`, { defaultValue: log.log_type.toUpperCase() }).toUpperCase() : 'INFO';
   if (log.source === 'mqtt' && log.log_type === 'data') {
     displayType = t('app.alert_wall.alert');
   }

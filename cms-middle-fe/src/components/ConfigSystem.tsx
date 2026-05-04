@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SystemConfig } from '../types';
-import { Send, Cloud, Terminal } from 'lucide-react';
+import { Send, Cloud, Terminal, X } from 'lucide-react';
 import { updateSocketUrlAsync } from '../socket';
 
 export function ConfigSystem({ onSave, onClose, initialConfig }: { onSave: (config: SystemConfig) => void, onClose: () => void, initialConfig: SystemConfig }) {
@@ -51,6 +51,7 @@ export function ConfigSystem({ onSave, onClose, initialConfig }: { onSave: (conf
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-highest transition-colors text-on-surface-variant hover:text-on-surface"
           >
+            <X className="w-4 h-4" />
           </button>
         </div>
 

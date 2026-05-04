@@ -76,9 +76,36 @@ async function addCameraDevice(deviceConfig) {
         sockets.emit('debug-camera-snapshot', { time: new Date().toISOString(), message: msg });
       }
     },
-    onAlarm: (payload) => {
-      // Tương lai: broadcast websocket nếu cần
-      console.log(`[Camera-${id}] Báo động SDK:`, payload.substring(0, 100));
+    onAlarm: (rawJsonStr) => {
+      try {
+        const payload = typeof rawJsonStr === 'string' ? JSON.parse(rawJsonStr) : rawJsonStr;
+        const strBody = JSON.stringify(payload).toLowerCase();
+        const isLpr = strBody.includes('plate') || strBody.includes('targetdetectlist');
+        
+        // Neu device chua co features mac dinh thi coi nhu dc bat
+        const enableLPR = device.features ? device.features.enableLPR : true;
+        const enableMotion = device.features ? device.features.enableMotion : true;
+
+        if (isLpr && !enableLPR) return;
+        if (!isLpr && !enableMotion) return;
+
+        const sockets = getClientSockets();
+        if (sockets) {
+          // Bắn log qua socket với mục raw_data chứa toàn bộ event, các mục khác là placeholder
+          sockets.emit('receive-sunell-log', {
+            id: `sunell-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            timestamp: new Date().toISOString(),
+            source: 'sunell-camera',
+            camera_id: device.id,
+            camera_name: device.name,
+            log_type: isLpr ? 'lpr_event' : 'motion_event',
+            description: isLpr ? 'Phát hiện biển số (LPR)' : 'Phát hiện chuyển động (Motion)',
+            raw_data: payload
+          });
+        }
+      } catch (e) {
+        console.error(`[Camera-${id}] Lỗi xử lý alarm:`, e);
+      }
     }
   });
 
@@ -100,45 +127,82 @@ async function addCameraDevice(deviceConfig) {
   return { success: true, device: _sanitizeDevice(device), sdkResult };
 }
 
-function removeCameraDevice(deviceId) {
+async function removeCameraDevice(deviceId) {
   const idx = cameraDevices.findIndex(d => d.id === deviceId);
   if (idx === -1) return { success: false, error: 'Device not found' };
 
-  // TODO: Nếu là sunell, gọi disconnect SDK nếu SDK hỗ trợ
+  const device = cameraDevices[idx];
+  if (device.type === 'sunell' && device.instance) {
+    try {
+      await device.instance.disconnectCamera();
+    } catch (e) {
+      console.error(`[Camera-Device] Error disconnecting device '${deviceId}':`, e);
+    }
+  }
+
   cameraDevices.splice(idx, 1);
   console.log(`[Camera-Device] Removed device '${deviceId}'`);
   _emitCamerasUpdate();
   return { success: true };
 }
 
-function updateCameraDevice(deviceId, updates) {
+async function updateCameraDevice(deviceId, updates) {
   const device = cameraDevices.find(d => d.id === deviceId);
   if (!device) return { success: false, error: 'Device not found' };
+
+  let requiresReconnect = false;
 
   if (updates.name !== undefined) device.name = updates.name;
   if (updates.rtspUrl !== undefined) {
     device.rtspUrl = updates.rtspUrl;
     if (device.instance) device.instance.rtspUrl = updates.rtspUrl;
   }
-  if (updates.cameraIp !== undefined) {
+  if (updates.cameraIp !== undefined && updates.cameraIp !== device.cameraIp) {
     device.cameraIp = updates.cameraIp;
     if (device.instance) device.instance.cameraIp = updates.cameraIp;
+    requiresReconnect = true;
   }
-  if (updates.cameraPort !== undefined) {
+  if (updates.cameraPort !== undefined && updates.cameraPort !== device.cameraPort) {
     device.cameraPort = updates.cameraPort;
     if (device.instance) device.instance.cameraPort = updates.cameraPort;
+    requiresReconnect = true;
   }
-  if (updates.cameraUser !== undefined) {
+  if (updates.cameraUser !== undefined && updates.cameraUser !== device.cameraUser) {
     device.cameraUser = updates.cameraUser;
     if (device.instance) device.instance.cameraUser = updates.cameraUser;
+    requiresReconnect = true;
   }
-  if (updates.cameraPass !== undefined) {
+  if (updates.cameraPass !== undefined && updates.cameraPass !== device.cameraPass) {
     device.cameraPass = updates.cameraPass;
     if (device.instance) device.instance.cameraPass = updates.cameraPass;
+    requiresReconnect = true;
   }
-  if (updates.type !== undefined) {
+  if (updates.type !== undefined && updates.type !== device.type) {
     device.type = updates.type;
-    if (updates.type === 'other') device.status = 'ready';
+    requiresReconnect = true;
+  }
+
+  let sdkResult = undefined;
+  if (requiresReconnect && device.type === 'sunell' && device.instance) {
+    console.log(`[Camera-Device] Reconnecting device '${deviceId}' due to credential updates...`);
+    try {
+      await device.instance.disconnectCamera();
+    } catch (e) {
+      console.error(`[Camera-Device] Disconnect error during update for '${deviceId}':`, e);
+    }
+
+    try {
+      sdkResult = await device.instance.connectCamera();
+      device.status = sdkResult.online ? 'connected' : 'error';
+      device.handle = sdkResult.handle || null;
+      console.log(`[Camera-Device] Reconnected device '${deviceId}':`, sdkResult);
+    } catch (err) {
+      device.status = 'error';
+      sdkResult = { online: false, error: err.message || String(err) };
+      console.error(`[Camera-Device] Reconnect error for '${deviceId}':`, err);
+    }
+  } else if (updates.type === 'other') {
+    device.status = 'ready';
   }
 
   console.log(`[Camera-Device] Updated device '${deviceId}':`, JSON.stringify(updates));
@@ -148,6 +212,21 @@ function updateCameraDevice(deviceId, updates) {
 
 function getCamerasList() {
   return cameraDevices.map(_sanitizeDevice);
+}
+
+function updateCameraFeatures(deviceId, features) {
+  const device = cameraDevices.find(d => d.id === deviceId);
+  if (!device) return { success: false, error: 'Device not found' };
+
+  if (!device.features) {
+    device.features = { enableMotion: true, enableLPR: true };
+  }
+  
+  Object.assign(device.features, features);
+  console.log(`[Camera-Device] Updated features for '${deviceId}':`, device.features);
+  
+  _emitCamerasUpdate();
+  return { success: true, features: device.features };
 }
 
 function _sanitizeDevice(d) {
@@ -161,6 +240,7 @@ function _sanitizeDevice(d) {
     rtspUrl: d.rtspUrl || null,
     status: d.status,
     handle: d.handle,
+    features: d.features || { enableMotion: true, enableLPR: true },
   };
 }
 
@@ -210,5 +290,6 @@ module.exports = {
   removeCameraDevice,
   updateCameraDevice,
   getCamerasList,
-  getSnapshotForCamera
+  getSnapshotForCamera,
+  updateCameraFeatures
 };

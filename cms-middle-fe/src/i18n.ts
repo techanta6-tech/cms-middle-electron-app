@@ -198,7 +198,8 @@ const resources = {
           close_report: 'Đóng Báo cáo'
         },
         logtype: {
-          motion: 'Chuyển động'
+          motion: 'Chuyển động',
+          a_motion_has_been_detected: 'Phát hiện chuyển động'
         },
         mqtt_alarm_type: {
           '0': 'Ngã',
@@ -425,7 +426,7 @@ const resources = {
           error: 'Invalid credentials or server unreachable'
         },
         log_popup: {
-          title: 'Log Detail',
+          title: 'Log Detai',
           close: 'Close (ESC)',
           event_summary: 'Event Summary',
           system_metadata: 'Event Data',
@@ -434,7 +435,8 @@ const resources = {
           close_report: 'Close Report'
         },
         logtype: {
-          motion: 'Motion'
+          motion: 'Motion',
+          a_motion_has_been_detected: 'A motion has been detected'
         },
         mqtt_alarm_type: {
           '0': 'Fall',

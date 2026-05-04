@@ -24,21 +24,29 @@ router.post('/api/v1/cameras', async (req, res) => {
 });
 
 // PATCH /api/v1/cameras/:id — Update camera
-router.patch('/api/v1/cameras/:id', (req, res) => {
-  const result = updateCameraDevice(req.params.id, req.body);
-  if (!result.success) {
-    return res.status(404).json(result);
+router.patch('/api/v1/cameras/:id', async (req, res) => {
+  try {
+    const result = await updateCameraDevice(req.params.id, req.body);
+    if (!result.success) {
+      return res.status(404).json(result);
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || String(err) });
   }
-  res.json(result);
 });
 
 // DELETE /api/v1/cameras/:id — Remove camera
-router.delete('/api/v1/cameras/:id', (req, res) => {
-  const result = removeCameraDevice(req.params.id);
-  if (!result.success) {
-    return res.status(404).json(result);
+router.delete('/api/v1/cameras/:id', async (req, res) => {
+  try {
+    const result = await removeCameraDevice(req.params.id);
+    if (!result.success) {
+      return res.status(404).json(result);
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || String(err) });
   }
-  res.json(result);
 });
 
 module.exports = router;

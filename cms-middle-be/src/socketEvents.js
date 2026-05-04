@@ -34,6 +34,12 @@ const setupSocketEvents = () => {
       clientSockets.emit('message', data);
     });
 
+    socket.on('update-camera-features', ({ id, features }) => {
+      const { updateCameraFeatures } = require('./services/cameras.service');
+      console.log(`[SOCKET] Received request to update camera features for ${id}`);
+      updateCameraFeatures(id, features);
+    });
+
     socket.on('disconnect', () => {
       syncClientsToFrontend();
     });

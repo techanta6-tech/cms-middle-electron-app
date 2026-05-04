@@ -372,6 +372,35 @@ class CameraDevice {
         });
     }
 
+    async disconnectCamera() {
+        if (!this.cameraConnected || !this.cameraHandle) {
+            return { success: true, message: 'Camera already disconnected' };
+        }
+
+        return new Promise((resolve, reject) => {
+            if (!this.edgeMethod) {
+                return resolve({ success: false, message: 'Edge method not initialized' });
+            }
+
+            const payload = {
+                action: 'disconnect',
+                handle: this.cameraHandle
+            };
+
+            this.edgeMethod(payload, (error, result) => {
+                if (error) {
+                    this.log('IN', 'SDK lỗi ngắt kết nối', String(error));
+                    return reject(error);
+                }
+
+                this.cameraConnected = false;
+                this.cameraHandle = null;
+                this.log('IN', 'SDK đã ngắt kết nối', result);
+                resolve(result);
+            });
+        });
+    }
+
     getStatus() {
         return {
             id: this.id,

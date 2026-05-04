@@ -62,9 +62,9 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
                         );
                       })}
                     </div>
-                  ) : log.raw?.body?.log_type ? (
+                  ) : (log.raw?.body?.log_type || log.log_type) ? (
                     <p className="text-[12px] font-mono text-on-surface font-medium leading-relaxed">
-                      {log.raw.body.log_type.toLowerCase()} : {log.raw.body.description?.toLowerCase()}
+                      {t(`app.logtype.${(log.raw?.body?.log_type || log.log_type).toLowerCase()}`, { defaultValue: (log.raw?.body?.log_type || log.log_type).toLowerCase() })} : {(log.raw?.body?.description || log.description) ? t(`app.logtype.${(log.raw?.body?.description || log.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.raw?.body?.description || log.description).toLowerCase() }) : ''}
                     </p>
                   ) : (
                     <p className="text-[12px] font-mono text-on-surface font-medium leading-relaxed italic text-on-surface-variant/50">
@@ -85,8 +85,8 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
                     { label: 'Device Port', value: log.raw?.body?.device_port },
                     { label: 'Device Index', value: log.device_index ?? log.raw?.body?.device_index },
                     { label: 'Device Type', value: log.device_type || log.raw?.body?.device_type },
-                    { label: 'Log Type', value: log.log_type || log.raw?.body?.log_type },
-                    { label: 'Description', value: log.description || log.raw?.body?.description },
+                    { label: 'Log Type', value: (log.log_type || log.raw?.body?.log_type) ? t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase()}`, { defaultValue: (log.log_type || log.raw?.body?.log_type) }) : undefined },
+                    { label: 'Description', value: (log.description || log.raw?.body?.description) ? t(`app.logtype.${(log.description || log.raw?.body?.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.description || log.raw?.body?.description) }) : undefined },
                     { label: 'Source IP', value: log.ip || log.raw?.ip },
                     { label: 'Timestamp', value: log.time ? new Date(log.time * 1000).toLocaleString() : '—' },
                   ].filter(item => item.value !== undefined && item.value !== null && item.value !== '').map(item => (

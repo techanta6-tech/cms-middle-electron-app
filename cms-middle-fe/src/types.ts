@@ -30,7 +30,7 @@ export interface LogData {
   ip: string;
   raw?: any;
   cameraIp?: string;
-  source?: 'svms' | 'mqtt';
+  source?: 'svms' | 'mqtt' | 'sunell-camera';
   mqttServerId?: string;
 }
 
@@ -97,6 +97,11 @@ export interface MqttServerConfig {
   cameraId?: string;
 }
 
+export interface CameraFeatures {
+  enableMotion: boolean;
+  enableLPR: boolean;
+}
+
 /** Camera device added manually (independent of MQTT/SVMS). */
 export interface ManualAddedCamera {
   id: string;
@@ -108,6 +113,7 @@ export interface ManualAddedCamera {
   rtspUrl: string | null;
   status: 'connecting' | 'connected' | 'error' | 'disconnected' | 'ready';
   handle: number | null;
+  features?: CameraFeatures;
 }
 
 /** Backward compat alias — gradually replace usages */

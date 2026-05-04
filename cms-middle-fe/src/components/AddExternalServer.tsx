@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AddExternalServerProps, MqttServerConfig } from '../types';
-import { TriangleAlert, Inbox, Send, Cloud, Terminal, Radio } from 'lucide-react';
+import { TriangleAlert, Inbox, Send, Cloud, Terminal, Radio, X } from 'lucide-react';
 
 export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '', initialPort = '', initialMode = 'receive', initialConnectionType = 'svms' }: AddExternalServerProps) {
   const { t } = useTranslation();
@@ -57,6 +57,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-highest transition-colors text-on-surface-variant hover:text-on-surface"
           >
+            <X className="w-4 h-4" />
           </button>
         </div>
 

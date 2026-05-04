@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { CameraForm } from './CameraForm';
 import { AddExternalServer } from './AddExternalServer';
+import { socket } from '../socket';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type SelectedItemType =
@@ -455,6 +456,18 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
 function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
   const { t } = useTranslation();
+  
+  const handleToggle = (feature: 'enableMotion' | 'enableLPR', value: boolean) => {
+    socket.emit('update-camera-features', {
+      id: cam.id,
+      features: { [feature]: value }
+    });
+  };
+
+  const isSunell = cam.type === 'sunell';
+  const enableMotion = cam.features?.enableMotion ?? true;
+  const enableLPR = cam.features?.enableLPR ?? true;
+
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">Camera: {cam.cameraIp}</h3>
@@ -465,8 +478,27 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
       <InfoRow label={t('app.monitor.type')} value={cam.type} />
       <InfoRow label={t('app.monitor.username')} value={cam.cameraUser} />
       <InfoRow label={t('app.monitor.rtsp_url')} value={cam.rtspUrl || '(none)'} mono />
-
       <InfoRow label={t('app.monitor.handle')} value={cam.handle ?? '(none)'} />
+
+      {isSunell && (
+        <div className="mt-4 pt-3 border-t border-outline-variant/10">
+          <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest block mb-2">Features (Sunell)</span>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-[12px] text-on-surface">Motion Detection</span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={enableMotion} onChange={(e) => handleToggle('enableMotion', e.target.checked)} />
+              <div className="w-9 h-5 bg-tertiary/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary"></div>
+            </label>
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-[12px] text-on-surface">LPR (License Plate)</span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={enableLPR} onChange={(e) => handleToggle('enableLPR', e.target.checked)} />
+              <div className="w-9 h-5 bg-tertiary/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary"></div>
+            </label>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

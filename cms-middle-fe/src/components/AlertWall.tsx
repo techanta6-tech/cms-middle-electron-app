@@ -112,28 +112,46 @@ export function AlertWall({
             }
           }
 
-          // ── SVMS Camera: existing logic ──
-          const camera = (!isMqttSensor && gridItem)
-            ? cameraList.find(dev =>
-              dev.ip === gridItem.device.device_ip
-              && dev.name === gridItem.device.device_name
-              && dev.server_id === gridItem.device.server_id
-              && dev.server_serial === gridItem.device.server_serial
-            )
-            : undefined;
+          // ── SVMS / Sunell Camera logic ──
+          let camera: any = undefined;
+          if (!isMqttSensor && gridItem) {
+            if (gridItem.device.device_type === 'sunell') {
+              camera = {
+                ip: gridItem.device.device_ip,
+                name: gridItem.device.device_name,
+                server_id: gridItem.device.server_id,
+                server_serial: gridItem.device.server_serial,
+                type: 'sunell'
+              };
+            } else {
+              camera = cameraList.find(dev =>
+                dev.ip === gridItem.device.device_ip
+                && dev.name === gridItem.device.device_name
+                && dev.server_id === gridItem.device.server_id
+                && dev.server_serial === gridItem.device.server_serial
+              );
+            }
+          }
 
           let cameraLog: LogData | undefined;
           if (camera) {
             for (let i = logs.length - 1; i >= 0; i--) {
               const log = logs[i];
-              if (
-                log.device_ip === camera.ip && 
-                log.device_name === camera.name && 
-                log.server?.server_id === camera.server_id && 
-                log.server?.serial === camera.server_serial
-              ) {
-                cameraLog = log;
-                break;
+              if (camera.type === 'sunell') {
+                if (log.source === 'sunell-camera' && log.device_ip === camera.ip) {
+                  cameraLog = log;
+                  break;
+                }
+              } else {
+                if (
+                  log.device_ip === camera.ip && 
+                  log.device_name === camera.name && 
+                  log.server?.server_id === camera.server_id && 
+                  log.server?.serial === camera.server_serial
+                ) {
+                  cameraLog = log;
+                  break;
+                }
               }
             }
           }

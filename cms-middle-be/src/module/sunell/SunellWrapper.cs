@@ -202,6 +202,22 @@ public class Startup
         {
             var data = (IDictionary<string, object>)input;
 
+            if (data.ContainsKey("action") && (string)data["action"] == "disconnect")
+            {
+                if (data.ContainsKey("handle"))
+                {
+                    UInt32 h = Convert.ToUInt32(data["handle"]);
+                    if (h > 0)
+                    {
+                        sdk_dev_conn_close(h);
+                        Console.WriteLine("[SDK] Da dong ket noi handle: " + h);
+                        if (_deviceHandle == h) _deviceHandle = 0;
+                        return new Dictionary<string, object> { { "success", true } };
+                    }
+                }
+                return new Dictionary<string, object> { { "success", false }, { "error", "Invalid handle" } };
+            }
+
             if (data.ContainsKey("onEvent")) {
                 globalNodeCallback = (Func<object, Task<object>>)data["onEvent"];
             }

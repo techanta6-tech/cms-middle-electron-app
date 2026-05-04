@@ -459,6 +459,30 @@ export function useSocketManager() {
       eventTypeBufferRef.current.add(newLog.log_type);
     };
 
+    const onReceiveSunellLog = (raw: any) => {
+      const timeNumber = raw.timestamp ? new Date(raw.timestamp).getTime() / 1000 : Date.now() / 1000;
+      
+      const newLog: LogData = {
+        id: raw.id,
+        time: Math.floor(timeNumber),
+        device_index: 0,
+        device_ip: raw.camera_id, // we don't have ip immediately, use camera_id as fallback
+        device_type: 'sunell',
+        device_name: raw.camera_name || 'Sunell Camera',
+        log_type: raw.log_type,
+        description: raw.description,
+        server: { server_id: 'SUNELL-LOCAL', serial: 'SUNELL' },
+        ip: '127.0.0.1',
+        raw: raw.raw_data,
+        cameraIp: raw.camera_id,
+        source: 'sunell-camera'
+      };
+
+      // Push to buffer
+      logBufferRef.current.push(newLog);
+      eventTypeBufferRef.current.add(newLog.log_type);
+    };
+
     // Cập nhật trực tiếp vào, thêm/sửa/xóa đã nằm ở server BE
     const onReceiveServerInformation = (raw: any) => {
       console.log('[SOCKET] receive-server-information:', raw);
@@ -601,6 +625,7 @@ export function useSocketManager() {
     socket.on('external-server-disconnect', onDisconnectedExternalServer);
     socket.on('external-server-err-connect', onErrorExternalServer);
     socket.on('receive-log', onReceiveLog);
+    socket.on('receive-sunell-log', onReceiveSunellLog);
     socket.on('update-client', onUpdateClients);
     socket.on('log-dispatched', onLogDispatched);
     socket.on('receive-server-information', onReceiveServerInformation);
@@ -635,6 +660,7 @@ export function useSocketManager() {
       socket.off('external-server-disconnect', onDisconnectedExternalServer);
       socket.off('external-server-err-connect', onErrorExternalServer);
       socket.off('receive-log', onReceiveLog);
+      socket.off('receive-sunell-log', onReceiveSunellLog);
       socket.off('update-client', onUpdateClients);
       socket.off('log-dispatched', onLogDispatched);
       socket.off('receive-server-information', onReceiveServerInformation);
