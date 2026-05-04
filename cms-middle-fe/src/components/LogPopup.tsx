@@ -44,9 +44,33 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
               <section>
                 <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3">{t('app.log_popup.event_summary')}</h4>
                 <div className="p-4 bg-surface-container-lowest/50 border border-outline-variant/10 rounded-sm">
-                  <p className="text-[12px] font-mono text-on-surface font-medium leading-relaxed">
-                    {log.raw?.body?.log_type?.toLowerCase()} : {log.raw?.body?.description?.toLowerCase()}
-                  </p>
+                  {log.raw?.payload?.object?.events?.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      {log.raw.payload.object.events.map((evt: any, idx: number) => {
+                        const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
+                        const statusVal = evt.status !== undefined ? evt.status : evt.alarm_status;
+
+                        const typeStr = typeVal !== undefined ? t(`app.mqtt_alarm_type.${typeVal}`, { defaultValue: String(typeVal) }) : 'Unknown Type';
+                        const statusStr = statusVal !== undefined ? t(`app.mqtt_alarm_status.${statusVal}`, { defaultValue: String(statusVal) }) : 'Unknown Status';
+
+                        return (
+                          <p key={idx} className="text-[12px] font-mono text-on-surface font-medium leading-relaxed flex items-center gap-2">
+                            <span className="font-bold text-amber-400">{statusStr}</span>
+                            <span className="text-on-surface-variant/50">|</span>
+                            <span className="text-cyan-400">{typeStr}</span>
+                          </p>
+                        );
+                      })}
+                    </div>
+                  ) : log.raw?.body?.log_type ? (
+                    <p className="text-[12px] font-mono text-on-surface font-medium leading-relaxed">
+                      {log.raw.body.log_type.toLowerCase()} : {log.raw.body.description?.toLowerCase()}
+                    </p>
+                  ) : (
+                    <p className="text-[12px] font-mono text-on-surface font-medium leading-relaxed italic text-on-surface-variant/50">
+                      No event summary available
+                    </p>
+                  )}
                 </div>
               </section>
 
@@ -95,7 +119,7 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
               </section>
               {log.raw && (
                 <section>
-                  <h4 
+                  <h4
                     className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3 cursor-pointer flex items-center gap-1 hover:text-primary/80 transition-colors w-fit"
                     onClick={() => setIsShowRawData(!isShowRawData)}
                   >

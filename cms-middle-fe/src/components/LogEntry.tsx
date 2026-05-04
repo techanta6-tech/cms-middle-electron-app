@@ -1,12 +1,14 @@
 import type { LogData } from '../types';
+import { useTranslation } from 'react-i18next';
 import { TriangleAlert, Info, AlertCircle } from 'lucide-react';
 
 export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }) {
+  const { t } = useTranslation();
   let Icon = Info;
   let colorClass = 'text-primary';
   let bgBorderClass = 'bg-primary';
 
-  let logType = typeof log.log_type === 'string' ? log.log_type.toLowerCase() : 'info';
+  const logType = typeof log.log_type === 'string' ? log.log_type.toLowerCase() : 'info';
 
   if (logType.includes('event') || logType.includes('error')) {
     Icon = AlertCircle;
@@ -16,6 +18,25 @@ export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }
     Icon = TriangleAlert;
     colorClass = 'text-amber-400';
     bgBorderClass = 'bg-amber-400';
+  }
+
+  let displayDesc = log.description;
+  if (log.source === 'mqtt') {
+    let evt = log.raw?.event;
+    if (!evt && log.raw?.payload?.object?.events?.length > 0) {
+      evt = log.raw.payload.object.events[0];
+    }
+    if (evt) {
+      const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
+      if (typeVal !== undefined) {
+        displayDesc = t(`app.mqtt_alarm_type.${typeVal}`, { defaultValue: String(typeVal) });
+      }
+    }
+  }
+
+  let displayType = typeof log.log_type === 'string' ? log.log_type.toUpperCase() : 'INFO';
+  if (log.source === 'mqtt' && log.log_type === 'data') {
+    displayType = t('app.alert_wall.alert');
   }
 
   const timeStr = new Date(log.time * 1000).toLocaleTimeString();
@@ -32,10 +53,10 @@ export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }
         <div className="flex items-start mb-1 gap-4">
           <span className={`log-entry-type text-[10px] font-bold ${colorClass} uppercase flex items-center gap-1.5 shrink-0`}>
             <Icon className="w-3.5 h-3.5" />
-            {typeof log.log_type === 'string' ? log.log_type.toUpperCase() : 'INFO'}
+            {displayType}
           </span>
         </div>
-        <p className="text-[11px] text-on-surface mb-1 font-medium leading-relaxed truncate">{log.description}</p>
+        <p className="text-[11px] text-on-surface mb-1 font-medium leading-relaxed truncate uppercase">{displayDesc}</p>
         <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{log.server.server_id} // {log.device_name} // {timeStr}</div>
       </div>
       {log.snapshot && (

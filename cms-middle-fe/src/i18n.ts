@@ -35,6 +35,7 @@ const resources = {
           filter_logs: "Lọc bản ghi"
         },
         alert_wall: {
+          alert: "THÔNG BÁO",
           logs: "Bản ghi",
           logs_queue_empty: "Chưa có thông báo nào",
           see_more_alerts: "Xem thêm thông báo",
@@ -195,6 +196,40 @@ const resources = {
         },
         logtype: {
           motion: 'Chuyển động'
+        },
+        mqtt_alarm_type: {
+          '0': 'Ngã',
+          '1': 'Bất động',
+          '2': 'Ở lại lâu',
+          '3': 'Rời khỏi giường',
+          '4': 'Có người',
+          '5': 'Không có người',
+          '6': 'Nhịp tim chậm',
+          '7': 'Thở nhanh',
+          '8': 'Đang nằm',
+          'fall': 'Ngã',
+          'motionless': 'Bất động',
+          'dwell': 'Ở lại lâu',
+          'out-of-bed': 'Rời khỏi giường',
+          'occupancy': 'Có người',
+          'occupied': 'Có người',
+          'vacant': 'Không có người',
+          'bradycardia': 'Nhịp tim chậm',
+          'tachypnea': 'Thở nhanh',
+          'lying': 'Đang nằm'
+        },
+        mqtt_alarm_status: {
+          '1': 'Báo động',
+          '2': 'Đã giải quyết',
+          '3': 'Bỏ qua',
+          '4': 'Báo cáo trạng thái',
+          'alarm': 'Báo động',
+          'resolve': 'Đã giải quyết',
+          'ignore': 'Bỏ qua',
+          'alarm_ignored': 'Bỏ qua',
+          'status_report': 'Báo cáo trạng thái',
+          'alarm_triggered': 'Báo động',
+          'alarm_canceled': 'Đã giải quyết'
         }
       }
     }
@@ -232,6 +267,7 @@ const resources = {
           filter_logs: "Filter Logs"
         },
         alert_wall: {
+          alert: "ALERT",
           logs: "Logs",
           logs_queue_empty: "Logs queue empty",
           see_more_alerts: "See more alerts",
@@ -393,6 +429,40 @@ const resources = {
         },
         logtype: {
           motion: 'Motion'
+        },
+        mqtt_alarm_type: {
+          '0': 'Fall',
+          '1': 'Motionless',
+          '2': 'Dwell',
+          '3': 'Out-of-bed',
+          '4': 'Occupancy',
+          '5': 'Vacant',
+          '6': 'Bradycardia',
+          '7': 'Tachypnea',
+          '8': 'Lying',
+          'fall': 'Fall',
+          'motionless': 'Motionless',
+          'dwell': 'Dwell',
+          'out-of-bed': 'Out-of-bed',
+          'occupancy': 'Occupancy',
+          'occupied': 'Occupied',
+          'vacant': 'Vacant',
+          'bradycardia': 'Bradycardia',
+          'tachypnea': 'Tachypnea',
+          'lying': 'Lying'
+        },
+        mqtt_alarm_status: {
+          '1': 'Alarm',
+          '2': 'Resolve',
+          '3': 'Ignore',
+          '4': 'Status report',
+          'alarm': 'Alarm',
+          'resolve': 'Resolve',
+          'ignore': 'Ignore',
+          'alarm_ignored': 'Ignore',
+          'status_report': 'Status report',
+          'alarm_triggered': 'Alarm',
+          'alarm_canceled': 'Resolve'
         }
       }
     }

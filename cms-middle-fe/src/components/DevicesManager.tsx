@@ -309,18 +309,6 @@ function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDe
 
   return (
     <div className="animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded border ${colorMap[item.kind]}`}>
-            {titleMap[item.kind]}
-          </span>
-        </div>
-        <button onClick={onClose} className="p-1.5 hover:bg-surface-container-high rounded-md transition-colors cursor-pointer text-on-surface-variant">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
       {/* Content */}
       {item.kind === 'svms-server' && <SvmsServerDetail srv={item.data} devices={item.devices} />}
       {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} />}
@@ -417,7 +405,6 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
       <InfoRow label={t('app.monitor.alarm_count')} value={dev.alarmCount} />
       <InfoRow label={t('app.monitor.last_seen')} value={dev.lastSeen} />
       <div className="mt-4 pt-3 border-t border-outline-variant/10">
-        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.parent_mqtt')}</span>
         <InfoRow label={t('app.monitor.parent_mqtt')} value={`${srv.brokerHost}:${srv.brokerPort}`} mono />
         <InfoRow label={t('app.monitor.topic')} value={srv.topic || srv.defaultTopic} mono />
       </div>

@@ -83,12 +83,19 @@ export function AlertWall({
             const link = deviceCameraLinks.find(l => l.devEui === devEui && l.mqttServerId === mqttServerId);
             const hasCamera = !!link?.cameraId;
 
-            // Tìm log mới nhất từ device này
-            const latestLog = logs.find(log =>
-              log.source === 'mqtt'
-              && log.server?.serial === devEui
-              && log.mqttServerId === mqttServerId
-            );
+            // Tìm log mới nhất từ device này (từ cuối mảng do logs lưu theo thứ tự cũ -> mới)
+            let latestLog: LogData | undefined;
+            for (let i = logs.length - 1; i >= 0; i--) {
+              const log = logs[i];
+              if (log.source === 'mqtt' && log.server?.serial === devEui && log.mqttServerId === mqttServerId) {
+                latestLog = log;
+                break;
+              }
+            }
+
+            if (latestLog) {
+              mqttCameraLog = latestLog;
+            }
 
             if (!hasCamera) {
               // Chưa liên kết camera → background đen
@@ -99,7 +106,6 @@ export function AlertWall({
             } else if (latestLog && latestLog.snapshot) {
               // Có log + có snapshot → show ảnh
               mqttRenderState = 'snapshot';
-              mqttCameraLog = latestLog;
             } else {
               // Đã liên kết + có log nhưng log không có snapshot → background đen
               mqttRenderState = 'black';
@@ -118,7 +124,18 @@ export function AlertWall({
 
           let cameraLog: LogData | undefined;
           if (camera) {
-            cameraLog = logs.find((log) => log.device_ip === camera.ip && log.device_name === camera.name && log.server.server_id === camera.server_id && log.server.serial === camera.server_serial);
+            for (let i = logs.length - 1; i >= 0; i--) {
+              const log = logs[i];
+              if (
+                log.device_ip === camera.ip && 
+                log.device_name === camera.name && 
+                log.server?.server_id === camera.server_id && 
+                log.server?.serial === camera.server_serial
+              ) {
+                cameraLog = log;
+                break;
+              }
+            }
           }
 
           const hasDevice = !!gridItem;
@@ -213,11 +230,17 @@ export function AlertWall({
                 </>
               ) : isMqttSensor && mqttRenderState === 'black' ? (
                 <>
-                  <div className="no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-4 py-2 bg-black">
+                  <div 
+                    className={`no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-4 py-2 bg-black ${mqttCameraLog ? 'cursor-pointer hover:bg-surface-container-highest/50' : ''}`}
+                    onClick={() => mqttCameraLog && onSelectLog(mqttCameraLog)}
+                  >
                     <Camera className={`opacity-30 ${gridCols > colsBreakPoints[1] ? 'w-[80%] h-[80%]' : gridCols > colsBreakPoints[0] ? 'w-8 h-8' : 'w-12 h-12'} transition-all`} />
                     <span className={`opacity-30 text-[9px] uppercase tracking-widest font-bold line-clamp-1 transition-all ${gridCols > colsBreakPoints[1] ? 'hidden' : ''}`}>
                       {gridItem?.device.device_name}
                     </span>
+                    {mqttCameraLog && (
+                      <span className="text-[10px] text-primary/80 mt-1 font-semibold">{t('app.alert_wall.has_event', 'Có sự kiện')}</span>
+                    )}
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setGrids(prev => { const c = [...prev]; delete c[idx]; return c; }); }}
@@ -248,10 +271,13 @@ export function AlertWall({
                   {cameraLog && cameraLog.snapshot ? (
                     <CameraFeed key={idx} cam={cameraLog} onClick={() => onSelectLog(cameraLog!)} />
                   ) : (
-                    <div className="no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-4 py-2 bg-black">
+                    <div 
+                      className={`no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-4 py-2 bg-black ${cameraLog ? 'cursor-pointer hover:bg-surface-container-highest/50' : ''}`}
+                      onClick={() => cameraLog && onSelectLog(cameraLog)}
+                    >
                       <Camera className={`opacity-30 ${gridCols > colsBreakPoints[1] ? 'w-[80%] h-[80%]' : gridCols > colsBreakPoints[0] ? 'w-8 h-8' : 'w-12 h-12'} transition-all`} />
                       <span className={`opacity-30 text-[11px] uppercase tracking-widest font-bold line-clamp-1 transition-all ${gridCols > colsBreakPoints[1] ? 'hidden' : ''}`}>
-                        {t('app.alert_wall.waiting_data')}
+                        {cameraLog ? t('app.alert_wall.has_event', 'Có sự kiện') : t('app.alert_wall.waiting_data')}
                       </span>
                     </div>
                   )}

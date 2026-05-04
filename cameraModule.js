@@ -10,7 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 
 let ffmpegPath = null;
 let edge = null;
@@ -153,23 +153,76 @@ class CameraDevice {
                 outputPath
             ];
 
-            this.log('IN', `[RTSP] Chụp snapshot: ${outputPath}`);
+            this.log('IN', `[RTSP] Bắt đầu quá trình chụp ảnh qua RTSP...`);
+            this.log('IN', `[RTSP] URL đích: ${url.replace(/:[^:@]+@/, ':***@')}`);
             const startTime = Date.now();
 
-            execFile(ffmpegPath, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
+            const proc = spawn(ffmpegPath, args);
+            
+            let isTimeout = false;
+            let rawStderr = '';
+            const timeoutTimer = setTimeout(() => {
+                isTimeout = true;
+                proc.kill('SIGKILL');
+                this.log('IN', `[RTSP] ❌ Quá hạn kết nối (Timeout) sau ${timeoutMs}ms!`);
+                reject(new Error('RTSP Connection Timeout'));
+            }, timeoutMs);
+
+            proc.stderr.on('data', (data) => {
+                const str = data.toString();
+                rawStderr += str;
+                
+                // Phân tích stderr của ffmpeg để thông báo tiến trình thực
+                if (str.includes('Input #0')) {
+                    this.log('IN', `[RTSP] ✅ Mở luồng thành công! Đang đọc thông tin luồng...`);
+                } else if (str.includes('tcp://')) {
+                    // Tránh log quá nhiều dòng tcp
+                    if (str.includes('Connection to tcp://') || str.includes('Opening')) {
+                        this.log('IN', `[RTSP] ⏳ Đang kết nối giao thức TCP...`);
+                    }
+                } else if (str.includes('401 Unauthorized')) {
+                    this.log('IN', `[RTSP] ❌ Từ chối truy cập (401 Unauthorized) - Sai user/pass!`);
+                } else if (str.includes('Connection refused')) {
+                    this.log('IN', `[RTSP] ❌ Bị từ chối kết nối (Connection refused) - Kiểm tra port!`);
+                } else if (str.includes('Server returned 404') || str.includes('Stream not found')) {
+                    this.log('IN', `[RTSP] ❌ Không tìm thấy luồng (404 Not Found) - Sai đường dẫn stream!`);
+                } else if (str.includes('Output #0')) {
+                    this.log('IN', `[RTSP] 📸 Bắt đầu trích xuất frame ảnh (JPEG)...`);
+                }
+            });
+
+            proc.on('close', (code) => {
+                clearTimeout(timeoutTimer);
+                if (isTimeout) return; // Đã xử lý ở setTimeout
+
                 const elapsed = Date.now() - startTime;
-                if (error) {
-                    this.log('IN', `[RTSP] Lỗi ffmpeg (${elapsed}ms)`, error.message);
-                    return reject(error);
+                if (code !== 0) {
+                    this.log('IN', `[RTSP] ❌ Quá trình thất bại (Mã lỗi FFmpeg: ${code}) sau ${elapsed}ms`);
+                    
+                    // Lấy 3 dòng cuối của log FFmpeg để hiển thị chi tiết lý do lỗi
+                    const lines = rawStderr.trim().split('\n');
+                    const lastLines = lines.slice(-3).join(' | ').trim();
+                    if (lastLines) {
+                        this.log('IN', `[RTSP-DETAIL] Chi tiết lỗi FFmpeg: ${lastLines}`);
+                    }
+                    
+                    return reject(new Error(`ffmpeg exited with code ${code}`));
                 }
 
                 if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
                     const sizeKB = parseFloat((fs.statSync(outputPath).size / 1024).toFixed(1));
-                    this.log('IN', `[RTSP] ✅ Snapshot OK!`, `${sizeKB} KB (${elapsed}ms)`);
+                    this.log('IN', `[RTSP] ✅ Chụp xong Snapshot thành công! Kích thước: ${sizeKB} KB (${elapsed}ms)`);
                     resolve({ filePath: outputPath, sizeKB });
                 } else {
+                    this.log('IN', `[RTSP] ❌ File rỗng hoặc ảnh không được tạo ra.`);
                     reject(new Error('File snapshot rỗng hoặc không tồn tại'));
                 }
+            });
+            
+            proc.on('error', (err) => {
+                clearTimeout(timeoutTimer);
+                this.log('IN', `[RTSP] ❌ Lỗi khi khởi chạy tiến trình hệ thống:`, err.message);
+                reject(err);
             });
         });
     }

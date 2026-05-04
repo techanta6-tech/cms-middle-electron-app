@@ -126,11 +126,20 @@ const connectMqttServer = (serverConfig) => {
 
           // Tạo 1 log entry riêng cho mỗi event trong mảng
           for (const event of events) {
+            // Tách riêng payload để mỗi log mới chỉ lưu một event
+            const isolatedPayload = {
+              ...parsedBody,
+              object: {
+                ...parsedBody.object,
+                events: [event]
+              }
+            };
+
             const logEntry = {
               time: new Date().toISOString(),
               type: 'data',
               topic: msgTopic,
-              payload: parsedBody,
+              payload: isolatedPayload,
               event,              // alarm event riêng lẻ: { alarm_type, alarm_id, alarm_status }
               snapshot: snapshot || null,
               mqttServerId: id,

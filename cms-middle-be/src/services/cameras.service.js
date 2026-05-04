@@ -65,6 +65,17 @@ async function addCameraDevice(deviceConfig) {
     cameraPort: cameraPort || 30001,
     cameraUser: cameraUser || 'admin',
     cameraPass: cameraPass || 'admin1234',
+    logger: (direction, label, data) => {
+      const ts = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+      const arrow = direction === 'IN' ? '⬇️' : '⬆️';
+      const msg = `[${ts}] ${arrow} | [${id}] ${label}` + (data !== undefined ? ` | ${typeof data === 'string' ? data : JSON.stringify(data)}` : '');
+      console.log(msg);
+      
+      const sockets = getClientSockets();
+      if (sockets) {
+        sockets.emit('debug-camera-snapshot', { time: new Date().toISOString(), message: msg });
+      }
+    },
     onAlarm: (payload) => {
       // Tương lai: broadcast websocket nếu cần
       console.log(`[Camera-${id}] Báo động SDK:`, payload.substring(0, 100));
