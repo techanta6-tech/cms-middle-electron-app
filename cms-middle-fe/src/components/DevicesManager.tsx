@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig } from '../types';
+import type { ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
 import {
   ChevronRight, ChevronDown, Plus, Cpu, Radio, Camera,
   Server, Wifi, WifiOff, MonitorSmartphone, Info, X
@@ -30,6 +30,8 @@ interface DevicesManagerProps {
   mqttServers: MqttServerConfig[];
   mqttLogs: MqttLogEntry[];
   cameraDevices: MqttDeviceConfig[];
+  deviceCameraLinks: DeviceCameraLink[];
+  onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
   fetchCameras: () => void;
   handleAddMqttServer: (config: MqttServerConfig) => void;
   handleAddExternalServer: (ip: string, port: string, mode: 'receive' | 'send') => void;
@@ -38,6 +40,7 @@ interface DevicesManagerProps {
 // ── Main Component ───────────────────────────────────────────────────────────
 export function DevicesManager({
   servers, devices, mqttServers, mqttLogs, cameraDevices,
+  deviceCameraLinks, onLinkDeviceCamera,
   fetchCameras, handleAddMqttServer, handleAddExternalServer
 }: DevicesManagerProps) {
   const { t } = useTranslation();
@@ -87,14 +90,14 @@ export function DevicesManager({
       {addingForm === 'svms' && (
         <AddExternalServer
           onSave={(ip, port, mode) => { handleAddExternalServer(ip, port, mode); setAddingForm(null); }}
-          onSaveMqtt={() => {}}
+          onSaveMqtt={() => { }}
           initialIp="192.168.1." initialPort="5050" initialMode="receive"
           onClose={() => setAddingForm(null)}
         />
       )}
       {addingForm === 'mqtt' && (
         <AddExternalServer
-          onSave={() => {}}
+          onSave={() => { }}
           onSaveMqtt={(cfg) => { handleAddMqttServer(cfg); setAddingForm(null); }}
           initialIp="" initialPort="" initialMode="receive"
           initialConnectionType="mqtt"
@@ -214,7 +217,7 @@ export function DevicesManager({
               <span className="text-[11px] uppercase font-bold tracking-widest">{t('app.devices.select_device')}</span>
             </div>
           ) : (
-            <DetailPanel item={selected} onClose={() => setSelected(null)} />
+            <DetailPanel item={selected} onClose={() => setSelected(null)} cameraDevices={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} />
           )}
         </div>
       </div>
@@ -285,9 +288,9 @@ function EmptyHint({ text }: { text: string }) {
 }
 
 // ── Detail Panel ─────────────────────────────────────────────────────────────
-function DetailPanel({ item, onClose }: { item: SelectedItemType; onClose: () => void }) {
+function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDeviceCamera }: { item: SelectedItemType; onClose: () => void; cameraDevices: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; }) {
   const { t } = useTranslation();
-  
+
   const titleMap = {
     'svms-server': t('app.devices.svms_server'),
     'svms-device': t('app.devices.svms_device'),
@@ -322,7 +325,7 @@ function DetailPanel({ item, onClose }: { item: SelectedItemType; onClose: () =>
       {item.kind === 'svms-server' && <SvmsServerDetail srv={item.data} devices={item.devices} />}
       {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} />}
       {item.kind === 'mqtt-server' && <MqttServerDetail srv={item.data} devices={item.mqttDevices} />}
-      {item.kind === 'mqtt-device' && <MqttDeviceDetail dev={item.data} srv={item.server} />}
+      {item.kind === 'mqtt-device' && <MqttDeviceDetail dev={item.data} srv={item.server} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} />}
       {item.kind === 'camera' && <CameraDetail cam={item.data} />}
     </div>
   );
@@ -402,8 +405,10 @@ function MqttServerDetail({ srv, devices }: { srv: MqttServerConfig; devices: Mq
   );
 }
 
-function MqttDeviceDetail({ dev, srv }: { dev: MqttDeviceInfo; srv: MqttServerConfig }) {
+function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDeviceCamera }: { dev: MqttDeviceInfo; srv: MqttServerConfig; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; }) {
   const { t } = useTranslation();
+  const link = deviceCameraLinks.find(l => l.devEui === dev.devEui && l.mqttServerId === srv.id);
+
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">{dev.deviceName}</h3>
@@ -413,8 +418,21 @@ function MqttDeviceDetail({ dev, srv }: { dev: MqttDeviceInfo; srv: MqttServerCo
       <InfoRow label={t('app.monitor.last_seen')} value={dev.lastSeen} />
       <div className="mt-4 pt-3 border-t border-outline-variant/10">
         <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.parent_mqtt')}</span>
-        <InfoRow label={t('app.monitor.broker')} value={`${srv.brokerHost}:${srv.brokerPort}`} mono />
+        <InfoRow label={t('app.monitor.parent_mqtt')} value={`${srv.brokerHost}:${srv.brokerPort}`} mono />
         <InfoRow label={t('app.monitor.topic')} value={srv.topic || srv.defaultTopic} mono />
+      </div>
+      <div className="mt-4 pt-3 border-t border-outline-variant/10 flex items-center gap-3">
+        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest shrink-0">📷 {t('app.monitor.bound_camera') || 'Bound Camera'}</span>
+        <select
+          value={link?.cameraId || ''}
+          onChange={(e) => onLinkDeviceCamera(dev.devEui, srv.id, e.target.value || null)}
+          className="flex-1 text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors"
+        >
+          <option value="">{t('app.monitor.no_camera_disabled')}</option>
+          {allCameras.map(cam => (
+            <option key={cam.id} value={cam.id}>{cam.type.toUpperCase()} - {cam.cameraIp}:{cam.cameraPort}</option>
+          ))}
+        </select>
       </div>
     </div>
   );

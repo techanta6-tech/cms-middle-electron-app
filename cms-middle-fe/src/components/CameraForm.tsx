@@ -18,7 +18,8 @@ export function CameraForm({ onCancel, onSuccess }: CameraFormProps) {
     cameraPort: '554',
     cameraUser: 'admin',
     cameraPass: 'admin1234',
-    rtspUrl: 'rtsp://fake-camera:554/stream'
+    // rtspUrl: 'rtsp://fake-camera:554/stream'
+    rtspUrl: 'rtsp://192.168.1.207:554/snl/live/1/1'
   });
 
   const handleSubmitDevice = async (e: React.FormEvent) => {

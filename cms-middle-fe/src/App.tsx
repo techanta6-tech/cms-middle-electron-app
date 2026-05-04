@@ -368,18 +368,18 @@ function Dashboard() {
                 <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.alert_wall')}</h2>
               </button>
               <button
-                className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'connections' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
-                onClick={() => setMainTab('connections')}
-              >
-                <Network className={`w-5 h-5 ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`} />
-                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.connections_monitor')}</h2>
-              </button>
-              <button
                 className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                 onClick={() => setMainTab('devices')}
               >
                 <Cpu className={`w-5 h-5 ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`} />
                 <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.devices')}</h2>
+              </button>
+              <button
+                className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'connections' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                onClick={() => setMainTab('connections')}
+              >
+                <Network className={`w-5 h-5 ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`} />
+                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.connections_monitor')}</h2>
               </button>
             </div>
             {/* <button onClick={() => console.log(servers)}>CLick</button> */}
@@ -423,6 +423,8 @@ function Dashboard() {
                 mqttServers={mqttServers}
                 mqttLogs={mqttLogs}
                 cameraDevices={cameraDevices}
+                deviceCameraLinks={deviceCameraLinks}
+                onLinkDeviceCamera={handleLinkDeviceCamera}
                 fetchCameras={fetchCameras}
                 handleAddMqttServer={handleAddMqttServer}
                 handleAddExternalServer={handleAddExternalServer}
@@ -649,7 +651,6 @@ function Dashboard() {
                                 </div>
                               </div>
                               <div className="flex flex-col items-end gap-1 shrink-0">
-                                <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium">mqtt-sensor</span>
                                 {link && <span className="text-[8px] px-1 py-0.5 rounded uppercase font-bold bg-cyan-500/20 text-cyan-500">📷 {link.cameraId.slice(-6)}</span>}
                               </div>
                             </div>

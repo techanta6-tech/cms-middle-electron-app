@@ -192,6 +192,9 @@ const resources = {
           no_media: 'Không có tệp đính kèm',
           raw_data: 'Gói Dữ liệu Thô',
           close_report: 'Đóng Báo cáo'
+        },
+        logtype: {
+          motion: 'Chuyển động'
         }
       }
     }
@@ -203,7 +206,7 @@ const resources = {
           alert_wall: "Alert Wall",
           connections_monitor: "Connections Monitor",
           devices: "Devices Management",
-          help_docs: "Help & Docs"
+          help_docs: "Help & Docs"  
         },
         footer: {
           host_target_ports: "Host & Target Ports",
@@ -387,6 +390,9 @@ const resources = {
           no_media: 'No media packet attached',
           raw_data: 'Raw Data Packet',
           close_report: 'Close Report'
+        },
+        logtype: {
+          motion: 'Motion'
         }
       }
     }
