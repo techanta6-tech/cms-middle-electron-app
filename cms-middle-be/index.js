@@ -5,6 +5,16 @@ if (process.env.USER_DATA_PATH) {
   require('dotenv').config({ path: path.join(process.env.USER_DATA_PATH, '.env.generated') }); 
 }
 
+// Global error handlers to prevent abrupt crashes
+process.on('uncaughtException', (err) => {
+  console.error('[Backend] Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Backend] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+
 const { createServer } = require('http');
 const { port, SVMS_PORT_LIST, CONNECTIVITY_TIMEOUT_MS } = require('./src/config');
 const app = require('./src/app');

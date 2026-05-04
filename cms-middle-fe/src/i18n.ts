@@ -7,8 +7,8 @@ const resources = {
       app: {
         sidebar: {
           alert_wall: "Cảnh Báo",
-          connections_monitor: "Giám Sát Kết Nối",
-          devices: "Quản Lý Thiết Bị",
+          connections_monitor: "Giám Sát Sự Kiện",
+          devices: "Quản Lý Kết Nối",
           help_docs: "Trợ Giúp & Tài Liệu"
         },
         footer: {
@@ -123,6 +123,8 @@ const resources = {
           no_mqtt: "Không có MQTT servers nào",
           cameras: "Camera độc lập",
           no_cameras: "Không có camera nào",
+          sunell_cameras: "Camera Sunell",
+          no_sunell_cameras: "Không có camera Sunell nào",
           select_device: "Chọn một server hoặc thiết bị để xem thông tin chi tiết",
           svms_server: "SVMS Server",
           svms_device: "SVMS Device",
@@ -133,6 +135,7 @@ const resources = {
         camera_form: {
           add_camera: "Thêm Camera",
           type: "Loại",
+          sunell: "Camera Sunell",
           other_rtsp: "Khác",
           name_optional: "Tên (Tùy chọn)",
           name_placeholder: "Tên gợi nhớ",
@@ -239,9 +242,9 @@ const resources = {
       app: {
         sidebar: {
           alert_wall: "Alert Wall",
-          connections_monitor: "Connections Monitor",
-          devices: "Devices Management",
-          help_docs: "Help & Docs"  
+          connections_monitor: "Events Monitor",
+          devices: "Connections Management",
+          help_docs: "Help & Docs"
         },
         footer: {
           host_target_ports: "Host & Target Ports",
@@ -354,8 +357,10 @@ const resources = {
           mqtt_servers: "MQTT Servers",
           no_mqtt: "No MQTT servers",
           cameras: "Independent Cameras",
-          no_cameras: "No cameras",
-          select_device: "Select a device or server to view details",
+          no_cameras: "No cameras found",
+          sunell_cameras: "Sunell Cameras",
+          no_sunell_cameras: "No Sunell cameras found",
+          select_device: "Select device to view details",
           svms_server: "SVMS Server",
           svms_device: "SVMS Device",
           mqtt_server: "MQTT Server",
@@ -365,6 +370,7 @@ const resources = {
         camera_form: {
           add_camera: "Add Camera",
           type: "Type",
+          sunell: "Sunell Camera",
           other_rtsp: "Other (RTSP Only)",
           name_optional: "Name (Optional)",
           name_placeholder: "Friendly name",

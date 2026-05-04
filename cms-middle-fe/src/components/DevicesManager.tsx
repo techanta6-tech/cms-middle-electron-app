@@ -46,10 +46,10 @@ export function DevicesManager({
   const { t } = useTranslation();
   const [selected, setSelected] = useState<SelectedItemType | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
-    svms: true, mqtt: true, cameras: true
+    svms: true, mqtt: true, cameras: true, sunell: true
   });
   const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({});
-  const [addingForm, setAddingForm] = useState<'svms' | 'mqtt' | 'camera' | null>(null);
+  const [addingForm, setAddingForm] = useState<'svms' | 'mqtt' | 'camera' | 'sunell_camera' | null>(null);
 
   const toggleGroup = (key: string) =>
     setExpandedGroups(p => ({ ...p, [key]: !p[key] }));
@@ -83,6 +83,8 @@ export function DevicesManager({
   }, [mqttLogs]);
 
   const svmsServers = Object.values(servers).filter(s => s.type !== 'mqtt');
+  const otherCameras = cameraDevices.filter(cam => cam.type !== 'sunell');
+  const sunellCameras = cameraDevices.filter(cam => cam.type === 'sunell');
 
   return (
     <div className="DevicesManager flex-1 overflow-hidden flex flex-col h-full">
@@ -104,8 +106,12 @@ export function DevicesManager({
           onClose={() => setAddingForm(null)}
         />
       )}
-      {addingForm === 'camera' && (
-        <CameraForm onCancel={() => setAddingForm(null)} onSuccess={() => { setAddingForm(null); fetchCameras(); }} />
+      {(addingForm === 'camera' || addingForm === 'sunell_camera') && (
+        <CameraForm 
+          onCancel={() => setAddingForm(null)} 
+          onSuccess={() => { setAddingForm(null); fetchCameras(); }} 
+          initialType={addingForm === 'sunell_camera' ? 'sunell' : 'other'}
+        />
       )}
 
       <div className="flex-1 overflow-hidden grid gap-0" style={{ gridTemplateColumns: '3fr 7fr' }}>
@@ -189,16 +195,36 @@ export function DevicesManager({
           )}
 
           {/* Independent Cameras */}
-          <GroupHeader icon={<Camera className="w-3.5 h-3.5" />} label={t('app.devices.cameras')} color="text-cyan-500" count={cameraDevices.length}
+          <GroupHeader icon={<Camera className="w-3.5 h-3.5" />} label={t('app.devices.cameras')} color="text-cyan-500" count={otherCameras.length}
             expanded={!!expandedGroups.cameras} onToggle={() => toggleGroup('cameras')}
             onAdd={() => setAddingForm('camera')}
           />
           {expandedGroups.cameras && (
             <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-cyan-500/10 pl-2">
-              {cameraDevices.length === 0 && <EmptyHint text={t('app.devices.no_cameras')} />}
-              {cameraDevices.map(cam => (
+              {otherCameras.length === 0 && <EmptyHint text={t('app.devices.no_cameras')} />}
+              {otherCameras.map(cam => (
                 <TreeItem key={cam.id}
-                  label={`Camera: ${cam.cameraIp}`}
+                  label={(cam as any).name || `Camera: ${cam.cameraIp}`}
+                  sublabel={cam.id}
+                  onClick={() => setSelected({ kind: 'camera', data: cam })}
+                  isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
+                  status={cam.status === 'connected' ? 'connected' : 'disconnected'}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Sunell Cameras */}
+          <GroupHeader icon={<Camera className="w-3.5 h-3.5" />} label={t('app.devices.sunell_cameras')} color="text-green-500" count={sunellCameras.length}
+            expanded={!!expandedGroups.sunell} onToggle={() => toggleGroup('sunell')}
+            onAdd={() => setAddingForm('sunell_camera')}
+          />
+          {expandedGroups.sunell && (
+            <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-green-500/10 pl-2">
+              {sunellCameras.length === 0 && <EmptyHint text={t('app.devices.no_sunell_cameras')} />}
+              {sunellCameras.map(cam => (
+                <TreeItem key={cam.id}
+                  label={(cam as any).name || `Camera Sunell: ${cam.cameraIp}`}
                   sublabel={cam.id}
                   onClick={() => setSelected({ kind: 'camera', data: cam })}
                   isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
@@ -291,12 +317,14 @@ function EmptyHint({ text }: { text: string }) {
 function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDeviceCamera }: { item: SelectedItemType; onClose: () => void; cameraDevices: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; }) {
   const { t } = useTranslation();
 
+  const isSunell = item.kind === 'camera' && item.data.type === 'sunell';
+
   const titleMap = {
     'svms-server': t('app.devices.svms_server'),
     'svms-device': t('app.devices.svms_device'),
     'mqtt-server': t('app.devices.mqtt_server'),
     'mqtt-device': t('app.devices.mqtt_device'),
-    'camera': t('app.devices.camera_device'),
+    'camera': isSunell ? t('app.devices.sunell_cameras') : t('app.devices.camera_device'),
   };
 
   const colorMap = {
@@ -304,7 +332,7 @@ function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDe
     'svms-device': 'text-secondary border-secondary/30',
     'mqtt-server': 'text-amber-400 border-amber-400/30',
     'mqtt-device': 'text-amber-400 border-amber-400/30',
-    'camera': 'text-cyan-500 border-cyan-500/30',
+    'camera': isSunell ? 'text-green-500 border-green-500/30' : 'text-cyan-500 border-cyan-500/30',
   };
 
   return (

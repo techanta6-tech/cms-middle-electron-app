@@ -34,7 +34,7 @@ async function addCameraDevice(deviceConfig) {
   const isPackaged = process.env.IS_PACKAGED === 'true' || process.pkg;
   const sdkPath = isPackaged
     ? path.join(path.dirname(process.execPath), 'module', 'sunell')
-    : path.join(__dirname, '..', '..', '..', 'module', 'sunell'); // fixed path to sdk
+    : path.join(__dirname, '..', 'module', 'sunell'); // fixed path to sdk
 
   const device = {
     id,

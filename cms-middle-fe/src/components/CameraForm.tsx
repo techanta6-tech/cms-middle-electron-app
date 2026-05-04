@@ -6,15 +6,16 @@ import { Camera, X } from 'lucide-react';
 interface CameraFormProps {
   onCancel: () => void;
   onSuccess: () => void;
+  initialType?: 'sunell' | 'other';
 }
 
-export function CameraForm({ onCancel, onSuccess }: CameraFormProps) {
+export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: CameraFormProps) {
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [addDeviceForm, setAddDeviceForm] = useState({
     name: '',
-    type: 'other' as 'sunell' | 'other',
-    cameraIp: '192.168.1.208',
+    type: initialType,
+    cameraIp: '192.168.1.207',
     cameraPort: '554',
     cameraUser: 'admin',
     cameraPass: 'admin1234',
@@ -87,6 +88,7 @@ export function CameraForm({ onCancel, onSuccess }: CameraFormProps) {
                   onChange={e => setAddDeviceForm(f => ({ ...f, type: e.target.value as 'sunell' | 'other' }))}
                   className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all"
                 >
+                  <option value="sunell">{t('app.camera_form.sunell')}</option>
                   <option value="other">{t('app.camera_form.other_rtsp')}</option>
                 </select>
               </div>
