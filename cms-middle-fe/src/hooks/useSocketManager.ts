@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { socket, updateSocketUrlAsync } from '../socket';
-import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig } from '../types';
+import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
 import apiClient from '../api/apiClient';
 import axios from 'axios';
 
@@ -22,6 +22,8 @@ export function useSocketManager() {
   const [eventTypes, setEventTypes] = useState<string[]>([]);
   const [mqttLogs, setMqttLogs] = useState<MqttLogEntry[]>([]);
   const [cameraDevices, setCameraDevices] = useState<MqttDeviceConfig[]>([]);
+  const [deviceCameraLinks, setDeviceCameraLinks] = useState<DeviceCameraLink[]>([]);
+  const [gridLayout, setGridLayout] = useState<{ grids: any[]; gridCols: number }>({ grids: [], gridCols: 3 });
 
   // ─── Log Batching: buffer incoming logs and flush every 500ms ───────────────
   const logBufferRef = useRef<LogData[]>([]);
@@ -140,11 +142,64 @@ export function useSocketManager() {
     }
   }, [systemConfig.be.ip, systemConfig.be.port]);
 
+  // ─── Fetch device-camera links from BE ──────────────────────────────────────
+  const fetchDeviceCameraLinks = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get('/api/v1/device-camera-links');
+      setDeviceCameraLinks(data.links || []);
+      console.log('[FETCH_DEVICE_CAMERA_LINKS] Synced from BE:', data.links);
+    } catch (err) {
+      console.error('[FETCH_DEVICE_CAMERA_LINKS] Failed:', err);
+    }
+  }, [systemConfig.be.ip, systemConfig.be.port]);
+
+  // ─── Fetch grid layout from BE ──────────────────────────────────────────────
+  const fetchGridLayout = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get('/api/v1/grid-layout');
+      if (data.grids || data.gridCols) {
+        setGridLayout({ grids: data.grids || [], gridCols: data.gridCols || 3 });
+        console.log('[FETCH_GRID_LAYOUT] Synced from BE:', data);
+      }
+    } catch (err) {
+      console.error('[FETCH_GRID_LAYOUT] Failed:', err);
+    }
+  }, [systemConfig.be.ip, systemConfig.be.port]);
+
+  // ─── Save grid layout to BE ─────────────────────────────────────────────────
+  const saveGridLayout = useCallback(async (grids: any[], gridCols: number) => {
+    try {
+      await apiClient.put('/api/v1/grid-layout', { grids, gridCols });
+      console.log('[SAVE_GRID_LAYOUT] Saved to BE');
+    } catch (err) {
+      console.error('[SAVE_GRID_LAYOUT] Failed:', err);
+    }
+  }, []);
+
+  // ─── Link/unlink MQTT device to camera ──────────────────────────────────────
+  const handleLinkDeviceCamera = useCallback(async (devEui: string, mqttServerId: string, cameraId: string | null) => {
+    try {
+      const { data } = await apiClient.patch('/api/v1/mqtt-device-camera-link', { devEui, mqttServerId, cameraId });
+      setDeviceCameraLinks(data.links || []);
+      console.log('[LINK_DEVICE_CAMERA] Updated:', { devEui, mqttServerId, cameraId });
+    } catch (err) {
+      console.error('[LINK_DEVICE_CAMERA] Failed:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchCameras();
+    fetchDeviceCameraLinks();
+    fetchGridLayout();
     socket.on('connect', fetchCameras);
-    return () => { socket.off('connect', fetchCameras); };
-  }, [fetchCameras]);
+    socket.on('connect', fetchDeviceCameraLinks);
+    socket.on('connect', fetchGridLayout);
+    return () => {
+      socket.off('connect', fetchCameras);
+      socket.off('connect', fetchDeviceCameraLinks);
+      socket.off('connect', fetchGridLayout);
+    };
+  }, [fetchCameras, fetchDeviceCameraLinks, fetchGridLayout]);
 
   // ─── Delta updates via socket events ────────────────────────────────────────
 
@@ -557,6 +612,17 @@ export function useSocketManager() {
     socket.on('update-cameras', onUpdateCameras);
     socket.on('receive-mqtt-log', onReceiveMqttLog);
 
+    const onUpdateDeviceCameraLinks = (links: DeviceCameraLink[]) => {
+      console.log('[SOCKET] update-device-camera-links:', links);
+      setDeviceCameraLinks(links);
+    };
+    const onUpdateGridLayout = (data: { grids: any[]; gridCols: number }) => {
+      console.log('[SOCKET] update-grid-layout:', data);
+      setGridLayout({ grids: data.grids || [], gridCols: data.gridCols || 3 });
+    };
+    socket.on('update-device-camera-links', onUpdateDeviceCameraLinks);
+    socket.on('update-grid-layout', onUpdateGridLayout);
+
     // DEBUG: Camera snapshot pipeline logs
     const onDebugCameraSnapshot = (data: { time: string; message: string }) => {
       console.log(`%c[CAMERA-SNAPSHOT] ${data.message}`, 'color: #ff6b6b; font-weight: bold; background: #1a1a2e; padding: 2px 6px; border-radius: 3px');
@@ -580,6 +646,8 @@ export function useSocketManager() {
       socket.off('update-cameras', onUpdateCameras);
       socket.off('receive-mqtt-log', onReceiveMqttLog);
       socket.off('debug-camera-snapshot', onDebugCameraSnapshot);
+      socket.off('update-device-camera-links', onUpdateDeviceCameraLinks);
+      socket.off('update-grid-layout', onUpdateGridLayout);
     };
   }, []);
 
@@ -608,6 +676,11 @@ export function useSocketManager() {
     handleAddMqttServer,
     handleRemoveMqttServer,
     handleUpdateMqttServer,
-    fetchCameras
+    fetchCameras,
+    deviceCameraLinks,
+    handleLinkDeviceCamera,
+    gridLayout,
+    saveGridLayout,
+    fetchGridLayout
   };
 }

@@ -1,6 +1,6 @@
 const mqtt = require('mqtt');
 const path = require('path');
-const { mqttServers, servers, getClientSockets } = require('../socketState');
+const { mqttServers, servers, deviceCameraLinks, getClientSockets } = require('../socketState');
 let cameraModule;
 try {
   cameraModule = require('./cameraModule');
@@ -108,12 +108,20 @@ const connectMqttServer = (serverConfig) => {
         }
         // ── END DEBUG ──
 
+        // ── Device-level snapshot: tìm camera theo devEui của device gửi log ──
+        const devEui = (dataTarget?.deviceInfo?.devEui) || (parsedBody?.deviceInfo?.devEui) || '';
+        const deviceLink = devEui
+          ? deviceCameraLinks.find(l => l.devEui === devEui && l.mqttServerId === id)
+          : null;
+        // Fallback: dùng server-level cameraId nếu không tìm thấy device-level link
+        const resolvedCameraId = deviceLink?.cameraId || (entry && entry.cameraId) || null;
+
         if (dataTarget && dataTarget.object && dataTarget.object.events) {
           const events = dataTarget.object.events;
-          // Lấy snapshot 1 lần duy nhất cho tất cả events dựa trên cameraId được config
+          // Lấy snapshot 1 lần duy nhất cho tất cả events
           let snapshot = null;
-          if (entry && entry.cameraId) {
-            snapshot = await getSnapshotForCamera(entry.cameraId);
+          if (resolvedCameraId) {
+            snapshot = await getSnapshotForCamera(resolvedCameraId);
           }
 
           // Tạo 1 log entry riêng cho mỗi event trong mảng
@@ -131,12 +139,12 @@ const connectMqttServer = (serverConfig) => {
             _emitMqttLog(id, logEntry);
           }
         } else {
-          // DEBUG: Valid JSON nhưng không có object.events — vẫn tạo log fake + yêu cầu snapshot
-          console.log(`[MQTT][${id}] Forward raw payload (no object.events) — requesting snapshot for DEBUG`);
+          // Valid JSON nhưng không có object.events — vẫn tạo log + yêu cầu snapshot
+          console.log(`[MQTT][${id}] Forward raw payload (no object.events)`);
           let snapshot = null;
-          if (entry && entry.cameraId) {
-            snapshot = await getSnapshotForCamera(entry.cameraId);
-            console.log(`[MQTT][${id}] DEBUG snapshot result:`, snapshot ? `OK (${snapshot.length} chars)` : 'null');
+          if (resolvedCameraId) {
+            snapshot = await getSnapshotForCamera(resolvedCameraId);
+            console.log(`[MQTT][${id}] Snapshot result:`, snapshot ? `OK (${snapshot.length} chars)` : 'null');
           }
           const logEntry = {
             time: new Date().toISOString(),

@@ -184,6 +184,13 @@ class CameraDevice {
             return null;
         }
 
+        if (url.includes('fake') || this.cameraIp === '127.0.0.1') {
+            this.log('IN', `[MOCK RTSP] Trả về ảnh giả lập cho: ${url || this.cameraIp}`);
+            // Chuỗi Base64 của một bức ảnh 1x1 đỏ mẫu
+            const fakeImageBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+            return fakeImageBase64;
+        }
+
         const tmpDir = this.snapshotDir;
         const filename = `snap_${this.id}_${Date.now()}.jpg`;
         const outputPath = path.join(tmpDir, filename);

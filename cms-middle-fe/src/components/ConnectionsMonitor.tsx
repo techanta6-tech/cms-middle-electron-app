@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig } from '../types';
+import { useTranslation } from 'react-i18next';
+import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
 import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight, Radio } from 'lucide-react';
 import { AddExternalServer } from './AddExternalServer';
 import { ConfigSystem } from './ConfigSystem';
@@ -21,7 +22,7 @@ function InfoTooltip({ children, content, side = "top" }: { children: React.Reac
 }
 
 export function ConnectionsMonitor({
-  isConnected, logs, sendServers, receiveServers, onSave, onSaveMqtt, systemConfig, onSaveSystemConfig, onRemoveConnection, servers, devices, mqttServers, mqttLogs, cameraDevices
+  logs, sendServers, servers, devices, mqttServers, mqttLogs, cameraDevices, deviceCameraLinks, onLinkDeviceCamera
 }: {
   socket: any,
   isConnected: boolean,
@@ -34,39 +35,13 @@ export function ConnectionsMonitor({
   mqttServers: MqttServerConfig[];
   mqttLogs: MqttLogEntry[];
   cameraDevices: MqttDeviceConfig[];
+  deviceCameraLinks: DeviceCameraLink[];
+  onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
   onSave: (ip: string, port: string, mode: 'receive' | 'send') => void,
   onSaveMqtt: (config: MqttServerConfig) => void,
   onSaveSystemConfig: (config: SystemConfig) => void,
   onRemoveConnection: (ip: string, port: string, mode: 'receive' | 'send') => void,
 }) {
-  const [isNetworkFormOpen, setIsNetworkFormOpen] = useState(false);
-  const [isConfigSystemOpen, setIsConfigSystemOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'input' | 'output' | 'cameras'>('input');
-
-  const [isLogSaving, setIsLogSaving] = useState(() => {
-    const saved = localStorage.getItem('SAVE_LOG_FILES');
-    return saved !== 'false';
-  });
-
-  const toggleLogSaving = async () => {
-    const newState = !isLogSaving;
-    setIsLogSaving(newState);
-    localStorage.setItem('SAVE_LOG_FILES', String(newState));
-
-    try {
-      const res = await apiClient.post('/api/v1/config/log-saving', { enabled: newState });
-      if (newState && res.data && res.data.path) {
-        alert(`Recording incoming data to "${res.data.path}"`);
-      }
-    } catch (e) {
-      console.error('Failed to toggle log saving', e);
-    }
-  };
-
-  useEffect(() => {
-    apiClient.post('/api/v1/config/log-saving', { enabled: isLogSaving }).catch(console.error);
-  }, []);
-
   // Group log stats strictly by server_id + server_serial + device_name + device_ip
   const deviceLogStats = useMemo(() => {
     const stats: Record<string, { serverId: string; serverSerial: string; deviceName: string; deviceIp: string; logCount: number }> = {};
@@ -151,251 +126,109 @@ export function ConnectionsMonitor({
     return map;
   }, [mqttLogs]);
 
+  const [activeTab, setActiveTab] = useState<'input' | 'output'>('input');
+  const { t } = useTranslation();
 
-
-  const [initState, setInitState] = useState<'receive' | 'send'>('receive')
-  const openNetworkForm = (type: 'input' | 'output') => {
-    setInitState(type === 'input' ? 'receive' : 'send');
-    setIsNetworkFormOpen(true);
-  }
   return (
     <div className="ConnectionsMonitor flex flex-col h-full bg-background relative">
-      {/* Settings / Config Modals */}
-      {isNetworkFormOpen && (
-        <AddExternalServer
-          onSave={onSave}
-          onSaveMqtt={onSaveMqtt}
-          initialIp='192.168.1.'
-          initialPort='5050'
-          initialMode={initState}
-          onClose={() => setIsNetworkFormOpen(false)}
-        />
-      )}
-      {isConfigSystemOpen && (
-        <ConfigSystem
-          initialConfig={systemConfig}
-          onSave={onSaveSystemConfig}
-          onClose={() => setIsConfigSystemOpen(false)}
-        />
-      )}
-
-      {/* Main Connections Monitor Area */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-        <div className="mx-auto flex flex-col gap-6 animate-in fade-in duration-500">
-
-          {/* Quick System Info Overview */}
-          <div className="flex items-center justify-between border-b border-outline-variant/10 pb-4 shrink-0">
-            <div className="flex items-center gap-6">
-              <div className="flex flex-col gap-1">
-                <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
-                  System Binding Host
-                </span>
-                <div className="flex items-center gap-3">
-                  <span className="text-lg font-black text-primary font-mono tracking-tight leading-none">{systemConfig.be.ip}:{systemConfig.be.port}</span>
-                  <button
-                    onClick={() => setIsConfigSystemOpen(true)}
-                    className="p-1 text-on-surface-variant hover:text-primary transition-colors bg-surface-container hover:bg-primary/10 rounded-sm"
-                    title="Cấu hình hệ thống"
-                  >
-                    <Settings className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-              <div className="w-px h-8 bg-outline-variant/10"></div>
-              <div className="flex flex-col gap-1">
-                <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
-                  System Connection Status
-                </span>
-                <div className="flex items-center gap-2">
-                  <div
-                    onClick={() => { if (!isConnected) { socket.connect() } }}
-                    className={`w-2 h-2 rounded-full ${isConnected ? 'bg-secondary ring-4 ring-secondary/20' : 'bg-tertiary ring-4 ring-tertiary/20 cursor-pointer'} ${!isConnected ? 'animate-pulse' : ''}`}></div>
-                  <div className={`text-[13px] font-black font-mono tracking-tight ${isConnected ? 'text-secondary' : 'text-tertiary'}`}>
-                    {isConnected ? 'STABLE' : 'UNCONNECTED'}
-                  </div>
-                </div>
-              </div>
-              <div className="w-px h-8 bg-outline-variant/10"></div>
-
-              <div className="flex flex-col gap-1">
-                <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
-                  Save Log Files
-                </span>
-                <div className="flex items-center gap-2 h-full">
-                  <div
-                    onClick={toggleLogSaving}
-                    className={`relative w-9 h-5 rounded-full cursor-pointer transition-colors duration-300 ${isLogSaving ? 'bg-primary' : 'bg-outline-variant/30'}`}
-                  >
-                    <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-300 ${isLogSaving ? 'translate-x-4' : 'translate-x-0'}`}></div>
-                  </div>
-                  <span className={`text-[11px] font-bold tracking-widest uppercase transition-colors ${isLogSaving ? 'text-primary' : 'text-on-surface-variant/50'}`}>
-                    {isLogSaving ? 'ON' : 'OFF'}
-                  </span>
-                </div>
-              </div>
-              <div className="w-px h-8 bg-outline-variant/10"></div>
-
-              <div className="flex flex-col gap-1">
-                <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
-                  MQTT Fall Logs
-                </span>
-                <div className="flex items-center gap-2 h-full">
-                  <button
-                    onClick={() => {
-                      console.log("=== THÔNG TIN CHUNG TỪ PROVIDER ===");
-                      console.log("1. MQTT Servers:", mqttServers);
-                      console.log("2. MQTT Logs (Realtime):", mqttLogs);
-                      console.log("3. Camera Devices:", cameraDevices);
-                      console.log("4. SVMS Servers:", servers);
-                      console.log("5. SVMS/System Logs:", logs);
-                      alert(`Đã in ra console trình duyệt!\n\nTổng MQTT Logs: ${mqttLogs.length}\nTổng MQTT Servers: ${mqttServers.length}\nTổng Camera Devices: ${cameraDevices.length}`);
-                    }}
-                    className="px-3 py-1 bg-primary text-on-primary text-[10px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity"
-                  >
-                    XEM DATA TRẢ VỀ
-                  </button>
-                </div>
-              </div>
-              <div className="w-px h-8 bg-outline-variant/10"></div>
-
+      <div className="flex-1 overflow-hidden p-6 h-full flex flex-col gap-4 min-h-0">
+        
+        {/* Tab Headers */}
+        <div className="flex items-center gap-2 border-b border-outline-variant/10 shrink-0">
+          <button
+            onClick={() => setActiveTab('input')}
+            className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'input' ? 'border-secondary text-secondary bg-secondary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
+          >
+            <Terminal className="w-4 h-4" />
+            <div className="flex flex-col text-left">
+              <span>{t('app.monitor.input_connections')}</span>
+              {Object.keys(servers).length + mqttServers.length > 0 && (
+                <span className="text-[9px] text-secondary/70 tracking-normal font-mono leading-none">{Object.keys(servers).length + mqttServers.length} {t('app.monitor.sources_emitting')}</span>
+              )}
             </div>
-
-          </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('output')}
+            className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'output' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
+          >
+            <Globe className="w-4 h-4" />
+            <div className="flex flex-col text-left">
+              <span>{t('app.monitor.output_targets')}</span>
+              {sendServers.length > 0 && (
+                <span className="text-[9px] text-primary/70 tracking-normal font-mono leading-none">{sendServers.length} {t('app.monitor.endpoints_receiving')}</span>
+              )}
+            </div>
+          </button>
         </div>
 
-        <div className="flex flex-col gap-4 flex-1 min-h-0">
-          {/* Tab Headers */}
-          <div className="flex items-center gap-2 border-b border-outline-variant/10 shrink-0">
-            <button
-              onClick={() => setActiveTab('input')}
-              className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'input' ? 'border-secondary text-secondary bg-secondary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
-            >
-              <Terminal className="w-4 h-4" />
-              <div className="flex flex-col text-left">
-                <span>Input Connections</span>
-                {Object.keys(servers).length > 0 && (
-                  <span className="text-[9px] text-secondary/70 tracking-normal font-mono leading-none">{Object.keys(servers).length} servers emitting</span>
-                )}
-              </div>
-            </button>
-            <button
-              onClick={() => setActiveTab('output')}
-              className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'output' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
-            >
-              <Globe className="w-4 h-4" />
-              <div className="flex flex-col text-left">
-                <span>Output Targets</span>
-                {sendServers.length > 0 && (
-                  <span className="text-[9px] text-primary/70 tracking-normal font-mono leading-none">{sendServers.length} endpoints receiving</span>
-                )}
-              </div>
-            </button>
-            <button
-              onClick={() => setActiveTab('cameras')}
-              className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'cameras' ? 'border-cyan-500 text-cyan-500 bg-cyan-500/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
-            >
-              <Radio className="w-4 h-4" />
-              <div className="flex flex-col text-left">
-                <span>Cameras</span>
-                {cameraDevices.length > 0 && (
-                  <span className="text-[9px] text-cyan-500/70 tracking-normal font-mono leading-none">{cameraDevices.length} devices</span>
-                )}
-              </div>
-            </button>
-          </div>
-
-          {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar bg-surface-container/20 border border-outline-variant/30 rounded-lg p-5">
-            {activeTab === 'input' && (
-              <div className="flex flex-col gap-4">
-                {Object.keys(servers).length === 0 && orphanDevices.length === 0 && mqttServers.length === 0 ? (
-                  <div className="py-12 flex flex-col items-center justify-center opacity-40 gap-3 border border-dashed border-outline-variant/20 rounded-md bg-surface-container-lowest/50">
-                    <Inbox className="w-8 h-8 text-on-surface-variant" />
-                    <span className="text-[10px] uppercase tracking-widest font-bold">No input connections</span>
-                  </div>
-                ) : (
-                  <>
-                    {/* SVMS Servers */}
-                    {Object.values(servers).filter(srv => srv.type !== 'mqtt').map((srv, idx) => {
-                      const serverId = srv.id || srv.serial || srv.server_ip || srv.svms_ipv4_ip || '';
-                      const matchedDevices = devices[serverId] || devices[srv.id] || devices[srv.serial];
-                      return (
-                        <ServerInputCard
-                          key={idx}
-                          srv={srv}
-                          matchedDevices={matchedDevices}
-                          deviceLogStats={deviceLogStats}
-                        />
-                      );
-                    })}
-
-                    {/* MQTT Servers */}
-                    {mqttServers.map((ms) => (
-                      <MqttServerCard
-                        key={ms.id}
-                        server={ms}
-                        devices={mqttDevicesByServer[ms.id] || []}
-                        allCameras={cameraDevices}
+        {/* Tab Content */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-surface-container/20 border border-outline-variant/30 rounded-lg p-5">
+          {activeTab === 'input' && (
+            <div className="flex flex-col gap-4">
+              {Object.keys(servers).length === 0 && orphanDevices.length === 0 && mqttServers.length === 0 ? (
+                <div className="py-12 flex flex-col items-center justify-center opacity-40 gap-3 border border-dashed border-outline-variant/20 rounded-md bg-surface-container-lowest/50">
+                  <Inbox className="w-8 h-8 text-on-surface-variant" />
+                  <span className="text-[10px] uppercase tracking-widest font-bold">{t('app.monitor.no_input')}</span>
+                </div>
+              ) : (
+                <>
+                  {/* SVMS Servers */}
+                  {Object.values(servers).filter(srv => srv.type !== 'mqtt').map((srv, idx) => {
+                    const serverId = srv.id || srv.serial || srv.server_ip || srv.svms_ipv4_ip || '';
+                    const matchedDevices = devices[serverId] || devices[srv.id] || devices[srv.serial];
+                    return (
+                      <ServerInputCard
+                        key={idx}
+                        srv={srv}
+                        matchedDevices={matchedDevices}
+                        deviceLogStats={deviceLogStats}
                       />
-                    ))}
+                    );
+                  })}
 
-                    <UnknownDevicesCard orphanDevices={orphanDevices} />
-                  </>
-                )}
-                <button
-                  onClick={() => openNetworkForm('input')}
-                  className="mt-2 w-full py-4 border border-dashed border-secondary/30 text-secondary hover:bg-secondary/10 bg-secondary/5 rounded-md flex justify-center items-center gap-2 text-[10px] uppercase font-bold tracking-widest transition-colors cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" /> Add Input Connection
-                </button>
-              </div>
-            )}
+                  {/* MQTT Servers */}
+                  {mqttServers.map((ms) => (
+                    <MqttServerCard
+                      key={ms.id}
+                      server={ms}
+                      devices={mqttDevicesByServer[ms.id] || []}
+                      allCameras={cameraDevices}
+                      deviceCameraLinks={deviceCameraLinks}
+                      onLinkDeviceCamera={onLinkDeviceCamera}
+                    />
+                  ))}
 
-            {activeTab === 'output' && (
-              <div className="flex flex-col gap-4">
-                {sendServers.length === 0 ? (
-                  <div className="py-12 flex flex-col items-center justify-center opacity-40 gap-3 border border-dashed border-outline-variant/20 rounded-md bg-surface-container-lowest/50">
-                    <Send className="w-8 h-8 text-on-surface-variant" />
-                    <span className="text-[10px] uppercase tracking-widest font-bold">No output targets configured</span>
-                  </div>
-                ) : (
-                  <>
-                    {sendServers.map((s, idx) => (
-                      <SendTargetCard key={idx} conn={s} />
-                    ))}
-                  </>
-                )}
-                <button
-                  onClick={() => openNetworkForm('output')}
-                  className="mt-2 w-full py-4 border border-dashed border-primary/30 text-primary hover:bg-primary/10 bg-primary/5 rounded-md flex justify-center items-center gap-2 text-[10px] uppercase font-bold tracking-widest transition-colors cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" /> Add Output Connection
-                </button>
-              </div>
-            )}
+                  <UnknownDevicesCard orphanDevices={orphanDevices} />
+                </>
+              )}
+            </div>
+          )}
 
-            {activeTab === 'cameras' && (
-              <div className="flex flex-col gap-4">
-                {cameraDevices.length === 0 ? (
-                  <div className="py-12 flex flex-col items-center justify-center opacity-40 gap-3 border border-dashed border-outline-variant/20 rounded-md bg-surface-container-lowest/50">
-                    <Radio className="w-8 h-8 text-on-surface-variant" />
-                    <span className="text-[10px] uppercase tracking-widest font-bold">No cameras added</span>
-                  </div>
-                ) : (
-                  <>
-                    <CameraDevicesList cameras={cameraDevices} />
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+          {activeTab === 'output' && (
+            <div className="flex flex-col gap-4">
+              {sendServers.length === 0 ? (
+                <div className="py-12 flex flex-col items-center justify-center opacity-40 gap-3 border border-dashed border-outline-variant/20 rounded-md bg-surface-container-lowest/50">
+                  <Send className="w-8 h-8 text-on-surface-variant" />
+                  <span className="text-[10px] uppercase tracking-widest font-bold">{t('app.monitor.no_output')}</span>
+                </div>
+              ) : (
+                <>
+                  {sendServers.map((s, idx) => (
+                    <SendTargetCard key={idx} conn={s} />
+                  ))}
+                </>
+              )}
+            </div>
+          )}
         </div>
+
       </div>
     </div>
   );
 }
 
 function UnknownDevicesCard({ orphanDevices }: { orphanDevices: { name: string; ip: string; logCount: number }[] }) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (!orphanDevices || orphanDevices.length === 0) return null;
@@ -417,14 +250,14 @@ function UnknownDevicesCard({ orphanDevices }: { orphanDevices: { name: string; 
             </InfoTooltip>
             <div className="flex items-center gap-3 pt-1">
               <InfoTooltip content="Trạng thái">
-                <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">UNREGISTERED ORPHAN LOGS</span>
+                <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.unregistered_orphan')}</span>
               </InfoTooltip>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
-            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">UNKNOWN DEVICES</span>
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.unknown_devices')}</span>
             <span className="text-[14px] font-black font-mono text-tertiary leading-none">{orphanDevices.length}</span>
           </div>
           <ChevronDown className={`w-4 h-4 text-on-surface-variant transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
@@ -506,6 +339,7 @@ function DeviceItemRow({
 }
 
 function SendTargetCard({ conn }: { conn: SystemConnection }) {
+  const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const status = conn.status || 'connecting';
 
@@ -563,7 +397,7 @@ function SendTargetCard({ conn }: { conn: SystemConnection }) {
         <div className={`mt-2 flex-shrink-0 w-2 h-2 rounded-full ring-[3px] ${cfg.dot} ${status === 'connecting' ? 'animate-pulse' : ''}`}></div>
         <div className="flex flex-col gap-1">
           <span className="text-[10px] font-bold text-on-surface-variant/70 uppercase tracking-widest flex items-center gap-1.5">
-            Target Endpoint
+            {t('app.monitor.target_endpoint')}
           </span>
           <div className="flex items-end gap-1">
             <span className="text-[16px] font-black text-on-surface font-mono tracking-tight leading-none">{conn.ip}</span>
@@ -574,7 +408,7 @@ function SendTargetCard({ conn }: { conn: SystemConnection }) {
 
       <div className="flex items-center gap-5">
         <div className="flex flex-col items-end gap-1.5">
-          <span className="text-[9px] font-bold text-on-surface-variant/70 uppercase tracking-widest">Logs Sent</span>
+          <span className="text-[9px] font-bold text-on-surface-variant/70 uppercase tracking-widest">{t('app.monitor.logs_sent')}</span>
           <span className="text-[12px] font-black font-mono text-on-surface flex items-center justify-end gap-1.5 min-w-[50px] bg-surface-container-low px-2 py-0.5 rounded border border-outline-variant/10">
             <Send className="w-3 h-3 text-on-surface-variant/50" />
             <span>{conn.sentCount || 0}</span>
@@ -582,7 +416,7 @@ function SendTargetCard({ conn }: { conn: SystemConnection }) {
         </div>
 
         <div className="flex flex-col items-end gap-1.5 border-l border-outline-variant/10 pl-5 relative h-full justify-center">
-          <span className="text-[9px] font-bold text-on-surface-variant/70 uppercase tracking-widest">Status</span>
+          <span className="text-[9px] font-bold text-on-surface-variant/70 uppercase tracking-widest">{t('app.monitor.status')}</span>
 
           {status === 'connected' ? (
             <div className="relative">
@@ -602,7 +436,7 @@ function SendTargetCard({ conn }: { conn: SystemConnection }) {
                     className="w-full text-left px-3 py-2.5 text-[10px] font-bold text-tertiary hover:bg-tertiary/10 flex items-center gap-2 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    REMOVE CONNECTION
+                    {t('app.monitor.remove_conn')}
                   </button>
                 </div>
               )}
@@ -637,6 +471,7 @@ function SendTargetCard({ conn }: { conn: SystemConnection }) {
 }
 
 function ServerInputCard({ srv, matchedDevices, deviceLogStats }: { srv: any, matchedDevices: any, deviceLogStats: Record<string, any> }) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const connStatus = srv.connectionStatus || 'connected';
@@ -689,7 +524,7 @@ function ServerInputCard({ srv, matchedDevices, deviceLogStats }: { srv: any, ma
                     ? 'bg-tertiary animate-pulse'
                     : 'bg-secondary'
                     }`}></span>
-                  {isDisconnected ? 'OFFLINE' : 'ONLINE'}
+                  {isDisconnected ? t('app.monitor.offline') : t('app.monitor.online')}
                 </span>
               </InfoTooltip>
               {/* Server Type Badge */}
@@ -709,7 +544,7 @@ function ServerInputCard({ srv, matchedDevices, deviceLogStats }: { srv: any, ma
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
-            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">DEVICES</span>
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.devices')}</span>
             <div className="flex items-center gap-1">
               <span className="text-[14px] font-black font-mono text-on-surface leading-none">{deviceCount}</span>
               {disconnectedDeviceCount > 0 && (
@@ -754,7 +589,7 @@ function ServerInputCard({ srv, matchedDevices, deviceLogStats }: { srv: any, ma
           ) : (
             <div className="px-3 py-3 text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-widest flex items-center justify-center gap-2 bg-surface-container-lowest/30 rounded-sm border border-dashed border-outline-variant/10">
               <Activity className="w-3 h-3 opacity-50" />
-              No devices mapped from this server
+              {t('app.monitor.no_devices_mapped')}
             </div>
           )}
         </div>
@@ -763,11 +598,14 @@ function ServerInputCard({ srv, matchedDevices, deviceLogStats }: { srv: any, ma
   );
 }
 
-function MqttServerCard({ server, devices, allCameras }: {
+function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLinkDeviceCamera }: {
   server: MqttServerConfig;
   devices: { devEui: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[];
   allCameras: MqttDeviceConfig[];
+  deviceCameraLinks: DeviceCameraLink[];
+  onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
 }) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const status = server.status || 'disconnected';
@@ -783,17 +621,6 @@ function MqttServerCard({ server, devices, allCameras }: {
 
   const cfg = statusConfig[status] || statusConfig.disconnected;
   const totalAlarms = devices.reduce((sum, d) => sum + d.alarmCount, 0);
-
-  const boundCamera = allCameras.find(c => c.id === server.cameraId);
-
-  const handleAssignCamera = async (cameraId: string) => {
-    try {
-      await apiClient.patch(`/api/v1/mqtt-servers/${server.id}`, { cameraId: cameraId || null });
-      console.log('[MQTT-Server] Assigned camera:', cameraId);
-    } catch (err: any) {
-      console.error('[MQTT-Server] Assign camera failed:', err);
-    }
-  };
 
   return (
     <div className={`mqtt-server-card bg-surface-container border border-outline-variant/10 px-4 py-3 pb-4 rounded-md border-l-[3px] ${cfg.border} shadow-sm transition-all hover:bg-surface-container-high/40 group`}>
@@ -850,54 +677,53 @@ function MqttServerCard({ server, devices, allCameras }: {
       <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
         <div className={`min-h-0 ${isExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
 
-          <div className="mb-3 px-3 py-2 bg-surface-container-lowest/40 rounded border border-outline-variant/5">
-            <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-              <Cpu className="w-3 h-3" /> Bound Camera
-            </label>
-            <select
-              value={server.cameraId || ''}
-              onChange={(e) => handleAssignCamera(e.target.value)}
-              className="w-full text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
-            >
-              <option value="">-- No Camera (Disabled Snapshot) --</option>
-              {allCameras.map(cam => (
-                <option key={cam.id} value={cam.id}>{cam.type.toUpperCase()} - {cam.cameraIp}:{cam.cameraPort} - {cam.status}</option>
-              ))}
-            </select>
-            <p className="text-[9px] text-on-surface-variant/60 mt-1">
-              If bound, when an MQTT alarm triggers, the server will try to extract a snapshot from this camera.
-            </p>
-          </div>
-
-          {/* MQTT Sensor Devices */}
           {devices.length > 0 && (
             <div className="mb-3">
               <div className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                <Radio className="w-3 h-3" /> MQTT Sensors
+                <Radio className="w-3 h-3" /> {t('app.monitor.mqtt_sensors')}
               </div>
               <div className="grid gap-1.5 border-l-2 border-outline-variant/10 pl-2 ml-1">
-                {devices.map((device) => (
-                  <div key={device.devEui} className="flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border border-outline-variant/5 hover:border-outline-variant/20 transition-colors">
-                    <InfoTooltip content="Device Profile" side="bottom">
-                      <span className="text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20">
-                        {device.deviceProfileName}
-                      </span>
-                    </InfoTooltip>
-                    <InfoTooltip content="Tên thiết bị" side="bottom">
-                      <span className="text-[11px] font-bold tracking-wide flex-1 truncate max-w-[200px] block text-on-surface-variant">{device.deviceName}</span>
-                    </InfoTooltip>
-                    <div className="flex w-full items-center justify-between gap-4">
-                      <InfoTooltip content="DevEUI (Mã định danh thiết bị)" side="bottom">
-                        <span className="text-[10px] font-mono font-medium text-on-surface-variant/70 min-w-[100px] bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/5">{device.devEui}</span>
-                      </InfoTooltip>
-                      <InfoTooltip content="Tổng alarm events nhận được">
-                        <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${device.alarmCount > 0 ? 'text-tertiary bg-tertiary/15 ring-1 ring-tertiary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
-                          {device.alarmCount} alarms
-                        </span>
-                      </InfoTooltip>
+                {devices.map((device) => {
+                  const link = deviceCameraLinks.find(l => l.devEui === device.devEui && l.mqttServerId === server.id);
+                  return (
+                    <div key={device.devEui} className="flex flex-col gap-1.5 px-3 py-2 bg-surface-container-lowest/40 rounded border border-outline-variant/5 hover:border-outline-variant/20 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <InfoTooltip content="Device Profile" side="bottom">
+                          <span className="text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20">
+                            {device.deviceProfileName}
+                          </span>
+                        </InfoTooltip>
+                        <InfoTooltip content="Tên thiết bị" side="bottom">
+                          <span className="text-[11px] font-bold tracking-wide flex-1 truncate max-w-[200px] block text-on-surface-variant">{device.deviceName}</span>
+                        </InfoTooltip>
+                        <div className="flex w-full items-center justify-between gap-4">
+                          <InfoTooltip content="DevEUI (Mã định danh thiết bị)" side="bottom">
+                            <span className="text-[10px] font-mono font-medium text-on-surface-variant/70 min-w-[100px] bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/5">{device.devEui}</span>
+                          </InfoTooltip>
+                          <InfoTooltip content="Tổng alarm events nhận được">
+                            <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${device.alarmCount > 0 ? 'text-tertiary bg-tertiary/15 ring-1 ring-tertiary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
+                              {device.alarmCount} {t('app.monitor.alarms')}
+                            </span>
+                          </InfoTooltip>
+                        </div>
+                      </div>
+                      {/* Device-level camera linking */}
+                      <div className="flex items-center gap-2 pl-1">
+                        <span className="text-[8px] font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">📷 Camera</span>
+                        <select
+                          value={link?.cameraId || ''}
+                          onChange={(e) => onLinkDeviceCamera(device.devEui, server.id, e.target.value || null)}
+                          className="flex-1 text-[10px] font-mono bg-surface-container border border-outline-variant/20 rounded px-1.5 py-1 text-on-surface"
+                        >
+                          <option value="">{t('app.monitor.no_camera_disabled')}</option>
+                          {allCameras.map(cam => (
+                            <option key={cam.id} value={cam.id}>{cam.type.toUpperCase()} - {cam.cameraIp}:{cam.cameraPort}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -905,7 +731,7 @@ function MqttServerCard({ server, devices, allCameras }: {
           {devices.length === 0 && (
             <div className="px-3 py-3 text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-widest flex items-center justify-center gap-2 bg-surface-container-lowest/30 rounded-sm border border-dashed border-outline-variant/10">
               <Activity className="w-3 h-3 opacity-50" />
-              Chưa nhận được data từ broker — waiting for events
+              {t('app.monitor.waiting_events')}
             </div>
           )}
         </div>

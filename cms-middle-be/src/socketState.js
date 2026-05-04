@@ -35,10 +35,23 @@ const devices = new Map();
 const mqttServers = [];
 
 /**
- * In-memory store for camera devices linked to MQTT servers.
+ * In-memory store for manually added camera devices (independent of MQTT).
  * Structure: [{ id, name, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl, snapshotDir, sdkPath, status, handle }]
  */
 const cameraDevices = [];
+
+/**
+ * In-memory store for device↔camera links (MQTT device level).
+ * Each entry maps a specific MQTT sensor device to a manually added camera.
+ * Structure: [{ devEui: string, mqttServerId: string, cameraId: string }]
+ */
+const deviceCameraLinks = [];
+
+/**
+ * In-memory store for AlertWall grid layout.
+ * Structure: { grids: [{ gridID, device: { server_serial, server_id, device_ip, device_name, device_type } } | null], gridCols: number }
+ */
+const gridLayout = { grids: [], gridCols: 3 };
 
 /**
  * Global variable to hold the Socket.IO server instance.
@@ -61,4 +74,4 @@ const init = (httpServer) => {
  */
 const getClientSockets = () => clientSockets;
 
-module.exports = { init, getClientSockets, connections, servers, devices, mqttServers, cameraDevices };
+module.exports = { init, getClientSockets, connections, servers, devices, mqttServers, cameraDevices, deviceCameraLinks, gridLayout };

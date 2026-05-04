@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { LogData } from '../types';
-import { TriangleAlert, Cloud, X } from 'lucide-react';
+import { TriangleAlert, Cloud, X, ChevronRight, ChevronDown } from 'lucide-react';
 
 export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }) {
+  const { t } = useTranslation();
   const rawSnapshot = log.snapshot || log.raw?.body?.snapshot;
   const snapshot = rawSnapshot
     ? (rawSnapshot.startsWith('data:') ? rawSnapshot : `data:image/jpeg;base64,${rawSnapshot}`)
     : null;
   const onClickOutside = (e: React.MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget) onClose() }
   // console.log("log ", log)
-  const [isShowImgRaw, setIsShowImgRaw] = useState<Boolean>(false)
+  const [isShowImgRaw, setIsShowImgRaw] = useState<boolean>(false);
+  const [isShowRawData, setIsShowRawData] = useState<boolean>(false);
   return (
     <div onClick={onClickOutside} className="log-popup-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-      <div className="log-popup-container relative w-full max-w-3xl bg-surface-container-low border border-outline-variant/30 rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in scale-up">
+      <div className="log-popup-container relative w-full max-w-6xl bg-surface-container-low border border-outline-variant/30 rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in scale-up">
         {/* Header */}
         <div className="log-popup-header p-4 border-b border-outline-variant/20 bg-surface-container flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -35,11 +38,11 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
 
         {/* Content */}
         <div className="log-popup-content flex-1 overflow-y-auto p-6 bg-[#0d0d0f] custom-scrollbar">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-[35%_1fr] gap-6">
             {/* Left: Info & Metadata */}
-            <div className="space-y-6">
+            <div className="space-y-6 max-h-[calc(90vh-8rem)] overflow-y-auto custom-scrollbar pr-2">
               <section>
-                <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3">Event Summary</h4>
+                <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3">{t('app.log_popup.event_summary')}</h4>
                 <div className="p-4 bg-surface-container-lowest/50 border border-outline-variant/10 rounded-sm">
                   <p className="text-[12px] font-mono text-on-surface font-medium leading-relaxed">
                     {log.raw?.body?.log_type?.toLowerCase()} : {log.raw?.body?.description?.toLowerCase()}
@@ -48,7 +51,7 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
               </section>
 
               <section>
-                <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3">System Metadata</h4>
+                <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3">{t('app.log_popup.system_metadata')}</h4>
                 <div className="space-y-2">
                   {[
                     { label: 'Server ID', value: log.server?.server_id || log.raw?.body?.server?.server_id },
@@ -85,19 +88,27 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center opacity-20 gap-2">
                       <Cloud className="w-10 h-10" />
-                      <span className="text-[9px] uppercase font-black">No media packet attached</span>
+                      <span className="text-[9px] uppercase font-black">{t('app.log_popup.no_media')}</span>
                     </div>
                   )}
                 </div>
               </section>
               {log.raw && (
                 <section>
-                  <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3">Raw Data Packet</h4>
-                  <div className="p-3 bg-black/40 rounded-sm border border-outline-variant/10">
-                    <pre onClick={() => setIsShowImgRaw(!isShowImgRaw)} className="cursor-pointer text-[9px] font-mono text-secondary-dim overflow-x-auto custom-scrollbar leading-tight whitespace-pre-wrap">
-                      {JSON.stringify(log.raw.body || log.raw, (key, value) => (key === 'snapshot' && !isShowImgRaw) ? '[IMAGE_BUFFER]' : value, 2)}
-                    </pre>
-                  </div>
+                  <h4 
+                    className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3 cursor-pointer flex items-center gap-1 hover:text-primary/80 transition-colors w-fit"
+                    onClick={() => setIsShowRawData(!isShowRawData)}
+                  >
+                    {isShowRawData ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    {t('app.log_popup.raw_data')}
+                  </h4>
+                  {isShowRawData && (
+                    <div className="p-3 bg-black/40 rounded-sm border border-outline-variant/10">
+                      <pre onClick={() => setIsShowImgRaw(!isShowImgRaw)} className="cursor-pointer text-[9px] font-mono text-secondary-dim overflow-x-auto custom-scrollbar leading-tight whitespace-pre-wrap">
+                        {JSON.stringify(log.raw.body || log.raw, (key, value) => (key === 'snapshot' && !isShowImgRaw) ? '[IMAGE_BUFFER]' : value, 2)}
+                      </pre>
+                    </div>
+                  )}
                 </section>
               )}
             </div>
@@ -113,7 +124,7 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
             onClick={onClose}
             className="cursor-pointer px-6 py-2 bg-primary text-primary-container text-[11px] font-black uppercase tracking-widest rounded-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/10"
           >
-            Close Report
+            {t('app.log_popup.close_report')}
           </button>
         </div>
       </div>

@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { SystemConfig } from '../types';
 import { Send, Cloud, Terminal } from 'lucide-react';
 import { updateSocketUrlAsync } from '../socket';
 
 export function ConfigSystem({ onSave, onClose, initialConfig }: { onSave: (config: SystemConfig) => void, onClose: () => void, initialConfig: SystemConfig }) {
+  const { t } = useTranslation();
   const [FE, setFE] = useState(initialConfig.fe);
   const [BE, setBE] = useState(initialConfig.be);
   const [mode, setMode] = useState<'interface' | 'system'>('system');
@@ -42,7 +44,7 @@ export function ConfigSystem({ onSave, onClose, initialConfig }: { onSave: (conf
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-8 bg-primary rounded-full shadow-[0_0_12px_rgba(192,132,252,0.5)]"></div>
             <div>
-              <h3 className="text-sm font-black tracking-[0.2em] uppercase text-on-surface">Config System Connection</h3>
+              <h3 className="text-sm font-black tracking-[0.2em] uppercase text-on-surface">{t('app.config_system.title')}</h3>
             </div>
           </div>
           <button
@@ -57,7 +59,7 @@ export function ConfigSystem({ onSave, onClose, initialConfig }: { onSave: (conf
           {/* Mode Switcher */}
           <div className="space-y-3">
             <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1 transition-colors group-focus-within:text-primary">
-              Operation Mode
+              {t('app.config_system.operation_mode')}
             </label>
             <div className="flex bg-black/40 p-1 rounded-sm border border-outline-variant/30">
               {/* <button
@@ -81,14 +83,14 @@ export function ConfigSystem({ onSave, onClose, initialConfig }: { onSave: (conf
                   }`}
               >
                 <Send className={`w-3.5 h-3.5`} />
-                System
+                {t('app.config_system.system')}
               </button>
             </div>
           </div>
 
           <div className="space-y-1.5 group">
             <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1 transition-colors group-focus-within:text-primary">
-              Target IP Address
+              {t('app.config_system.target_ip')}
             </label>
             <div className="relative">
               <input
@@ -107,7 +109,7 @@ export function ConfigSystem({ onSave, onClose, initialConfig }: { onSave: (conf
 
           <div className="space-y-1.5 group">
             <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1 transition-colors group-focus-within:text-primary">
-              Access Port
+              {t('app.config_system.access_port')}
             </label>
             <div className="relative">
               <input
@@ -130,21 +132,21 @@ export function ConfigSystem({ onSave, onClose, initialConfig }: { onSave: (conf
               onClick={onClose}
               className="flex-1 px-6 py-3 border border-outline-variant/30 text-[11px] font-black uppercase tracking-widest rounded-sm hover:bg-surface-container-high transition-all text-on-surface-variant"
             >
-              Cancel
+              {t('app.config_system.cancel')}
             </button>
             <button
               disabled={isConnecting}
               type="submit"
               className="flex-1 px-6 py-3 bg-primary text-primary-container text-[11px] font-black uppercase tracking-widest rounded-sm hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(192,132,252,0.2)]"
             >
-              {isConnecting ? 'Connecting...' : 'Confirm Sync'}
+              {isConnecting ? t('app.config_system.connecting') : t('app.config_system.confirm')}
             </button>
           </div>
         </form>
 
         <div className="px-8 pb-6 text-center">
           <p className="text-[9px] text-on-surface-variant/40 font-mono italic">
-            Note: Changes will re-initialize the socket handshake protocol.
+            {t('app.config_system.note')}
           </p>
         </div>
       </div>

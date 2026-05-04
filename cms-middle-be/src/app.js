@@ -14,6 +14,8 @@ const connectionsRoutes = require('./routes/connections.routes');
 const serverRoutes = require('./routes/server.routes');
 const mqttRoutes = require('./routes/mqtt.routes');
 const camerasRoutes = require('./routes/cameras.routes');
+const deviceCameraLinkRoutes = require('./routes/device-camera-link.routes');
+const gridLayoutRoutes = require('./routes/grid-layout.routes');
 const { getClientSockets } = require('./socketState');
 
 const app = express();
@@ -157,5 +159,7 @@ app.use(connectionsRoutes);
 app.use(serverRoutes.router);
 app.use(mqttRoutes);
 app.use(camerasRoutes);
+app.use(deviceCameraLinkRoutes);
+app.use(gridLayoutRoutes);
 
 module.exports = app;

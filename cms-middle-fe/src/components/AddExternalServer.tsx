@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { AddExternalServerProps, MqttServerConfig } from '../types';
 import { TriangleAlert, Inbox, Send, Cloud, Terminal, Radio } from 'lucide-react';
 
-export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '', initialPort = '', initialMode = 'receive' }: AddExternalServerProps) {
+export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '', initialPort = '', initialMode = 'receive', initialConnectionType = 'svms' }: AddExternalServerProps) {
+  const { t } = useTranslation();
   // Connection type: 'svms' or 'mqtt'
-  const [connectionType, setConnectionType] = useState<'svms' | 'mqtt'>('svms');
+  const [connectionType, setConnectionType] = useState<'svms' | 'mqtt'>(initialConnectionType);
 
   // SVMS fields
   const [ip, setIp] = useState(initialIp);
@@ -48,7 +50,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-8 bg-primary rounded-full shadow-[0_0_12px_rgba(192,132,252,0.5)]"></div>
             <div>
-              <h3 className="text-sm font-black tracking-[0.2em] uppercase text-on-surface">Add Connection</h3>
+              <h3 className="text-sm font-black tracking-[0.2em] uppercase text-on-surface">{t('app.add_server.title')}</h3>
             </div>
           </div>
           <button
@@ -63,7 +65,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
           {/* Connection Type Switcher */}
           <div className="space-y-3">
             <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1">
-              Connection Type
+              {t('app.add_server.conn_type')}
             </label>
             <div className="flex bg-black/40 p-1 rounded-sm border border-outline-variant/30">
               <button
@@ -97,7 +99,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
               {/* Mode Switcher */}
               <div className="space-y-3">
                 <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1 transition-colors group-focus-within:text-primary">
-                  Operation Mode
+                  {t('app.add_server.op_mode')}
                 </label>
                 <div className="flex bg-black/40 p-1 rounded-sm border border-outline-variant/30">
                   <button
@@ -109,7 +111,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
                       }`}
                   >
                     <Inbox className={`w-3.5 h-3.5 ${mode === 'receive' ? 'animate-bounce' : ''}`} />
-                    Receive
+                    {t('app.add_server.receive')}
                   </button>
                   <button
                     type="button"
@@ -120,14 +122,14 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
                       }`}
                   >
                     <Send className={`w-3.5 h-3.5 ${mode === 'send' ? 'animate-pulse' : ''}`} />
-                    Send
+                    {t('app.add_server.send')}
                   </button>
                 </div>
               </div>
 
               <div className="space-y-1.5 group">
                 <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1">
-                  Target IP Address
+                  {t('app.add_server.target_ip')}
                 </label>
                 <div className="relative">
                   <input
@@ -146,7 +148,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
 
               <div className="space-y-1.5 group">
                 <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1">
-                  Access Port
+                  {t('app.add_server.access_port')}
                 </label>
                 <div className="relative">
                   <input
@@ -171,7 +173,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
               {/* Protocol */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">
-                  Protocol
+                  {t('app.add_server.protocol')}
                 </label>
                 <div className="flex bg-black/40 p-1 rounded-sm border border-outline-variant/30">
                   <button
@@ -201,7 +203,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
               <div className="flex gap-3">
                 <div className="space-y-1.5 flex-[2]">
                   <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">
-                    Broker Host
+                    {t('app.add_server.broker_host')}
                   </label>
                   <input
                     type="text"
@@ -214,7 +216,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
                 </div>
                 <div className="space-y-1.5 flex-1">
                   <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">
-                    Port
+                    {t('app.add_server.port')}
                   </label>
                   <input
                     type="text"
@@ -231,7 +233,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">
-                    Subscribe Topic
+                    {t('app.add_server.sub_topic')}
                   </label>
                   <button
                     type="button"
@@ -245,7 +247,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
                       : 'text-on-surface-variant hover:text-cyan-400 border border-transparent hover:border-outline-variant/30'
                       }`}
                   >
-                    {useDefaultTopic ? '✓ Default Template' : 'Use Default Template'}
+                    {useDefaultTopic ? t('app.add_server.default_active') : t('app.add_server.use_default')}
                   </button>
                 </div>
                 <input
@@ -266,7 +268,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
               onClick={onClose}
               className="flex-1 px-6 py-3 border border-outline-variant/30 text-[11px] font-black uppercase tracking-widest rounded-sm hover:bg-surface-container-high transition-all text-on-surface-variant"
             >
-              Cancel
+              {t('app.add_server.cancel')}
             </button>
             <button
               type="submit"
@@ -275,7 +277,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
                 : 'bg-primary text-primary-container hover:bg-primary/90 shadow-[0_0_20px_rgba(192,132,252,0.2)]'
                 }`}
             >
-              {connectionType === 'mqtt' ? 'Connect MQTT' : 'Confirm Sync'}
+              {connectionType === 'mqtt' ? t('app.add_server.connect_mqtt') : t('app.add_server.confirm')}
             </button>
           </div>
         </form>
@@ -283,8 +285,8 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
         <div className="px-8 pb-6 text-center">
           <p className="text-[9px] text-on-surface-variant/40 font-mono italic">
             {connectionType === 'mqtt'
-              ? 'MQTT client will connect to the broker and subscribe to the specified topic.'
-              : 'Note: Changes will re-initialize the socket handshake protocol.'}
+              ? t('app.add_server.mqtt_note')
+              : t('app.add_server.svms_note')}
           </p>
         </div>
       </div>

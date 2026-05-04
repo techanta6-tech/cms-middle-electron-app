@@ -1,19 +1,20 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
+import { useTranslation } from 'react-i18next';
 import { ConnectionsMonitor } from './components/ConnectionsMonitor';
 import { LogPopup } from './components/LogPopup';
 import { useSocketManager } from './hooks/useSocketManager';
-import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Camera, CameraOff, Plus, Minus, X, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Globe, Languages } from 'lucide-react';
+import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages } from 'lucide-react';
 import { ConfigSystem } from './components/ConfigSystem';
 import apiClient from './api/apiClient';
 import { LogEntry } from './components/LogEntry';
-import { CameraFeed } from './components/CameraFeed';
+
 import type { LogData, ServerData, DeviceData } from './types';
 import LoginPage from './components/LoginPage';
 import { authApi } from './api/authApi';
 import { AlertWall } from './components/AlertWall';
-import { CameraForm } from './components/CameraForm';
+
 import { DevicesManager } from './components/DevicesManager';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -45,6 +46,7 @@ function LogFilter({
   onToggleDevice: (ip: string) => void;
   onSelectEventType: (type: string | null) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -98,10 +100,10 @@ function LogFilter({
           <div className="px-3 pt-3 pb-1">
             <div className="flex items-center gap-1.5 mb-2">
               <Cpu className="w-3 h-3 text-secondary" />
-              <span className="text-[9px] font-black uppercase tracking-widest text-secondary">Servers</span>
+              <span className="text-[9px] font-black uppercase tracking-widest text-secondary">{t('app.filter.servers')}</span>
             </div>
             {serverList.length === 0 ? (
-              <p className="text-[10px] text-on-surface-variant/40 py-1 pl-1">Chưa có server nào</p>
+              <p className="text-[10px] text-on-surface-variant/40 py-1 pl-1">{t('app.filter.no_servers')}</p>
             ) : (
               <div className="flex flex-col gap-0.5">
                 {serverList.map(srv => {
@@ -132,10 +134,10 @@ function LogFilter({
           <div className="px-3 pb-3 pt-1">
             <div className="flex items-center gap-1.5 mb-2">
               <MonitorSmartphone className="w-3 h-3 text-tertiary" />
-              <span className="text-[9px] font-black uppercase tracking-widest text-tertiary">Devices</span>
+              <span className="text-[9px] font-black uppercase tracking-widest text-tertiary">{t('app.filter.devices')}</span>
             </div>
             {deviceList.length === 0 ? (
-              <p className="text-[10px] text-on-surface-variant/40 py-1 pl-1">Chưa có device nào</p>
+              <p className="text-[10px] text-on-surface-variant/40 py-1 pl-1">{t('app.filter.no_devices')}</p>
             ) : (
               <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto custom-scrollbar">
                 {deviceList.map(dev => {
@@ -166,10 +168,10 @@ function LogFilter({
           <div className="px-3 pb-3 pt-1">
             <div className="flex items-center gap-1.5 mb-2">
               <Terminal className="w-3 h-3 text-warning" />
-              <span className="text-[9px] font-black uppercase tracking-widest text-warning">Event Types</span>
+              <span className="text-[9px] font-black uppercase tracking-widest text-warning">{t('app.filter.event_types')}</span>
             </div>
             {eventTypes.length === 0 ? (
-              <p className="text-[10px] text-on-surface-variant/40 py-1 pl-1">Chưa có event type nào</p>
+              <p className="text-[10px] text-on-surface-variant/40 py-1 pl-1">{t('app.filter.no_event_types')}</p>
             ) : (
               <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto custom-scrollbar">
                 <button
@@ -180,7 +182,7 @@ function LogFilter({
                     }`}>
                     {!selectedEventType && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
                   </div>
-                  <span className="text-[11px] font-semibold text-on-surface truncate">Tất cả (All)</span>
+                  <span className="text-[11px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
                 </button>
                 {eventTypes.map(type => {
                   const checked = selectedEventType === type;
@@ -211,6 +213,7 @@ function LogFilter({
 
 
 function Dashboard() {
+  const { t, i18n } = useTranslation();
   const {
     isConnected,
     logs,
@@ -232,8 +235,24 @@ function Dashboard() {
     mqttServers,
     mqttLogs,
     cameraDevices,
-    fetchCameras
+    fetchCameras,
+    deviceCameraLinks,
+    handleLinkDeviceCamera,
+    gridLayout,
+    saveGridLayout
   } = useSocketManager();
+
+  // Grid state synced from BE
+  const grids = gridLayout.grids;
+  const gridCols = gridLayout.gridCols;
+  const setGrids = useCallback((updater: any) => {
+    const newGrids = typeof updater === 'function' ? updater(gridLayout.grids) : updater;
+    saveGridLayout(newGrids, gridLayout.gridCols);
+  }, [gridLayout, saveGridLayout]);
+  const setGridCols = useCallback((updater: any) => {
+    const newCols = typeof updater === 'function' ? updater(gridLayout.gridCols) : updater;
+    saveGridLayout(gridLayout.grids, newCols);
+  }, [gridLayout, saveGridLayout]);
 
   const displayLogCount = KEEP_TOTAL_LOG_COUNT ? totalLogCount : logs.length;
 
@@ -243,9 +262,7 @@ function Dashboard() {
   const [rightTab, setRightTab] = useState<'logs' | 'devices'>('logs');
   const [mainTab, setMainTab] = useState<'alert' | 'connections' | 'devices'>('alert');
   const [visibleAlerts, setVisibleAlerts] = useState<number>(30);
-  const [gridCols, setGridCols] = useState<number>(3);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
-  const [isAddingDevice, setIsAddingDevice] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const isNarrow = windowWidth < 800;
   const [isConfigSystemOpen, setIsConfigSystemOpen] = useState(false);
@@ -254,7 +271,6 @@ function Dashboard() {
     return saved !== 'false';
   });
   const [langOpen, setLangOpen] = useState(false);
-  const [currentLang, setCurrentLang] = useState('EN');
 
   const toggleLogSaving = async () => {
     const newState = !isLogSaving;
@@ -266,16 +282,31 @@ function Dashboard() {
       console.error('Failed to toggle log saving', e);
     }
   };
-  const [grids, setGrids] = useState<{
-    gridID: number,
-    device: {
-      server_serial: string,
-      server_id: string,
-      device_ip: string,
-      device_name: string,
-      device_type: string
-    }
-  }[]>([]);
+  // Extract MQTT devices per server from logs (for sidebar)
+  const mqttDevicesByServer = useMemo(() => {
+    const map: Record<string, { devEui: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[]> = {};
+    (mqttLogs || []).forEach(log => {
+      const sid = log.mqttServerId;
+      const di = (log as any).payload?.deviceInfo;
+      if (!sid || !di?.devEui) return;
+      if (!map[sid]) map[sid] = [];
+      const existing = map[sid].find(d => d.devEui === di.devEui);
+      const evtCount = (log as any).payload?.object?.events?.length || 0;
+      if (existing) {
+        existing.alarmCount += evtCount;
+        existing.lastSeen = log.time;
+      } else {
+        map[sid].push({
+          devEui: di.devEui,
+          deviceName: di.deviceName || 'Unknown',
+          deviceProfileName: di.deviceProfileName || 'Unknown',
+          alarmCount: evtCount,
+          lastSeen: log.time,
+        });
+      }
+    });
+    return map;
+  }, [mqttLogs]);
 
   const toggleServer = (id: string) =>
     setSelectedServers(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
@@ -334,21 +365,21 @@ function Dashboard() {
                 onClick={() => setMainTab('alert')}
               >
                 <Monitor className={`w-5 h-5 ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`} />
-                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`}>Alert Wall</h2>
+                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.alert_wall')}</h2>
               </button>
               <button
                 className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'connections' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                 onClick={() => setMainTab('connections')}
               >
                 <Network className={`w-5 h-5 ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`} />
-                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`}>Connections Monitor</h2>
+                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.connections_monitor')}</h2>
               </button>
               <button
                 className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                 onClick={() => setMainTab('devices')}
               >
                 <Cpu className={`w-5 h-5 ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`} />
-                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`}>Devices</h2>
+                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.devices')}</h2>
               </button>
             </div>
             {/* <button onClick={() => console.log(servers)}>CLick</button> */}
@@ -356,8 +387,7 @@ function Dashboard() {
               <AlertWall
                 logs={logs}
                 cameras={Object.values(devices).flatMap(server => server || [])}
-                cameraDevices={cameraDevices}
-                mqttServers={mqttServers}
+                deviceCameraLinks={deviceCameraLinks}
                 onSelectLog={setSelectedLog}
                 gridCols={gridCols}
                 setGridCols={setGridCols}
@@ -382,6 +412,8 @@ function Dashboard() {
                 mqttServers={mqttServers}
                 mqttLogs={mqttLogs}
                 cameraDevices={cameraDevices}
+                deviceCameraLinks={deviceCameraLinks}
+                onLinkDeviceCamera={handleLinkDeviceCamera}
               />
             )}
             {mainTab === 'devices' && (
@@ -411,236 +443,231 @@ function Dashboard() {
           </button>
         )}
         {mainTab === 'alert' && (
-        <aside
-          className={`alert-wall-right-section bg-surface-container-lowest flex flex-col overflow-hidden shadow-2xl z-10 transition-transform duration-300 ${isNarrow
-            ? `fixed bottom-0 left-0 right-0 h-1/4 border-t border-outline-variant/20 ${rightPanelVisible ? 'translate-y-0' : 'translate-y-full'}`
-            : 'col-span-1 relative w-full'
-            }`}
-        >
-          <div className="flex items-center border-b border-outline-variant/10 shrink-0">
-            <button
-              onClick={() => setRightTab('logs')}
-              className={`h-full flex-3 py-3 text-[10px] tracking-widest font-bold uppercase transition-colors flex items-center justify-center gap-2 ${rightTab === 'logs' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-on-surface-variant hover:bg-surface-container-low/50 border-b-2 border-transparent'}`}
-            >
-              <Terminal className="w-3.5 h-3.5" />Logs ({displayLogCount})
-            </button>
-            <button
-              onClick={() => setRightTab('devices')}
-              className={`h-full flex-1 py-3 text-[10px] tracking-widest font-bold uppercase transition-colors flex items-center justify-center gap-2 ${rightTab === 'devices' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-on-surface-variant hover:bg-surface-container-low/50 border-b-2 border-transparent'}`}
-            >
-              <MonitorSmartphone className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <aside
+            className={`alert-wall-right-section bg-surface-container-lowest flex flex-col overflow-hidden shadow-2xl z-10 transition-transform duration-300 ${isNarrow
+              ? `fixed bottom-0 left-0 right-0 h-1/4 border-t border-outline-variant/20 ${rightPanelVisible ? 'translate-y-0' : 'translate-y-full'}`
+              : 'col-span-1 relative w-full'
+              }`}
+          >
+            <div className="flex items-center border-b border-outline-variant/10 shrink-0">
+              <button
+                onClick={() => setRightTab('logs')}
+                className={`h-full flex-3 py-3 text-[10px] tracking-widest font-bold uppercase transition-colors flex items-center justify-center gap-2 ${rightTab === 'logs' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-on-surface-variant hover:bg-surface-container-low/50 border-b-2 border-transparent'}`}
+              >
+                <Terminal className="w-3.5 h-3.5" />{t('app.alert_wall.logs')} ({displayLogCount})
+              </button>
+              <button
+                onClick={() => setRightTab('devices')}
+                className={`h-full flex-1 py-3 text-[10px] tracking-widest font-bold uppercase transition-colors flex items-center justify-center gap-2 ${rightTab === 'devices' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-on-surface-variant hover:bg-surface-container-low/50 border-b-2 border-transparent'}`}
+              >
+                <MonitorSmartphone className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
-          {rightTab === 'logs' ? (
-            <>
-              <div className="relative p-3 flex items-center justify-between border-b border-outline-variant/10 shrink-0 bg-surface-container-lowest">
-                <span className="text-[10px] font-bold tracking-widest text-on-surface-variant uppercase">Filter Logs</span>
-                <LogFilter
-                  servers={servers}
-                  devices={devices}
-                  eventTypes={eventTypes}
-                  selectedServers={selectedServers}
-                  selectedDevices={selectedDevices}
-                  selectedEventType={selectedEventType}
-                  onToggleServer={toggleServer}
-                  onToggleDevice={toggleDevice}
-                  onSelectEventType={setSelectedEventType}
-                />
-              </div>
+            {rightTab === 'logs' ? (
+              <>
+                <div className="relative p-3 flex items-center justify-between border-b border-outline-variant/10 shrink-0 bg-surface-container-lowest">
+                  <span className="text-[10px] font-bold tracking-widest text-on-surface-variant uppercase">{t('app.filter.filter_logs')}</span>
+                  <LogFilter
+                    servers={servers}
+                    devices={devices}
+                    eventTypes={eventTypes}
+                    selectedServers={selectedServers}
+                    selectedDevices={selectedDevices}
+                    selectedEventType={selectedEventType}
+                    onToggleServer={toggleServer}
+                    onToggleDevice={toggleDevice}
+                    onSelectEventType={setSelectedEventType}
+                  />
+                </div>
 
-              <div className="app-logs-container flex-1 overflow-y-auto custom-scrollbar p-0 bg-surface-container-low/10">
-                {filteredLogs.length > 0 ? (
-                  <div className="flex flex-col">
-                    {[...filteredLogs].reverse().slice(0, visibleAlerts).map((log, idx) => (
-                      <div key={log.id || idx} className="border-b border-outline-variant/5">
-                        <LogEntry log={log} onClick={() => setSelectedLog(log)} />
-                      </div>
-                    ))}
-                    {visibleAlerts < filteredLogs.length && (
-                      <button
-                        onClick={() => setVisibleAlerts(prev => prev + 10)}
-                        className='p-2 text-[12px] uppercase font-bold tracking-widest text-on-surface-variant hover:bg-surface-container-low/50 hover:text-white 
+                <div className="app-logs-container flex-1 overflow-y-auto custom-scrollbar p-0 bg-surface-container-low/10">
+                  {filteredLogs.length > 0 ? (
+                    <div className="flex flex-col">
+                      {[...filteredLogs].reverse().slice(0, visibleAlerts).map((log, idx) => (
+                        <div key={log.id || idx} className="border-b border-outline-variant/5">
+                          <LogEntry log={log} onClick={() => setSelectedLog(log)} />
+                        </div>
+                      ))}
+                      {visibleAlerts < filteredLogs.length && (
+                        <button
+                          onClick={() => setVisibleAlerts(prev => prev + 10)}
+                          className='p-2 text-[12px] uppercase font-bold tracking-widest text-on-surface-variant hover:bg-surface-container-low/50 hover:text-white 
                       transition-all duration-200
-                      border-b-2 border-transparent cursor-pointer'>See more alerts</button>
-                    )}
+                      border-b-2 border-transparent cursor-pointer'>{t('app.alert_wall.see_more_alerts')}</button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-10 flex flex-col items-center justify-center opacity-20 gap-2 h-full text-center">
+                      <Terminal className="w-8 h-8" />
+                      <span className="text-[10px] uppercase font-bold tracking-widest">{t('app.alert_wall.logs_queue_empty')}</span>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="device-draggable-container flex-1 overflow-y-auto custom-scrollbar p-3 bg-surface-container-low/10 flex flex-col gap-2 relative">
+                <div className="flex items-center justify-between sticky top-0 py-1 z-10 backdrop-blur-md mb-2 rounded-md px-1">
+                  <span className="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-70 font-bold">{t('app.alert_wall.drag_to_assign')}</span>
+                  <button
+                    onClick={() => {
+                      console.log(devices)
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      setGrids((prevGrids: any[]) => {
+                        const newGrids = [...prevGrids];
+                        const maxGrids = Math.pow(gridCols, 2);
+                        const allDevices = Object.values(devices).flatMap(server =>
+                          (server.devices || []).map(dev => ({
+                            ...dev,
+                            server_serial: server.server.serial,
+                            server_id: server.server.server_id
+                          }))
+                        );
+                        console.log('allDevices', allDevices)
+                        for (const dev of allDevices) {
+                          const isAssigned = newGrids.some(g => g && g.device.server_id === dev.server_id && g.device.device_ip === dev.ip && g.device.device_name === dev.name);
+                          if (isAssigned) continue;
+
+                          let emptyGridID = -1;
+                          for (let i = 0; i < maxGrids; i++) {
+                            if (!newGrids[i]) {
+                              emptyGridID = i;
+                              break;
+                            }
+                          }
+                          console.log('emptyGridID', emptyGridID)
+                          if (emptyGridID === -1) break;
+
+                          newGrids[emptyGridID] = {
+                            gridID: emptyGridID,
+                            device: {
+                              server_serial: dev.server_serial,
+                              server_id: dev.server_id,
+                              device_ip: dev.ip,
+                              device_name: dev.name,
+                              device_type: dev.type || 'vms'
+                            }
+                          };
+                        }
+                        console.log('newGrids', newGrids)
+                        return newGrids;
+                      });
+                    }}
+                    className="text-[9px] font-bold uppercase tracking-widest bg-primary/20 hover:bg-primary/30 text-primary px-3 py-1.5 rounded transition-all active:scale-95 cursor-pointer shadow-sm"
+                  >
+                    {t('app.alert_wall.auto_config')}
+                  </button>
+                </div>
+
+                {/* SVMS Camera Devices Section */}
+                <div className="flex items-center gap-2 mb-1 px-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">{t('app.alert_wall.svms_camera_devices')}</span>
+                  <div className="flex-1 h-px bg-primary/10"></div>
+                </div>
+
+                {Object.values(devices).flatMap(server => server.devices?.map(dev => {
+                  const assignedGrids = grids.filter(g => g.device.server_id === server.server.server_id && g.device.device_ip === dev.ip && g.device.device_name === dev.name);
+                  const assignedText = assignedGrids.map(g => g.gridID + 1).join(', ');
+                  return (
+                    <div
+                      key={`${server.server.server_id}-${dev.ip}-${dev.name}`}
+                      draggable
+                      title={assignedGrids.length > 0 ? `${t('app.alert_wall.assigned_to_grid')}${assignedText}` : undefined}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('application/json', JSON.stringify({
+                          server_serial: server.server.serial,
+                          server_id: server.server.server_id,
+                          device_ip: dev.ip,
+                          device_name: dev.name,
+                          device_type: dev.type || 'vms'
+                        }));
+                      }}
+                      className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-primary/5 border-primary/20' : 'bg-surface-container border-outline-variant/10'}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex flex-col">
+                          <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-primary transition-colors truncate">{dev.name}</span>
+                          <div className="flex gap-0.5 overflow-hidden">
+                            <span className="text-[9px] text-on-surface-variant/70 font-mono">
+                              {server.server.server_id} - {dev.ip}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium">{dev.type || 'vms'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }))}
+
+                {!Object.values(devices).some(s => s.devices?.length > 0) && (
+                  <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
+                    <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.alert_wall.no_svms_devices')}</span>
                   </div>
-                ) : (
-                  <div className="p-10 flex flex-col items-center justify-center opacity-20 gap-2 h-full text-center">
-                    <Terminal className="w-8 h-8" />
-                    <span className="text-[10px] uppercase font-bold tracking-widest">Logs queue empty</span>
+                )}
+
+                {/* MQTT Sensor Devices Section */}
+                <div className="flex items-center gap-2 mt-4 mb-1 px-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/80">{t('app.alert_wall.mqtt_sensor_devices')}</span>
+                  <div className="flex-1 h-px bg-amber-400/10"></div>
+                </div>
+
+                {mqttServers.map(ms => {
+                  const mqttDevs = mqttDevicesByServer[ms.id] || [];
+                  if (mqttDevs.length === 0) return null;
+                  return (
+                    <div key={ms.id} className="flex flex-col gap-1 mb-2">
+                      <div className="text-[8px] font-bold uppercase tracking-widest text-on-surface-variant/50 px-1">
+                        {ms.brokerHost}:{ms.brokerPort}
+                      </div>
+                      {mqttDevs.map(dev => {
+                        const assignedGrids = grids.filter((g: any) => g && g.device.device_ip === dev.devEui && g.device.server_id === `mqtt-${ms.id}`);
+                        const assignedText = assignedGrids.map((g: any) => g.gridID + 1).join(', ');
+                        const link = deviceCameraLinks.find(l => l.devEui === dev.devEui && l.mqttServerId === ms.id);
+                        return (
+                          <div
+                            key={`${ms.id}-${dev.devEui}`}
+                            draggable
+                            title={assignedGrids.length > 0 ? `${t('app.alert_wall.assigned_to_grid')}${assignedText}` : undefined}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('application/json', JSON.stringify({
+                                server_serial: ms.id,
+                                server_id: `mqtt-${ms.id}`,
+                                device_ip: dev.devEui,
+                                device_name: dev.deviceName,
+                                device_type: 'mqtt-sensor'
+                              }));
+                            }}
+                            className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-amber-400/5 border-amber-400/20' : 'bg-surface-container border-outline-variant/10'}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex flex-col">
+                                <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-amber-400 transition-colors truncate">{dev.deviceName}</span>
+                                <div className="flex gap-0.5 overflow-hidden">
+                                  <span className="text-[9px] text-on-surface-variant/70 font-mono">
+                                    {dev.devEui}</span>
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-1 shrink-0">
+                                <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium">mqtt-sensor</span>
+                                {link && <span className="text-[8px] px-1 py-0.5 rounded uppercase font-bold bg-cyan-500/20 text-cyan-500">📷 {link.cameraId.slice(-6)}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+
+                {!mqttServers.some(ms => (mqttDevicesByServer[ms.id] || []).length > 0) && (
+                  <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
+                    <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.alert_wall.no_mqtt_devices')}</span>
                   </div>
                 )}
               </div>
-            </>
-          ) : (
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 bg-surface-container-low/10 flex flex-col gap-2 relative">
-              <div className="flex items-center justify-between sticky top-0 py-1 z-10 backdrop-blur-md mb-2 rounded-md px-1">
-                <span className="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-70 font-bold">Drag to assign</span>
-                <button
-                  onClick={() => {
-                    console.log(devices)
-                    setGrids(prevGrids => {
-                      const newGrids = [...prevGrids];
-                      const maxGrids = Math.pow(gridCols, 2);
-                      const allDevices = Object.values(devices).flatMap(server =>
-                        (server.devices || []).map(dev => ({
-                          ...dev,
-                          server_serial: server.server.serial,
-                          server_id: server.server.server_id
-                        }))
-                      );
-                      console.log('allDevices', allDevices)
-                      for (const dev of allDevices) {
-                        const isAssigned = newGrids.some(g => g && g.device.server_id === dev.server_id && g.device.device_ip === dev.ip && g.device.device_name === dev.name);
-                        if (isAssigned) continue;
-
-                        let emptyGridID = -1;
-                        for (let i = 0; i < maxGrids; i++) {
-                          if (!newGrids[i]) {
-                            emptyGridID = i;
-                            break;
-                          }
-                        }
-                        console.log('emptyGridID', emptyGridID)
-                        if (emptyGridID === -1) break;
-
-                        newGrids[emptyGridID] = {
-                          gridID: emptyGridID,
-                          device: {
-                            server_serial: dev.server_serial,
-                            server_id: dev.server_id,
-                            device_ip: dev.ip,
-                            device_name: dev.name,
-                            device_type: dev.type || 'vms'
-                          }
-                        };
-                      }
-                      console.log('newGrids', newGrids)
-                      return newGrids;
-                    });
-                  }}
-                  className="text-[9px] font-bold uppercase tracking-widest bg-primary/20 hover:bg-primary/30 text-primary px-3 py-1.5 rounded transition-all active:scale-95 cursor-pointer shadow-sm"
-                >
-                  Auto Config
-                </button>
-              </div>
-              
-              {/* SVMS Camera Devices Section */}
-              <div className="flex items-center gap-2 mb-1 px-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">SVMS Camera Devices</span>
-                <div className="flex-1 h-px bg-primary/10"></div>
-              </div>
-              
-              {Object.values(devices).flatMap(server => server.devices?.map(dev => {
-                const assignedGrids = grids.filter(g => g.device.server_id === server.server.server_id && g.device.device_ip === dev.ip && g.device.device_name === dev.name);
-                const assignedText = assignedGrids.map(g => g.gridID + 1).join(', ');
-                return (
-                  <div
-                    key={`${server.server.server_id}-${dev.ip}-${dev.name}`}
-                    draggable
-                    title={assignedGrids.length > 0 ? `Đang hiển thị trên ô: ${assignedText}` : undefined}
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData('application/json', JSON.stringify({
-                        server_serial: server.server.serial,
-                        server_id: server.server.server_id,
-                        device_ip: dev.ip,
-                        device_name: dev.name,
-                        device_type: dev.type || 'vms'
-                      }));
-                    }}
-                    className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-primary/5 border-primary/20' : 'bg-surface-container border-outline-variant/10'}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex flex-col">
-                        <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-primary transition-colors truncate">{dev.name}</span>
-                        <div className="flex gap-0.5 overflow-hidden">
-                          <span className="text-[9px] text-on-surface-variant/70 font-mono">
-                            {server.server.server_id} - {dev.ip}</span>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium">{dev.type || 'vms'}</span>
-                      </div>
-                    </div>
-                  </div>
-                )
-              }))}
-
-              {!Object.values(devices).some(s => s.devices?.length > 0) && (
-                <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
-                  <span className="text-[9px] uppercase font-bold tracking-widest">No SVMS Devices</span>
-                </div>
-              )}
-
-              {/* Independent Camera Devices Section */}
-              <div className="flex items-center gap-2 mt-4 mb-1 px-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-cyan-500/80">Camera Devices</span>
-                <div className="flex-1 h-px bg-cyan-500/10"></div>
-              </div>
-
-              {cameraDevices.map(cam => {
-                const assignedGrids = grids.filter(g => g.device.server_id === 'LOCAL_CAMERA' && g.device.device_ip === cam.cameraIp && g.device.device_name === cam.id);
-                const assignedText = assignedGrids.map(g => g.gridID + 1).join(', ');
-                return (
-                  <div
-                    key={cam.id}
-                    draggable
-                    title={assignedGrids.length > 0 ? `Đang hiển thị trên ô: ${assignedText}` : undefined}
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData('application/json', JSON.stringify({
-                        server_serial: 'LOCAL_CAMERA',
-                        server_id: 'LOCAL_CAMERA',
-                        device_ip: cam.cameraIp,
-                        device_name: cam.id,
-                        device_type: cam.type || 'camera'
-                      }));
-                    }}
-                    className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-cyan-500/5 border-cyan-500/20' : 'bg-surface-container border-outline-variant/10'}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex flex-col">
-                        <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-cyan-500 transition-colors truncate">Camera: {cam.cameraIp}</span>
-                        <div className="flex gap-0.5 overflow-hidden">
-                          <span className="text-[9px] text-on-surface-variant/70 font-mono">
-                            {cam.id}</span>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium">{cam.type}</span>
-                        <span className={`text-[8px] px-1 py-0.5 rounded uppercase font-bold ${cam.status === 'connected' ? 'bg-secondary/20 text-secondary' : 'bg-amber-400/20 text-amber-400'}`}>{cam.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-
-              {cameraDevices.length === 0 && !isAddingDevice && (
-                <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
-                  <span className="text-[9px] uppercase font-bold tracking-widest">No Camera Devices</span>
-                </div>
-              )}
-
-              {/* Add Device Form / Button */}
-              {isAddingDevice ? (
-                <CameraForm 
-                  onCancel={() => setIsAddingDevice(false)} 
-                  onSuccess={() => {
-                    setIsAddingDevice(false);
-                    fetchCameras(); // refresh list
-                  }} 
-                />
-              ) : (
-                <button
-                  onClick={(e) => { e.stopPropagation(); setIsAddingDevice(true); }}
-                  className="mt-2 w-full py-2.5 border border-dashed border-cyan-500/30 text-cyan-500 hover:bg-cyan-500/10 bg-cyan-500/5 rounded-md flex justify-center items-center gap-2 text-[9px] uppercase font-bold tracking-widest transition-colors cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Thêm Camera Mới
-                </button>
-              )}
-            </div>
-          )}
-        </aside>
+            )}
+          </aside>
         )}
       </main>
 
@@ -664,14 +691,41 @@ function Dashboard() {
 
         {/* Save logs toggle */}
         <div className="flex items-center gap-1.5">
-          <span className="text-on-surface-variant/60 uppercase tracking-widest font-bold text-[8px]">Save Logs</span>
+          <span className="text-on-surface-variant/60 uppercase tracking-widest font-bold text-[8px]">{t('app.footer.save_logs')}</span>
           <div
             onClick={toggleLogSaving}
             className={`relative w-6 h-3.5 rounded-full cursor-pointer transition-colors duration-200 ${isLogSaving ? 'bg-secondary' : 'bg-outline-variant/30'}`}
           >
             <div className={`absolute top-0.5 left-0.5 w-2.5 h-2.5 bg-white rounded-full shadow-sm transition-transform duration-200 ${isLogSaving ? 'translate-x-2.5' : 'translate-x-0'}`} />
           </div>
-          <span className={`font-bold text-[8px] uppercase tracking-widest ${isLogSaving ? 'text-secondary' : 'text-on-surface-variant/40'}`}>{isLogSaving ? 'ON' : 'OFF'}</span>
+          <span className={`font-bold text-[8px] uppercase tracking-widest ${isLogSaving ? 'text-secondary' : 'text-on-surface-variant/40'}`}>{isLogSaving ? t('app.footer.on') : t('app.footer.off')}</span>
+        </div>
+
+        <div className="w-px h-3 bg-outline-variant/15" />
+
+        {/* MQTT Data Toggle */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => {
+              console.log("=== THÔNG TIN CHUNG TỪ PROVIDER (useSocketManager) ===");
+              console.log("1. MQTT Servers:", mqttServers);
+              console.log("2. MQTT Logs (Realtime):", mqttLogs);
+              console.log("3. Camera Devices:", cameraDevices);
+              console.log("4. SVMS Servers:", servers);
+              console.log("5. SVMS/System Logs:", logs);
+              console.log("6. SVMS Devices:", devices);
+              console.log("7. Send Connections:", sendServers);
+              console.log("8. Receive Connections:", receiveServers);
+              console.log("9. System Config:", systemConfig);
+              console.log("10. Socket Connected:", isConnected);
+              console.log("11. Event Types:", eventTypes);
+              console.log("12. Total Log Count:", totalLogCount);
+              alert(`Đã in ra console trình duyệt!\n\nTổng MQTT Logs: ${mqttLogs.length}\nTổng MQTT Servers: ${mqttServers.length}\nTổng Camera Devices: ${cameraDevices.length}`);
+            }}
+            className="px-2 py-0.5 bg-primary text-on-primary text-[8px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity"
+          >
+            {t('app.footer.view_system_data')}
+          </button>
         </div>
 
         <div className="flex-1" />
@@ -683,21 +737,20 @@ function Dashboard() {
             className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer text-on-surface-variant/70 hover:text-on-surface"
           >
             <Languages className="w-3 h-3" />
-            <span className="text-[8px] font-bold uppercase tracking-widest">{currentLang}</span>
+            <span className="text-[8px] font-bold uppercase tracking-widest">{i18n.language.toUpperCase()}</span>
           </button>
           {langOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setLangOpen(false)} />
               <div className="absolute bottom-full right-0 mb-1 z-50 bg-surface-container-high border border-outline-variant/20 rounded shadow-lg min-w-[100px] animate-in fade-in slide-in-from-bottom-2 duration-150">
-                {['EN', 'VI', 'JP', 'KR'].map(lang => (
+                {['en', 'vi'].map(lang => (
                   <button
                     key={lang}
-                    onClick={() => { setCurrentLang(lang); setLangOpen(false); }}
-                    className={`w-full text-left px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-colors cursor-pointer ${
-                      currentLang === lang ? 'text-primary bg-primary/10' : 'text-on-surface-variant hover:bg-surface-container'
-                    }`}
+                    onClick={() => { i18n.changeLanguage(lang); setLangOpen(false); }}
+                    className={`w-full text-left px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-colors cursor-pointer ${i18n.language === lang ? 'text-primary bg-primary/10' : 'text-on-surface-variant hover:bg-surface-container'
+                      }`}
                   >
-                    {lang === 'EN' ? '🇺🇸 English' : lang === 'VI' ? '🇻🇳 Tiếng Việt' : lang === 'JP' ? '🇯🇵 日本語' : '🇰🇷 한국어'}
+                    {lang === 'en' ? '🇺🇸 English' : '🇻🇳 Tiếng Việt'}
                   </button>
                 ))}
               </div>

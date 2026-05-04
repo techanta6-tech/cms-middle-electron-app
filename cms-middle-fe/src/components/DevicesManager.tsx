@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig } from '../types';
 import {
   ChevronRight, ChevronDown, Plus, Cpu, Radio, Camera,
@@ -39,6 +40,7 @@ export function DevicesManager({
   servers, devices, mqttServers, mqttLogs, cameraDevices,
   fetchCameras, handleAddMqttServer, handleAddExternalServer
 }: DevicesManagerProps) {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<SelectedItemType | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     svms: true, mqtt: true, cameras: true
@@ -95,8 +97,12 @@ export function DevicesManager({
           onSave={() => {}}
           onSaveMqtt={(cfg) => { handleAddMqttServer(cfg); setAddingForm(null); }}
           initialIp="" initialPort="" initialMode="receive"
+          initialConnectionType="mqtt"
           onClose={() => setAddingForm(null)}
         />
+      )}
+      {addingForm === 'camera' && (
+        <CameraForm onCancel={() => setAddingForm(null)} onSuccess={() => { setAddingForm(null); fetchCameras(); }} />
       )}
 
       <div className="flex-1 overflow-hidden grid gap-0" style={{ gridTemplateColumns: '3fr 7fr' }}>
@@ -104,13 +110,13 @@ export function DevicesManager({
         <div className="overflow-y-auto custom-scrollbar border-r border-outline-variant/10 bg-surface-container-lowest p-3 flex flex-col gap-1">
 
           {/* SVMS Servers */}
-          <GroupHeader icon={<Cpu className="w-3.5 h-3.5" />} label="SVMS Servers" color="text-secondary" count={svmsServers.length}
+          <GroupHeader icon={<Cpu className="w-3.5 h-3.5" />} label={t('app.devices.svms_servers')} color="text-secondary" count={svmsServers.length}
             expanded={!!expandedGroups.svms} onToggle={() => toggleGroup('svms')}
             onAdd={() => setAddingForm('svms')}
           />
           {expandedGroups.svms && (
             <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-secondary/10 pl-2">
-              {svmsServers.length === 0 && <EmptyHint text="No SVMS servers" />}
+              {svmsServers.length === 0 && <EmptyHint text={t('app.devices.no_svms')} />}
               {svmsServers.map(srv => {
                 const sId = srv.id || srv.serial;
                 const matchDev = devices[sId] || devices[srv.id] || devices[srv.serial];
@@ -143,13 +149,13 @@ export function DevicesManager({
           )}
 
           {/* MQTT Servers */}
-          <GroupHeader icon={<Radio className="w-3.5 h-3.5" />} label="MQTT Servers" color="text-amber-400" count={mqttServers.length}
+          <GroupHeader icon={<Radio className="w-3.5 h-3.5" />} label={t('app.devices.mqtt_servers')} color="text-amber-400" count={mqttServers.length}
             expanded={!!expandedGroups.mqtt} onToggle={() => toggleGroup('mqtt')}
             onAdd={() => setAddingForm('mqtt')}
           />
           {expandedGroups.mqtt && (
             <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-amber-400/10 pl-2">
-              {mqttServers.length === 0 && <EmptyHint text="No MQTT servers" />}
+              {mqttServers.length === 0 && <EmptyHint text={t('app.devices.no_mqtt')} />}
               {mqttServers.map(ms => {
                 const expanded = !!expandedServers[`mqtt-${ms.id}`];
                 const mqttDevs = mqttDevicesByServer[ms.id] || [];
@@ -180,13 +186,13 @@ export function DevicesManager({
           )}
 
           {/* Independent Cameras */}
-          <GroupHeader icon={<Camera className="w-3.5 h-3.5" />} label="Independent Cameras" color="text-cyan-500" count={cameraDevices.length}
+          <GroupHeader icon={<Camera className="w-3.5 h-3.5" />} label={t('app.devices.cameras')} color="text-cyan-500" count={cameraDevices.length}
             expanded={!!expandedGroups.cameras} onToggle={() => toggleGroup('cameras')}
             onAdd={() => setAddingForm('camera')}
           />
           {expandedGroups.cameras && (
             <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-cyan-500/10 pl-2">
-              {cameraDevices.length === 0 && <EmptyHint text="No cameras" />}
+              {cameraDevices.length === 0 && <EmptyHint text={t('app.devices.no_cameras')} />}
               {cameraDevices.map(cam => (
                 <TreeItem key={cam.id}
                   label={`Camera: ${cam.cameraIp}`}
@@ -196,10 +202,6 @@ export function DevicesManager({
                   status={cam.status === 'connected' ? 'connected' : 'disconnected'}
                 />
               ))}
-              {/* Inline camera form */}
-              {addingForm === 'camera' && (
-                <CameraForm onCancel={() => setAddingForm(null)} onSuccess={() => { setAddingForm(null); fetchCameras(); }} />
-              )}
             </div>
           )}
         </div>
@@ -209,7 +211,7 @@ export function DevicesManager({
           {!selected ? (
             <div className="h-full flex flex-col items-center justify-center opacity-25 gap-3">
               <Info className="w-10 h-10" />
-              <span className="text-[11px] uppercase font-bold tracking-widest">Select a device or server to view details</span>
+              <span className="text-[11px] uppercase font-bold tracking-widest">{t('app.devices.select_device')}</span>
             </div>
           ) : (
             <DetailPanel item={selected} onClose={() => setSelected(null)} />
@@ -284,12 +286,14 @@ function EmptyHint({ text }: { text: string }) {
 
 // ── Detail Panel ─────────────────────────────────────────────────────────────
 function DetailPanel({ item, onClose }: { item: SelectedItemType; onClose: () => void }) {
+  const { t } = useTranslation();
+  
   const titleMap = {
-    'svms-server': 'SVMS Server',
-    'svms-device': 'SVMS Device',
-    'mqtt-server': 'MQTT Server',
-    'mqtt-device': 'MQTT Device',
-    'camera': 'Camera Device',
+    'svms-server': t('app.devices.svms_server'),
+    'svms-device': t('app.devices.svms_device'),
+    'mqtt-server': t('app.devices.mqtt_server'),
+    'mqtt-device': t('app.devices.mqtt_device'),
+    'camera': t('app.devices.camera_device'),
   };
 
   const colorMap = {
@@ -344,87 +348,92 @@ function StatusBadge({ status }: { status?: string }) {
 }
 
 function SvmsServerDetail({ srv, devices }: { srv: ServerData; devices?: DeviceData }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">{srv.server_name || srv.id}</h3>
       <div className="mb-3"><StatusBadge status={srv.connectionStatus} /></div>
-      <InfoRow label="Server ID" value={srv.id} mono />
-      <InfoRow label="Serial" value={srv.serial} mono />
-      <InfoRow label="Server IP" value={srv.svms_ipv4_ip || srv.server_ip} mono />
-      <InfoRow label="Sender IP" value={srv.sender_ip} mono />
-      <InfoRow label="Version" value={srv.version} />
-      <InfoRow label="Location" value={srv.location} />
-      <InfoRow label="Type" value={srv.type || 'direct'} />
-      <InfoRow label="Device Count" value={devices?.devices?.length ?? 0} />
-      <InfoRow label="Last Seen" value={srv.lastSeen} />
+      <InfoRow label={t('app.monitor.server_id')} value={srv.id} mono />
+      <InfoRow label={t('app.monitor.serial')} value={srv.serial} mono />
+      <InfoRow label={t('app.monitor.server_ip')} value={srv.svms_ipv4_ip || srv.server_ip} mono />
+      <InfoRow label={t('app.monitor.sender_ip')} value={srv.sender_ip} mono />
+      <InfoRow label={t('app.monitor.version')} value={srv.version} />
+      <InfoRow label={t('app.monitor.location')} value={srv.location} />
+      <InfoRow label={t('app.monitor.type')} value={srv.type || 'direct'} />
+      <InfoRow label={t('app.monitor.device_count')} value={devices?.devices?.length ?? 0} />
+      <InfoRow label={t('app.monitor.last_seen')} value={srv.lastSeen} />
     </div>
   );
 }
 
 function SvmsDeviceDetail({ dev, srv }: { dev: any; srv: ServerData }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">{dev.name}</h3>
       <div className="mb-3"><StatusBadge status={dev.connectionStatus} /></div>
-      <InfoRow label="Device IP" value={dev.ip} mono />
-      <InfoRow label="Device Type" value={dev.type} />
-      <InfoRow label="Device Index" value={dev.index} />
-      <InfoRow label="Port" value={dev.device_port} mono />
-      <InfoRow label="Last Log" value={dev.lastLogReceived} />
+      <InfoRow label={t('app.monitor.device_ip')} value={dev.ip} mono />
+      <InfoRow label={t('app.monitor.device_type')} value={dev.type} />
+      <InfoRow label={t('app.monitor.device_index')} value={dev.index} />
+      <InfoRow label={t('app.monitor.port')} value={dev.device_port} mono />
+      <InfoRow label={t('app.monitor.last_log')} value={dev.lastLogReceived} />
       <div className="mt-4 pt-3 border-t border-outline-variant/10">
-        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Parent Server</span>
-        <InfoRow label="Server Name" value={srv.server_name || srv.id} />
-        <InfoRow label="Server IP" value={srv.svms_ipv4_ip || srv.server_ip} mono />
+        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.parent_server')}</span>
+        <InfoRow label={t('app.monitor.server_name')} value={srv.server_name || srv.id} />
+        <InfoRow label={t('app.monitor.server_ip')} value={srv.svms_ipv4_ip || srv.server_ip} mono />
       </div>
     </div>
   );
 }
 
 function MqttServerDetail({ srv, devices }: { srv: MqttServerConfig; devices: MqttDeviceInfo[] }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">{srv.brokerHost}:{srv.brokerPort}</h3>
       <div className="mb-3"><StatusBadge status={srv.status} /></div>
-      <InfoRow label="Server ID" value={srv.id} mono />
-      <InfoRow label="Protocol" value={srv.protocol} />
-      <InfoRow label="Topic" value={srv.topic || srv.defaultTopic} mono />
-      <InfoRow label="Log Count" value={srv.logCount ?? 0} />
-      <InfoRow label="Camera ID" value={srv.cameraId || '(none)'} mono />
-      <InfoRow label="Devices Seen" value={devices.length} />
+      <InfoRow label={t('app.monitor.server_id')} value={srv.id} mono />
+      <InfoRow label={t('app.monitor.protocol')} value={srv.protocol} />
+      <InfoRow label={t('app.monitor.topic')} value={srv.topic || srv.defaultTopic} mono />
+      <InfoRow label={t('app.monitor.log_count')} value={srv.logCount ?? 0} />
+      <InfoRow label={t('app.monitor.camera_id')} value={srv.cameraId || '(none)'} mono />
+      <InfoRow label={t('app.monitor.devices_seen')} value={devices.length} />
     </div>
   );
 }
 
 function MqttDeviceDetail({ dev, srv }: { dev: MqttDeviceInfo; srv: MqttServerConfig }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">{dev.deviceName}</h3>
-      <InfoRow label="Dev EUI" value={dev.devEui} mono />
-      <InfoRow label="Profile" value={dev.deviceProfileName} />
-      <InfoRow label="Alarm Count" value={dev.alarmCount} />
-      <InfoRow label="Last Seen" value={dev.lastSeen} />
+      <InfoRow label={t('app.monitor.dev_eui')} value={dev.devEui} mono />
+      <InfoRow label={t('app.monitor.profile')} value={dev.deviceProfileName} />
+      <InfoRow label={t('app.monitor.alarm_count')} value={dev.alarmCount} />
+      <InfoRow label={t('app.monitor.last_seen')} value={dev.lastSeen} />
       <div className="mt-4 pt-3 border-t border-outline-variant/10">
-        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Parent MQTT Server</span>
-        <InfoRow label="Broker" value={`${srv.brokerHost}:${srv.brokerPort}`} mono />
-        <InfoRow label="Topic" value={srv.topic || srv.defaultTopic} mono />
+        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.parent_mqtt')}</span>
+        <InfoRow label={t('app.monitor.broker')} value={`${srv.brokerHost}:${srv.brokerPort}`} mono />
+        <InfoRow label={t('app.monitor.topic')} value={srv.topic || srv.defaultTopic} mono />
       </div>
     </div>
   );
 }
 
 function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">Camera: {cam.cameraIp}</h3>
       <div className="mb-3"><StatusBadge status={cam.status} /></div>
-      <InfoRow label="Camera ID" value={cam.id} mono />
-      <InfoRow label="Camera IP" value={cam.cameraIp} mono />
-      <InfoRow label="Camera Port" value={cam.cameraPort} mono />
-      <InfoRow label="Type" value={cam.type} />
-      <InfoRow label="Username" value={cam.cameraUser} />
-      <InfoRow label="RTSP URL" value={cam.rtspUrl || '(none)'} mono />
-      <InfoRow label="MQTT Server" value={cam.mqttServerId || '(standalone)'} mono />
-      <InfoRow label="Handle" value={cam.handle ?? '(none)'} />
+      <InfoRow label={t('app.monitor.camera_id')} value={cam.id} mono />
+      <InfoRow label={t('app.monitor.camera_ip')} value={cam.cameraIp} mono />
+      <InfoRow label={t('app.monitor.camera_port')} value={cam.cameraPort} mono />
+      <InfoRow label={t('app.monitor.type')} value={cam.type} />
+      <InfoRow label={t('app.monitor.username')} value={cam.cameraUser} />
+      <InfoRow label={t('app.monitor.rtsp_url')} value={cam.rtspUrl || '(none)'} mono />
+
+      <InfoRow label={t('app.monitor.handle')} value={cam.handle ?? '(none)'} />
     </div>
   );
 }
