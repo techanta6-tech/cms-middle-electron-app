@@ -71,6 +71,12 @@ public class Startup
     private static UInt32 _deviceHandle = 0;
     private static UInt32 _mdHandle = 0; // media handle cho live stream (dùng để capture)
     private static string _snapshotDir = "";
+    
+    // Cache ảnh (giải quyết xung đột Race Condition giữa Motion và LPR)
+    private static string _cachedSnapshotBase64 = "";
+    private static string _cachedSnapshotPath = "";
+    private static DateTime _lastCaptureTime = DateTime.MinValue;
+    private static readonly object _captureLock = new object();
 
     // Giữ reference delegate tránh GC
     private static SDK_DISCONN_CB _disconnCb = new SDK_DISCONN_CB(disconn_cb);
@@ -208,38 +214,7 @@ public class Startup
         {
             try
             {
-                if (_deviceHandle > 0 && !string.IsNullOrEmpty(_snapshotDir))
-                {
-                    string filename = "snap_detect_sdk_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".jpg";
-                    snapshotPath = Path.Combine(_snapshotDir, filename);
-
-                    Int32 snapResult = -1;
-                    if (_mdHandle > 0)
-                    {
-                        snapResult = sdk_md_capture(_mdHandle, snapshotPath);
-                        Console.WriteLine("[SNAP DETECT SDK] sdk_md_capture result = " + snapResult);
-                    }
-
-                    if (snapResult != 0)
-                    {
-                        snapResult = sdk_open_snap(_deviceHandle, 0, snapshotPath);
-                        Console.WriteLine("[SNAP DETECT SDK] sdk_open_snap result = " + snapResult);
-                    }
-
-                    System.Threading.Thread.Sleep(200);
-
-                    if (File.Exists(snapshotPath) && new FileInfo(snapshotPath).Length > 0)
-                    {
-                        byte[] imgBytes = File.ReadAllBytes(snapshotPath);
-                        snapshotBase64 = Convert.ToBase64String(imgBytes);
-                        Console.WriteLine("[SNAP DETECT SDK] OK! Size = " + imgBytes.Length + " bytes");
-                    }
-                    else
-                    {
-                        snapshotPath = "";
-                        Console.WriteLine("[SNAP DETECT SDK] File empty or not created");
-                    }
-                }
+                CaptureSnapshotWithCache(out snapshotBase64, out snapshotPath, "snap_detect_sdk");
             }
             catch (Exception ex)
             {
@@ -267,6 +242,64 @@ public class Startup
         }
     }
 
+    private static void CaptureSnapshotWithCache(out string base64, out string path, string prefix)
+    {
+        base64 = "";
+        path = "";
+
+        lock (_captureLock)
+        {
+            // Kiểm tra cache xem có ảnh nào vừa chụp trong vòng 1.5 giây không (giải quyết Race Condition)
+            if ((DateTime.Now - _lastCaptureTime).TotalSeconds <= 1.5 && !string.IsNullOrEmpty(_cachedSnapshotBase64))
+            {
+                base64 = _cachedSnapshotBase64;
+                path = _cachedSnapshotPath;
+                Console.WriteLine("[SNAP CACHE] Reused cached image (" + (DateTime.Now - _lastCaptureTime).TotalMilliseconds + "ms ago) for " + prefix);
+                return;
+            }
+
+            if (_deviceHandle <= 0 || string.IsNullOrEmpty(_snapshotDir)) return;
+
+            string filename = prefix + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".jpg";
+            string tempPath = Path.Combine(_snapshotDir, filename);
+            Int32 snapResult = -1;
+
+            if (_mdHandle > 0)
+            {
+                snapResult = sdk_md_capture(_mdHandle, tempPath);
+                Console.WriteLine("[SNAP] sdk_md_capture result = " + snapResult + " -> " + tempPath);
+            }
+
+            if (snapResult != 0)
+            {
+                snapResult = sdk_open_snap(_deviceHandle, 0, tempPath);
+                Console.WriteLine("[SNAP] sdk_open_snap result = " + snapResult + " -> " + tempPath);
+            }
+
+            // Chờ một chút để SDK ghi file xuống đĩa cứng
+            System.Threading.Thread.Sleep(200);
+
+            if (File.Exists(tempPath) && new FileInfo(tempPath).Length > 0)
+            {
+                byte[] imgBytes = File.ReadAllBytes(tempPath);
+                base64 = Convert.ToBase64String(imgBytes);
+                path = tempPath;
+
+                // Cập nhật cache
+                _cachedSnapshotBase64 = base64;
+                _cachedSnapshotPath = path;
+                _lastCaptureTime = DateTime.Now;
+
+                Console.WriteLine("[SNAP CAPTURE] OK! Size = " + imgBytes.Length + " bytes");
+            }
+            else
+            {
+                Console.WriteLine("[SNAP CAPTURE] File khong ton tai hoac rong");
+            }
+        }
+    }
+
+
     public static void alarm_cb(UInt32 handle, ref IntPtr p_data, IntPtr p_obj)
     {
         if (p_data == IntPtr.Zero) return;
@@ -281,43 +314,7 @@ public class Startup
         string snapshotPath = "";
         try
         {
-            if (_deviceHandle > 0 && !string.IsNullOrEmpty(_snapshotDir))
-            {
-                string filename = "snap_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".jpg";
-                snapshotPath = Path.Combine(_snapshotDir, filename);
-
-                Int32 snapResult = -1;
-
-                // Cách 1: Dùng sdk_md_capture nếu đang có live stream
-                if (_mdHandle > 0)
-                {
-                    snapResult = sdk_md_capture(_mdHandle, snapshotPath);
-                    Console.WriteLine("[SNAP] sdk_md_capture result = " + snapResult + " -> " + snapshotPath);
-                }
-
-                // Cách 2: Fallback về sdk_open_snap
-                if (snapResult != 0)
-                {
-                    snapResult = sdk_open_snap(_deviceHandle, 0, snapshotPath);
-                    Console.WriteLine("[SNAP] sdk_open_snap result = " + snapResult + " -> " + snapshotPath);
-                }
-
-                // Chờ một chút để file được ghi xong
-                System.Threading.Thread.Sleep(200);
-
-                // Đọc file ảnh thành base64 nếu tồn tại
-                if (File.Exists(snapshotPath) && new FileInfo(snapshotPath).Length > 0)
-                {
-                    byte[] imgBytes = File.ReadAllBytes(snapshotPath);
-                    snapshotBase64 = Convert.ToBase64String(imgBytes);
-                    Console.WriteLine("[SNAP] OK! Size = " + imgBytes.Length + " bytes");
-                }
-                else
-                {
-                    Console.WriteLine("[SNAP] File khong ton tai hoac rong");
-                    snapshotPath = "";
-                }
-            }
+            CaptureSnapshotWithCache(out snapshotBase64, out snapshotPath, "snap_alarm");
         }
         catch (Exception ex)
         {
@@ -423,7 +420,19 @@ public class Startup
                 Int32 detectResult = sdks_dev_face_detect_start(handle, 1, 1, 4, _detectCb, IntPtr.Zero);
                 Console.WriteLine("[SDK] sdks_dev_face_detect_start result = " + detectResult);
 
-                // Lưu ý: sdk_md_live_start xung đột với alarm listener nên không mở ở đây
+                // Mở live stream để có thể dùng sdk_md_capture chụp ảnh (alarm không gửi kèm ảnh)
+                // Delay 500ms để tránh xung đột khi alarm listener vừa khởi động xong
+                System.Threading.Thread.Sleep(500);
+                UInt32 mdHandle = sdk_md_live_start(handle, 1, 0, _liveCb, IntPtr.Zero);
+                if (mdHandle > 0)
+                {
+                    _mdHandle = mdHandle;
+                    Console.WriteLine("[SDK] sdk_md_live_start OK, md_handle = " + mdHandle);
+                }
+                else
+                {
+                    Console.WriteLine("[SDK] sdk_md_live_start FAILED (md_handle = 0) — alarm snapshot se dung sdk_open_snap fallback");
+                }
 
                 response["online"] = true;
                 response["status"] = "Online";

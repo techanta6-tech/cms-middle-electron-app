@@ -1,5 +1,12 @@
+const fs = require('fs');
 const path = require('path');
 const { cameraDevices, getClientSockets } = require('../socketState');
+
+const sampleLogsDir = path.join(__dirname, '..', '..', '..', 'sunell_logs_samples');
+if (!fs.existsSync(sampleLogsDir)) {
+  fs.mkdirSync(sampleLogsDir, { recursive: true });
+}
+const loggedEventTypes = new Set();
 let CameraDevice;
 let _cameraModuleSource = 'DummyCamera'; // track which module is loaded
 try {
@@ -153,6 +160,48 @@ async function addCameraDevice(deviceConfig) {
 
         // Nếu sự kiện không thuộc loại nào được bật thì bỏ qua
         if (!shouldProcess) return;
+
+        // YÊU CẦU: Ghi log sự kiện lần đầu tiên ra file txt
+        // Nếu có eventName thì lưu ra file riêng cho từng loại eventName (như IVA có nhiều loại)
+        let eventKey = logType;
+        let eventNameSafe = '';
+        const rawEventName = payload.eventName || (payload.data && payload.data.eventName) || '';
+        
+        if (rawEventName) {
+           // Tìm chuỗi nằm trong dấu ngoặc đơn (VD: "Perimeter intrusion")
+           const match = rawEventName.match(/\(([^)]+)\)/);
+           const extractedName = match ? match[1] : rawEventName;
+           
+           // Lọc bỏ các ký tự đặc biệt để làm tên file
+           eventNameSafe = extractedName.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').toLowerCase();
+           // Xóa gạch dưới ở 2 đầu nếu có
+           eventNameSafe = eventNameSafe.replace(/^_|_$/g, '');
+           eventKey = `${logType}_${eventNameSafe}`;
+        }
+
+        if (!loggedEventTypes.has(eventKey)) {
+          loggedEventTypes.add(eventKey);
+          const fileName = eventNameSafe ? `${logType}_${eventNameSafe}.txt` : `${logType}.txt`;
+          const logFilePath = path.join(sampleLogsDir, fileName);
+          
+          let dataToWrite = `--- SUNELL EVENT: ${logType.toUpperCase()} ${rawEventName ? `(${rawEventName})` : ''} ---\n`;
+          dataToWrite += `Time: ${new Date().toISOString()}\n`;
+          dataToWrite += `Camera: ${device.name} (${device.id})\n`;
+          dataToWrite += `Description: ${description}\n`;
+          dataToWrite += `Raw JSON:\n`;
+          dataToWrite += (typeof rawJsonStr === 'string' ? rawJsonStr : JSON.stringify(rawJsonStr, null, 2)) + '\n\n';
+          
+          if (payload.snapshotBase64) {
+             dataToWrite += `[HAS SNAPSHOT BASE64 IMAGE - LENGTH: ${payload.snapshotBase64.length}]\n`;
+          }
+          
+          try {
+            fs.writeFileSync(logFilePath, dataToWrite, 'utf8');
+            console.log(`[Sunell-Sample] Đã ghi file log mẫu cho sự kiện ${eventKey} tại ${logFilePath}`);
+          } catch(err) {
+            console.error(`[Sunell-Sample] Lỗi ghi file log mẫu:`, err);
+          }
+        }
 
         const sockets = getClientSockets();
         if (sockets) {

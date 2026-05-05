@@ -218,9 +218,9 @@ const resources = {
           'occupancy': 'Có người',
           'occupied': 'Có người',
           'vacant': 'Không có người',
-          'bradycardia': 'Nhịp tim chậm',
+          'bradynea': 'Thở chậm',
           'tachypnea': 'Thở nhanh',
-          'lying': 'Đang nằm'
+        'lying': 'Đang nằm'
         },
         mqtt_alarm_status: {
           '1': 'Báo động',

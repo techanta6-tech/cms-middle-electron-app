@@ -132,7 +132,7 @@ export function ConnectionsMonitor({
   return (
     <div className="ConnectionsMonitor flex flex-col h-full bg-background relative">
       <div className="flex-1 overflow-hidden p-6 h-full flex flex-col gap-4 min-h-0">
-        
+
         {/* Tab Headers */}
         <div className="flex items-center gap-2 border-b border-outline-variant/10 shrink-0">
           <button
