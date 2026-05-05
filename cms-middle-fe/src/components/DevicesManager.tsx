@@ -336,6 +336,11 @@ function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDe
     'camera': isSunell ? 'text-green-500 border-green-500/30' : 'text-cyan-500 border-cyan-500/30',
   };
 
+  // Lấy dữ liệu mới nhất từ props để tránh lỗi stale-state khi React useState không tự cập nhật
+  const latestCam = item.kind === 'camera' 
+    ? cameraDevices.find(c => c.id === item.data.id) || item.data 
+    : null;
+
   return (
     <div className="animate-in fade-in duration-300">
       {/* Content */}
@@ -343,7 +348,7 @@ function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDe
       {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} />}
       {item.kind === 'mqtt-server' && <MqttServerDetail srv={item.data} devices={item.mqttDevices} />}
       {item.kind === 'mqtt-device' && <MqttDeviceDetail dev={item.data} srv={item.server} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} />}
-      {item.kind === 'camera' && <CameraDetail cam={item.data} />}
+      {item.kind === 'camera' && latestCam && <CameraDetail cam={latestCam} />}
     </div>
   );
 }
@@ -457,7 +462,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
   const { t } = useTranslation();
 
-  const handleToggle = (feature: 'enableMotion' | 'enableLPR', value: boolean) => {
+  const handleToggle = (feature: 'enableMotion' | 'enableLPR' | 'enableFace' | 'enableIVA' | 'enableSystem', value: boolean) => {
     socket.emit('update-camera-features', {
       id: cam.id,
       features: { [feature]: value }
@@ -482,7 +487,7 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
 
       {isSunell && (
         <div className="mt-4 pt-3 border-t border-outline-variant/10">
-          <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest block mb-2">Features (Sunell)</span>
+          <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest block mb-2">Feature Filter (Sunell)</span>
           <div className="flex items-center justify-between py-1">
             <span className="text-[12px] text-on-surface">Motion Detection</span>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -494,6 +499,27 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
             <span className="text-[12px] text-on-surface">LPR (License Plate)</span>
             <label className="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" className="sr-only peer" checked={enableLPR} onChange={(e) => handleToggle('enableLPR', e.target.checked)} />
+              <div className="w-9 h-5 bg-tertiary/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary"></div>
+            </label>
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-[12px] text-on-surface">Face Recognition</span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={cam.features?.enableFace ?? true} onChange={(e) => handleToggle('enableFace', e.target.checked)} />
+              <div className="w-9 h-5 bg-tertiary/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary"></div>
+            </label>
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-[12px] text-on-surface">Smart AI / IVS (Tripwire, Loitering)</span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={cam.features?.enableIVA ?? true} onChange={(e) => handleToggle('enableIVA', e.target.checked)} />
+              <div className="w-9 h-5 bg-tertiary/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary"></div>
+            </label>
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-[12px] text-on-surface">System Alarms (Disk, Network)</span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={cam.features?.enableSystem ?? true} onChange={(e) => handleToggle('enableSystem', e.target.checked)} />
               <div className="w-9 h-5 bg-tertiary/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-secondary"></div>
             </label>
           </div>
