@@ -3,11 +3,12 @@ import { useTranslation } from 'react-i18next';
 import type { ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
 import {
   ChevronRight, ChevronDown, Plus, Cpu, Radio, Camera,
-  Server, Wifi, WifiOff, MonitorSmartphone, Info, X
+  Server, Wifi, WifiOff, MonitorSmartphone, Info, X, Trash2
 } from 'lucide-react';
 import { CameraForm } from './CameraForm';
 import { AddExternalServer } from './AddExternalServer';
 import { socket } from '../socket';
+import apiClient from '../api/apiClient';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type SelectedItemType =
@@ -86,6 +87,35 @@ export function DevicesManager({
   const svmsServers = Object.values(servers).filter(s => s.type !== 'mqtt');
   const otherCameras = cameraDevices.filter(cam => cam.type !== 'sunell');
   const sunellCameras = cameraDevices.filter(cam => cam.type === 'sunell');
+
+  const handleDeleteCamera = async (camId: string) => {
+    if (!confirm(t('app.devices.confirm_delete_camera') || 'Xóa camera này?')) return;
+    try {
+      await apiClient.delete(`/api/v1/cameras/${camId}`);
+      if (selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === camId) {
+        setSelected(null);
+      }
+      fetchCameras();
+    } catch (err: any) {
+      console.error('Delete camera error:', err);
+      alert('Không thể xóa camera: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleDeleteMqttServer = async (serverId: string) => {
+    if (!confirm(t('app.devices.confirm_delete_mqtt') || 'Xóa MQTT server này?')) return;
+    try {
+      await apiClient.delete(`/api/v1/mqtt-servers/${serverId}`);
+      if (selected?.kind === 'mqtt-server' && (selected.data as MqttServerConfig).id === serverId) {
+        setSelected(null);
+      }
+      // Refresh MQTT servers list via socket
+      socket.emit('get-mqtt-servers');
+    } catch (err: any) {
+      console.error('Delete MQTT server error:', err);
+      alert('Không thể xóa MQTT server: ' + (err.response?.data?.error || err.message));
+    }
+  };
 
   return (
     <div className="DevicesManager flex-1 overflow-hidden flex flex-col h-full">
@@ -180,6 +210,7 @@ export function DevicesManager({
                       onClick={() => setSelected({ kind: 'mqtt-server', data: ms, mqttDevices: mqttDevs })}
                       isSelected={selected?.kind === 'mqtt-server' && (selected.data as MqttServerConfig).id === ms.id}
                       status={ms.status === 'connected' ? 'connected' : ms.status === 'error' ? 'disconnected' : ms.status}
+                      onDelete={() => handleDeleteMqttServer(ms.id)}
                     />
                     {expanded && mqttDevs.map(d => (
                       <TreeItem key={d.devEui}
@@ -209,7 +240,8 @@ export function DevicesManager({
                   sublabel={cam.id}
                   onClick={() => setSelected({ kind: 'camera', data: cam })}
                   isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
-                  status={cam.status === 'connected' ? 'connected' : 'disconnected'}
+                  status={cam.status || 'error'}
+                  onDelete={() => handleDeleteCamera(cam.id)}
                 />
               ))}
             </div>
@@ -229,7 +261,8 @@ export function DevicesManager({
                   sublabel={cam.id}
                   onClick={() => setSelected({ kind: 'camera', data: cam })}
                   isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
-                  status={cam.status === 'connected' ? 'connected' : 'disconnected'}
+                  status={cam.status || 'error'}
+                  onDelete={() => handleDeleteCamera(cam.id)}
                 />
               ))}
             </div>
@@ -273,11 +306,11 @@ function GroupHeader({ icon, label, color, count, expanded, onToggle, onAdd }: {
   );
 }
 
-function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onClick, isSelected, indent, status }: {
+function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onClick, isSelected, indent, status, onDelete }: {
   label: string; sublabel?: string; icon?: React.ReactNode;
   hasChildren?: boolean; expanded?: boolean; onToggle?: () => void;
   onClick: () => void; isSelected?: boolean; indent?: boolean;
-  status?: string;
+  status?: string; onDelete?: () => void;
 }) {
   return (
     <div
@@ -298,12 +331,27 @@ function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onCl
         <span className="w-4" />
       )}
       {status && (
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${status === 'connected' ? 'bg-secondary' : 'bg-tertiary animate-pulse'}`} />
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+          status === 'connected' ? 'bg-secondary' :
+          status === 'connecting' ? 'bg-amber-400 animate-pulse' :
+          status === 'error' ? 'bg-red-500' :
+          status === 'ready' ? 'bg-cyan-400' :
+          'bg-tertiary animate-pulse'
+        }`} />
       )}
       <div className="flex flex-col min-w-0 flex-1">
         <span className="font-bold truncate leading-tight">{label}</span>
         {sublabel && <span className="text-[9px] font-mono text-on-surface-variant/50 truncate leading-tight">{sublabel}</span>}
       </div>
+      {onDelete && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-500/20 text-red-400 hover:text-red-300 cursor-pointer"
+          title="Xóa"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      )}
     </div>
   );
 }
@@ -358,11 +406,18 @@ function InfoRow({ label, value, mono }: { label: string; value: string | number
 }
 
 function StatusBadge({ status }: { status?: string }) {
-  const isOn = status === 'connected';
+  const statusConfig: Record<string, { dot: string; badge: string; label: string }> = {
+    connected: { dot: 'bg-secondary', badge: 'text-secondary bg-secondary/10 border-secondary/20', label: 'CONNECTED' },
+    connecting: { dot: 'bg-amber-400 animate-pulse', badge: 'text-amber-400 bg-amber-400/10 border-amber-400/20', label: 'CONNECTING' },
+    error: { dot: 'bg-red-500', badge: 'text-red-500 bg-red-500/10 border-red-500/20', label: 'ERROR' },
+    ready: { dot: 'bg-cyan-400', badge: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20', label: 'READY' },
+    disconnected: { dot: 'bg-tertiary animate-pulse', badge: 'text-tertiary bg-tertiary/10 border-tertiary/20', label: 'DISCONNECTED' },
+  };
+  const cfg = statusConfig[status || ''] || statusConfig.disconnected;
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${isOn ? 'text-secondary bg-secondary/10 border-secondary/20' : 'text-tertiary bg-tertiary/10 border-tertiary/20'}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${isOn ? 'bg-secondary' : 'bg-tertiary animate-pulse'}`} />
-      {status || 'unknown'}
+    <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${cfg.badge}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
     </span>
   );
 }

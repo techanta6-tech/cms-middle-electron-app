@@ -428,6 +428,96 @@ class CameraDevice {
             }
         };
     }
+
+    /**
+     * Kiểm tra kết nối RTSP nhanh (probe) — dùng FFmpeg chỉ để mở stream, không lưu file.
+     * @param {number} timeoutMs - Thời gian tối đa chờ kết nối (mặc định 5000ms)
+     * @returns {Promise<{online: boolean, error?: string}>}
+     */
+    probeRtsp(timeoutMs = 5000) {
+        const url = this.rtspUrl;
+        if (!url) {
+            return Promise.resolve({ online: false, error: 'RTSP URL chưa được cấu hình' });
+        }
+
+        if (!ffmpegPath) {
+            try {
+                if (process.pkg) {
+                    ffmpegPath = require(path.join(path.dirname(process.execPath), 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
+                } else {
+                    try {
+                        ffmpegPath = require(path.join(__dirname, 'cms-middle-be', 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
+                    } catch (err) {
+                        ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+                    }
+                }
+            } catch (e) {
+                return Promise.resolve({ online: false, error: 'FFmpeg không khả dụng' });
+            }
+        }
+
+        return new Promise((resolve) => {
+            const args = [
+                '-rtsp_transport', 'tcp',
+                '-i', url,
+                '-t', '1',         // chỉ đọc 1 giây
+                '-f', 'null',       // không ghi file
+                '-'
+            ];
+
+            let rawStderr = '';
+            let settled = false;
+
+            const proc = spawn(ffmpegPath, args);
+
+            const timer = setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    proc.kill('SIGKILL');
+                    resolve({ online: false, error: 'Timeout kết nối RTSP' });
+                }
+            }, timeoutMs);
+
+            proc.stderr.on('data', (data) => {
+                rawStderr += data.toString();
+
+                // Nếu thấy "Input #0" nghĩa là stream mở thành công → online
+                if (!settled && rawStderr.includes('Input #0')) {
+                    settled = true;
+                    clearTimeout(timer);
+                    proc.kill('SIGKILL');
+                    resolve({ online: true });
+                }
+            });
+
+            proc.on('close', () => {
+                clearTimeout(timer);
+                if (settled) return;
+                settled = true;
+
+                // Phân tích lỗi từ stderr
+                if (rawStderr.includes('401 Unauthorized')) {
+                    resolve({ online: false, error: 'Sai user/password (401)' });
+                } else if (rawStderr.includes('Connection refused')) {
+                    resolve({ online: false, error: 'Bị từ chối kết nối' });
+                } else if (rawStderr.includes('Server returned 404') || rawStderr.includes('Stream not found')) {
+                    resolve({ online: false, error: 'Không tìm thấy luồng (404)' });
+                } else if (rawStderr.includes('No route to host') || rawStderr.includes('Network is unreachable')) {
+                    resolve({ online: false, error: 'Không thể kết nối mạng' });
+                } else {
+                    resolve({ online: false, error: 'Không thể mở luồng RTSP' });
+                }
+            });
+
+            proc.on('error', (err) => {
+                clearTimeout(timer);
+                if (!settled) {
+                    settled = true;
+                    resolve({ online: false, error: err.message });
+                }
+            });
+        });
+    }
 }
 
 module.exports = {

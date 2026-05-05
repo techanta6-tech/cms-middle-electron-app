@@ -47,7 +47,7 @@ async function addCameraDevice(deviceConfig) {
     rtspUrl,
     snapshotDir,
     sdkPath,
-    status: type === 'sunell' ? 'connecting' : 'ready',
+    status: 'connecting',
     handle: null,
     instance: null
   };
@@ -135,6 +135,16 @@ async function addCameraDevice(deviceConfig) {
       sdkResult = { online: false, error: err.message || String(err) };
       console.error(`[Camera-Device] SDK connect error for '${id}':`, err);
     }
+  } else {
+    // Camera độc lập: probe RTSP để kiểm tra kết nối thực tế
+    try {
+      const probeResult = await device.instance.probeRtsp(5000);
+      device.status = probeResult.online ? 'connected' : 'error';
+      console.log(`[Camera-Device] RTSP probe for '${id}':`, probeResult);
+    } catch (err) {
+      device.status = 'error';
+      console.error(`[Camera-Device] RTSP probe error for '${id}':`, err);
+    }
   }
 
   _emitCamerasUpdate();
@@ -215,8 +225,18 @@ async function updateCameraDevice(deviceId, updates) {
       sdkResult = { online: false, error: err.message || String(err) };
       console.error(`[Camera-Device] Reconnect error for '${deviceId}':`, err);
     }
-  } else if (updates.type === 'other') {
-    device.status = 'ready';
+  } else if (device.instance && device.instance.probeRtsp) {
+    // Camera độc lập: re-probe RTSP nếu có thay đổi kết nối
+    if (requiresReconnect || updates.rtspUrl !== undefined) {
+      try {
+        const probeResult = await device.instance.probeRtsp(5000);
+        device.status = probeResult.online ? 'connected' : 'error';
+        console.log(`[Camera-Device] RTSP re-probe for '${deviceId}':`, probeResult);
+      } catch (err) {
+        device.status = 'error';
+        console.error(`[Camera-Device] RTSP re-probe error for '${deviceId}':`, err);
+      }
+    }
   }
 
   console.log(`[Camera-Device] Updated device '${deviceId}':`, JSON.stringify(updates));
@@ -286,6 +306,27 @@ async function getSnapshotForCamera(cameraId) {
   if (!device.instance) {
     _debugFE(`[Camera-Snapshot] Camera '${cameraId}' has no instance`);
     return null;
+  }
+
+  // Camera độc lập: probe RTSP trước khi chụp, cập nhật status
+  if (device.type !== 'sunell' && device.instance && device.instance.probeRtsp) {
+    try {
+      const probeResult = await device.instance.probeRtsp(5000);
+      const newStatus = probeResult.online ? 'connected' : 'error';
+      if (device.status !== newStatus) {
+        device.status = newStatus;
+        _emitCamerasUpdate();
+      }
+      if (!probeResult.online) {
+        _debugFE(`[Camera-Snapshot] RTSP probe failed for '${device.id}': ${probeResult.error}`);
+        return null;
+      }
+    } catch (err) {
+      device.status = 'error';
+      _emitCamerasUpdate();
+      _debugFE(`[Camera-Snapshot] RTSP probe error for '${device.id}': ${err.message}`);
+      return null;
+    }
   }
 
   _debugFE(`[Camera-Snapshot] Capturing from camera '${device.id}' (${device.type}) ...`);
