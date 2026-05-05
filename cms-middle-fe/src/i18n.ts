@@ -54,7 +54,9 @@ const resources = {
           dec_grid: "Giảm số cột hiển thị",
           close_settings: "Đóng cài đặt",
           mqtt_sensor_devices: "Thiết Bị Cảm Biến",
-          no_mqtt_devices: "Chưa có thiết bị cảm biến nào"
+          no_mqtt_devices: "Chưa có thiết bị cảm biến nào",
+          sunell_cameras: "Camera Sunell",
+          no_sunell_cameras: "Chưa có Camera Sunell nào",
         },
         monitor: {
           input_connections: "Nhận dữ liệu từ...",
@@ -124,7 +126,7 @@ const resources = {
           cameras: "Camera độc lập",
           no_cameras: "Không có camera nào",
           sunell_cameras: "Camera Sunell",
-          no_sunell_cameras: "Không có camera Sunell nào",
+          no_sunell_cameras: "Không có Camera Sunell nào",
           select_device: "Chọn một server hoặc thiết bị để xem thông tin chi tiết",
           svms_server: "SVMS Server",
           svms_device: "SVMS Device",

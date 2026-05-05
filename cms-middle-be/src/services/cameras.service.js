@@ -79,6 +79,17 @@ async function addCameraDevice(deviceConfig) {
     onAlarm: (rawJsonStr) => {
       try {
         const payload = typeof rawJsonStr === 'string' ? JSON.parse(rawJsonStr) : rawJsonStr;
+        
+        console.log(`[Camera-${id}] Raw Payload keys:`, Object.keys(payload));
+        if (payload.snapshotBase64) {
+          console.log(`[Camera-${id}] snapshotBase64 length:`, payload.snapshotBase64.length);
+        } else {
+          console.log(`[Camera-${id}] MISSING snapshotBase64 in payload`);
+        }
+
+        // WRITE DEUBG FILE
+        require('fs').appendFileSync(require('path').join(process.cwd(), 'sunell-payload-debug.log'), `[${new Date().toISOString()}] Payload from ${id}:\n` + JSON.stringify(payload, null, 2) + '\n\n');
+
         const strBody = JSON.stringify(payload).toLowerCase();
         const isLpr = strBody.includes('plate') || strBody.includes('targetdetectlist');
         
