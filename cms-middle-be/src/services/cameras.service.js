@@ -54,7 +54,7 @@ async function addCameraDevice(deviceConfig) {
     rtspUrl,
     snapshotDir,
     sdkPath,
-    status: type === 'sunell' ? 'connecting' : 'ready',
+    status: 'connecting',
     handle: null,
     instance: null
   };
@@ -73,20 +73,35 @@ async function addCameraDevice(deviceConfig) {
     cameraUser: cameraUser || 'admin',
     cameraPass: cameraPass || 'admin1234',
     logger: (direction, label, data) => {
+      if (!cameraDevices.some(d => d.id === id)) return;
       const ts = new Date().toLocaleTimeString('vi-VN', { hour12: false });
       const arrow = direction === 'IN' ? '⬇️' : '⬆️';
       const msg = `[${ts}] ${arrow} | [${id}] ${label}` + (data !== undefined ? ` | ${typeof data === 'string' ? data : JSON.stringify(data)}` : '');
       console.log(msg);
-      
+
       const sockets = getClientSockets();
       if (sockets) {
         sockets.emit('debug-camera-snapshot', { time: new Date().toISOString(), message: msg });
       }
     },
     onAlarm: (rawJsonStr) => {
+      if (!cameraDevices.some(d => d.id === id)) return;
       try {
         const payload = typeof rawJsonStr === 'string' ? JSON.parse(rawJsonStr) : rawJsonStr;
-        
+
+        console.log(`[Camera-${id}] Raw Payload keys:`, Object.keys(payload));
+        if (payload.snapshotBase64) {
+          console.log(`[Camera-${id}] snapshotBase64 length:`, payload.snapshotBase64.length);
+        } else {
+          console.log(`[Camera-${id}] MISSING snapshotBase64 in payload`);
+        }
+
+        // WRITE DEUBG FILE
+        require('fs').appendFileSync(require('path').join(process.cwd(), 'sunell-payload-debug.log'), `[${new Date().toISOString()}] Payload from ${id}:\n` + JSON.stringify(payload, null, 2) + '\n\n');
+
+        const strBody = JSON.stringify(payload).toLowerCase();
+        const isLpr = strBody.includes('plate') || strBody.includes('targetdetectlist');
+
         // Neu device chua co features mac dinh thi coi nhu dc bat
         const features = device.features || {};
         const enableLPR = features.enableLPR ?? true;
@@ -96,7 +111,7 @@ async function addCameraDevice(deviceConfig) {
         const enableSystem = features.enableSystem ?? true;
 
         // Phân tích loại sự kiện
-        let isLpr = false;
+        // let isLpr = false;
         let isFace = false;
         let isMotion = false;
         let isIVA = false;
@@ -249,6 +264,16 @@ async function addCameraDevice(deviceConfig) {
       sdkResult = { online: false, error: err.message || String(err) };
       console.error(`[Camera-Device] SDK connect error for '${id}':`, err);
     }
+  } else {
+    // Camera độc lập: probe RTSP để kiểm tra kết nối thực tế
+    try {
+      const probeResult = await device.instance.probeRtsp(5000);
+      device.status = probeResult.online ? 'connected' : 'error';
+      console.log(`[Camera-Device] RTSP probe for '${id}':`, probeResult);
+    } catch (err) {
+      device.status = 'error';
+      console.error(`[Camera-Device] RTSP probe error for '${id}':`, err);
+    }
   }
 
   _emitCamerasUpdate();
@@ -329,8 +354,18 @@ async function updateCameraDevice(deviceId, updates) {
       sdkResult = { online: false, error: err.message || String(err) };
       console.error(`[Camera-Device] Reconnect error for '${deviceId}':`, err);
     }
-  } else if (updates.type === 'other') {
-    device.status = 'ready';
+  } else if (device.instance && device.instance.probeRtsp) {
+    // Camera độc lập: re-probe RTSP nếu có thay đổi kết nối
+    if (requiresReconnect || updates.rtspUrl !== undefined) {
+      try {
+        const probeResult = await device.instance.probeRtsp(5000);
+        device.status = probeResult.online ? 'connected' : 'error';
+        console.log(`[Camera-Device] RTSP re-probe for '${deviceId}':`, probeResult);
+      } catch (err) {
+        device.status = 'error';
+        console.error(`[Camera-Device] RTSP re-probe error for '${deviceId}':`, err);
+      }
+    }
   }
 
   console.log(`[Camera-Device] Updated device '${deviceId}':`, JSON.stringify(updates));
@@ -349,10 +384,10 @@ function updateCameraFeatures(deviceId, features) {
   if (!device.features) {
     device.features = { enableMotion: true, enableLPR: true };
   }
-  
+
   Object.assign(device.features, features);
   console.log(`[Camera-Device] Updated features for '${deviceId}':`, device.features);
-  
+
   _emitCamerasUpdate();
   return { success: true, features: device.features };
 }
@@ -400,6 +435,27 @@ async function getSnapshotForCamera(cameraId) {
   if (!device.instance) {
     _debugFE(`[Camera-Snapshot] Camera '${cameraId}' has no instance`);
     return null;
+  }
+
+  // Camera độc lập: probe RTSP trước khi chụp, cập nhật status
+  if (device.type !== 'sunell' && device.instance && device.instance.probeRtsp) {
+    try {
+      const probeResult = await device.instance.probeRtsp(5000);
+      const newStatus = probeResult.online ? 'connected' : 'error';
+      if (device.status !== newStatus) {
+        device.status = newStatus;
+        _emitCamerasUpdate();
+      }
+      if (!probeResult.online) {
+        _debugFE(`[Camera-Snapshot] RTSP probe failed for '${device.id}': ${probeResult.error}`);
+        return null;
+      }
+    } catch (err) {
+      device.status = 'error';
+      _emitCamerasUpdate();
+      _debugFE(`[Camera-Snapshot] RTSP probe error for '${device.id}': ${err.message}`);
+      return null;
+    }
   }
 
   _debugFE(`[Camera-Snapshot] Capturing from camera '${device.id}' (${device.type}) ...`);
