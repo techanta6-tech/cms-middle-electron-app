@@ -15,12 +15,12 @@ export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: Camer
   const [addDeviceForm, setAddDeviceForm] = useState({
     name: '',
     type: initialType,
-    cameraIp: '192.168.1.207',
-    cameraPort: '554',
+    cameraIp: '192.168.1.208',
+    cameraPort: '30001',
     cameraUser: 'admin',
     cameraPass: 'admin1234',
     // rtspUrl: 'rtsp://fake-camera:554/stream'
-    rtspUrl: 'rtsp://admin:admin1234@192.168.1.208:554/snl/live/1/1',
+    rtspUrl: 'rtsp://admin:admin1234@192.168.1.208:30001/snl/live/1/1',
   });
 
   const handleSubmitDevice = async (e: React.FormEvent) => {

@@ -12,7 +12,9 @@
     "dev": "node scripts/detect-ip.js && concurrently --kill-others \"yarn dev:be\" \"yarn dev:fe\" \"yarn dev:electron\"",
     "build:fe": "cd cms-middle-fe && yarn build",
     "build:be": "cd cms-middle-be && yarn build",
-    "build": "yarn build:fe && yarn build:be && electron-builder"
+    "build": "yarn build:fe && yarn build:be && electron-builder",
+    "arch-map": "npx vite C:/Users/phucp/.understand-anything-plugin/packages/dashboard --port 3333 --host 0.0.0.0",
+    "arch-map:update": "node scripts/update-map.js"
   },
   "dependencies": {
     "mqtt": "^5.15.1"
