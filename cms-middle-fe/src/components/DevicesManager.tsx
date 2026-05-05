@@ -515,6 +515,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
 function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
   const { t } = useTranslation();
+  const features = (cam as any).features || {};
 
   const handleToggle = (feature: 'enableMotion' | 'enableLPR' | 'enableFace' | 'enableIVA' | 'enableSystem', value: boolean) => {
     socket.emit('update-camera-features', {
@@ -522,6 +523,16 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
       features: { [feature]: value }
     });
   };
+
+  const isSunell = cam.type === 'sunell';
+
+  const featureList: { key: 'enableMotion' | 'enableLPR' | 'enableFace' | 'enableIVA' | 'enableSystem'; label: string }[] = [
+    { key: 'enableMotion', label: 'Motion' },
+    { key: 'enableLPR',    label: 'LPR / Biển số' },
+    { key: 'enableFace',   label: 'Face / Khuôn mặt' },
+    { key: 'enableIVA',    label: 'IVA / Hành vi AI' },
+    { key: 'enableSystem', label: 'System / Hệ thống' },
+  ];
 
   return (
     <div className="flex flex-col gap-1">
@@ -533,8 +544,31 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
       <InfoRow label={t('app.monitor.type')} value={cam.type} />
       <InfoRow label={t('app.monitor.username')} value={cam.cameraUser} />
       <InfoRow label={t('app.monitor.rtsp_url')} value={cam.rtspUrl || '(none)'} mono />
-
       <InfoRow label={t('app.monitor.handle')} value={cam.handle ?? '(none)'} />
+
+      {isSunell && (
+        <div className="mt-5 pt-4 border-t border-outline-variant/10">
+          <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant block mb-3">
+            Event Filter
+          </span>
+          <div className="flex flex-col gap-0">
+            {featureList.map(({ key, label }) => {
+              const enabled = features[key] ?? true;
+              return (
+                <div key={key} className="flex items-center justify-between py-2 border-b border-outline-variant/5">
+                  <span className="text-[12px] text-on-surface">{label}</span>
+                  <button
+                    onClick={() => handleToggle(key, !enabled)}
+                    className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 ${enabled ? 'bg-primary' : 'bg-surface-container-high'}`}
+                  >
+                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${enabled ? 'left-[18px]' : 'left-0.5'}`} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

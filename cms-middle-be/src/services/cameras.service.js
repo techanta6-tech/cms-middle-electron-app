@@ -89,19 +89,6 @@ async function addCameraDevice(deviceConfig) {
       try {
         const payload = typeof rawJsonStr === 'string' ? JSON.parse(rawJsonStr) : rawJsonStr;
 
-        console.log(`[Camera-${id}] Raw Payload keys:`, Object.keys(payload));
-        if (payload.snapshotBase64) {
-          console.log(`[Camera-${id}] snapshotBase64 length:`, payload.snapshotBase64.length);
-        } else {
-          console.log(`[Camera-${id}] MISSING snapshotBase64 in payload`);
-        }
-
-        // WRITE DEUBG FILE
-        require('fs').appendFileSync(require('path').join(process.cwd(), 'sunell-payload-debug.log'), `[${new Date().toISOString()}] Payload from ${id}:\n` + JSON.stringify(payload, null, 2) + '\n\n');
-
-        const strBody = JSON.stringify(payload).toLowerCase();
-        const isLpr = strBody.includes('plate') || strBody.includes('targetdetectlist');
-
         // Neu device chua co features mac dinh thi coi nhu dc bat
         const features = device.features || {};
         const enableLPR = features.enableLPR ?? true;
@@ -111,15 +98,16 @@ async function addCameraDevice(deviceConfig) {
         const enableSystem = features.enableSystem ?? true;
 
         // Phân tích loại sự kiện
-        // let isLpr = false;
+        let isLpr = false;
         let isFace = false;
         let isMotion = false;
         let isIVA = false;
         let isSystem = false;
+        let ivaSubType = -1; // lưu sub_type của IVA để map chi tiết
         let logType = 'unknown';
         let description = 'Sự kiện không xác định';
 
-        // 1. Phân tích sự kiện nhận diện (AI Targets)
+        // 1. Phân tích sự kiện nhận diện (AI Targets) từ detect_cb
         if (payload.TargetDetectList && Array.isArray(payload.TargetDetectList)) {
           for (const target of payload.TargetDetectList) {
             if (target.Type === 3) isLpr = true;
@@ -127,7 +115,7 @@ async function addCameraDevice(deviceConfig) {
           }
         }
 
-        // 2. Phân tích sự kiện báo động (Alarms)
+        // 2. Phân tích sự kiện báo động (Alarms) từ alarm_cb
         if (payload.data && typeof payload.data.main_type !== 'undefined') {
           const mainType = payload.data.main_type;
           const subType = payload.data.sub_type;
@@ -136,17 +124,36 @@ async function addCameraDevice(deviceConfig) {
             isMotion = true;
           } else if (mainType === 6) {
             isIVA = true;
+            ivaSubType = subType;
           } else if (mainType === 1 || mainType === 4 || mainType === 5) {
             isSystem = true;
           }
         }
 
-        // Nếu parse lỗi JSON nhưng vẫn có 'plate' trong string thô thì fallback
+        // Nếu không nhận diện được loại nào thì fallback theo keyword trong JSON
         if (!isLpr && !isFace && !isMotion && !isIVA && !isSystem) {
           const strBody = JSON.stringify(payload).toLowerCase();
           if (strBody.includes('plate')) isLpr = true;
-          else isMotion = true; // Fallback
+          else isMotion = true; // Fallback cuối cùng
         }
+
+        // Map IVA sub_type → logType + description (theo Sunell SDK main_type=6)
+        const IVA_SUBTYPE_MAP = {
+          21: { logType: 'iva_trip_wire',           description: 'Vượt hàng rào ảo (Trip Wire)' },
+          22: { logType: 'iva_smd',                 description: 'Phát hiện đối tượng di chuyển (SMD)' },
+          23: { logType: 'iva_occlusion',            description: 'Camera bị che khuất (Occlusion)' },
+          24: { logType: 'iva_perimeter_intrusion',  description: 'Xâm nhập vùng cấm (Perimeter Intrusion)' },
+          25: { logType: 'iva_double_trip_wire',     description: 'Hàng rào ảo kép (Double Trip Wire)' },
+          26: { logType: 'iva_loitering',            description: 'Lảng vảng (Loitering)' },
+          27: { logType: 'iva_crowd_loitering',      description: 'Đám đông lảng vảng (Multi-person Loitering)' },
+          28: { logType: 'iva_object_left',          description: 'Bỏ quên đồ vật (Object Left)' },
+          29: { logType: 'iva_object_removed',       description: 'Mất cắp đồ vật (Object Removed)' },
+          30: { logType: 'iva_abnormal_speed',       description: 'Quá tốc độ (Abnormal Speed)' },
+          31: { logType: 'iva_retrograde',           description: 'Đi ngược chiều (Retrograde)' },
+          32: { logType: 'iva_illegal_parking',      description: 'Đậu xe trái phép (Illegal Parking)' },
+          33: { logType: 'iva_camera_shift',         description: 'Camera bị dời (Camera Shift)' },
+          34: { logType: 'iva_signal_bad',           description: 'Tín hiệu video bất thường (Video Signal Bad)' },
+        };
 
         // --- FILTERING ---
         let shouldProcess = false;
@@ -165,8 +172,10 @@ async function addCameraDevice(deviceConfig) {
           description = 'Phát hiện chuyển động (Motion)';
         } else if (isIVA && enableIVA) {
           shouldProcess = true;
-          logType = 'iva_event';
-          description = 'Phân tích AI (IVS/IVA)';
+          // Phân theo sub_type nếu có, fallback nếu không nhận ra
+          const ivaInfo = IVA_SUBTYPE_MAP[ivaSubType];
+          logType = ivaInfo ? ivaInfo.logType : 'iva_event';
+          description = ivaInfo ? ivaInfo.description : 'Phân tích AI (IVS/IVA)';
         } else if (isSystem && enableSystem) {
           shouldProcess = true;
           logType = 'system_event';
