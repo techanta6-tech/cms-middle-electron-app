@@ -97,6 +97,47 @@ public class Startup
 
         Console.WriteLine("[C# DETECT] Nhan Face/LPR stream tu camera (handle: " + handle + ")");
 
+        string snapshotBase64 = "";
+        string snapshotPath = "";
+        try
+        {
+            if (_deviceHandle > 0 && !string.IsNullOrEmpty(_snapshotDir))
+            {
+                string filename = "snap_detect_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".jpg";
+                snapshotPath = Path.Combine(_snapshotDir, filename);
+
+                Int32 snapResult = -1;
+                if (_mdHandle > 0)
+                {
+                    snapResult = sdk_md_capture(_mdHandle, snapshotPath);
+                    Console.WriteLine("[SNAP DETECT] sdk_md_capture result = " + snapResult + " -> " + snapshotPath);
+                }
+
+                if (snapResult != 0)
+                {
+                    snapResult = sdk_open_snap(_deviceHandle, 0, snapshotPath);
+                    Console.WriteLine("[SNAP DETECT] sdk_open_snap result = " + snapResult + " -> " + snapshotPath);
+                }
+
+                System.Threading.Thread.Sleep(200);
+
+                if (File.Exists(snapshotPath) && new FileInfo(snapshotPath).Length > 0)
+                {
+                    byte[] imgBytes = File.ReadAllBytes(snapshotPath);
+                    snapshotBase64 = Convert.ToBase64String(imgBytes);
+                    Console.WriteLine("[SNAP DETECT] OK! Size = " + imgBytes.Length + " bytes");
+                }
+                else
+                {
+                    snapshotPath = "";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("[SNAP ERROR DETECT] " + ex.Message);
+        }
+
         if (globalNodeCallback != null)
         {
             var payload = new Dictionary<string, object>
@@ -104,7 +145,9 @@ public class Startup
                 { "handle", handle },
                 { "rawJson", json },
                 { "timestamp", DateTime.UtcNow.ToString("o") },
-                { "source", "FACE_DETECT_STREAM" }
+                { "source", "FACE_DETECT_STREAM" },
+                { "snapshotBase64", snapshotBase64 },
+                { "snapshotPath", snapshotPath }
             };
 
             Task.Run(async () => {

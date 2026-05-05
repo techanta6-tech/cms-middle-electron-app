@@ -100,7 +100,8 @@ async function addCameraDevice(deviceConfig) {
             camera_name: device.name,
             log_type: isLpr ? 'lpr_event' : 'motion_event',
             description: isLpr ? 'Phát hiện biển số (LPR)' : 'Phát hiện chuyển động (Motion)',
-            raw_data: payload
+            raw_data: payload,
+            image_data: payload.snapshotBase64
           });
         }
       } catch (e) {

@@ -471,6 +471,7 @@ export function useSocketManager() {
         device_name: raw.camera_name || 'Sunell Camera',
         log_type: raw.log_type,
         description: raw.description,
+        snapshot: raw.image_data,
         server: { server_id: 'SUNELL-LOCAL', serial: 'SUNELL' },
         ip: '127.0.0.1',
         raw: raw.raw_data,

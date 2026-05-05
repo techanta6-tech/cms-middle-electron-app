@@ -298,7 +298,16 @@ class CameraDevice {
 
             const onCameraEvent = (payload, callback) => {
                 if (payload.source === 'FACE_DETECT_STREAM') {
-                    if (this.onAlarm) this.onAlarm(payload.rawJson);
+                    let parsedData = payload.rawJson;
+                    try {
+                        let p = JSON.parse(payload.rawJson);
+                        if (payload.snapshotBase64) {
+                            p.snapshotBase64 = payload.snapshotBase64;
+                        }
+                        parsedData = JSON.stringify(p);
+                    } catch(e) {}
+                    
+                    if (this.onAlarm) this.onAlarm(parsedData);
                     callback(null, true);
                     return;
                 }
@@ -319,6 +328,10 @@ class CameraDevice {
                     const d = parsed.data || {};
                     const alarmFlag = d.alarm_flag;
                     parsed.eventName = getAlarmName(d.main_type, d.sub_type);
+                    
+                    if (payload.snapshotBase64) {
+                        parsed.snapshotBase64 = payload.snapshotBase64;
+                    }
 
                     this.log('IN', `Alarm [${parsed.eventName}]`, { main_type: d.main_type, sub_type: d.sub_type, alarm_flag: alarmFlag, time: d.time });
 
