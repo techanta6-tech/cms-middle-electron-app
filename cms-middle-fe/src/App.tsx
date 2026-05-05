@@ -258,7 +258,7 @@ function LogFilter({
                         }`}>
                         {checked && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
                       </div>
-                      <span className="text-[11px] font-semibold text-on-surface truncate">{type}</span>
+                      <span className="text-[11px] font-semibold text-on-surface truncate">{t(`app.logtype.${type.toLowerCase().replace(/\./g, '')}`, { defaultValue: type })}</span>
                     </button>
                   );
                 })}
