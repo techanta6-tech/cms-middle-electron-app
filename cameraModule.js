@@ -56,7 +56,16 @@ const ALARM_NAMES = {
     '6/32': 'Đậu xe trái phép (Illegal parking)',
     '6/33': 'Camera bị dời góc (Camera shift)',
     '6/34': 'Lỗi tín hiệu video AI (Video signal abnormal)',
-    '6/37': 'Nhận diện biển số (License plate recognition)'
+    '6/37': 'Nhận diện biển số (License plate recognition)',
+
+    // main_type 7: Báo động nhiệt độ (Thermal)
+    '7/0': 'Cảnh báo ngưỡng nhiệt độ (Temperature threshold warning)',
+    '7/1': 'Báo động vượt ngưỡng nhiệt (Temperature threshold alarm)',
+    '7/4': 'Cảnh báo chênh lệch nhiệt (Temperature difference warning)',
+    '7/5': 'Báo động chênh lệch nhiệt (Temperature difference alarm)',
+    '7/16': 'Phát hiện điểm cháy (Fire spot detection)',
+    '7/17': 'Phát hiện hút thuốc (Smoking detection)',
+    '7/18': 'Phát hiện khói và lửa (Smoke & flame detection)'
 };
 
 function getAlarmName(mainType, subType) {
@@ -236,13 +245,31 @@ class CameraDevice {
         if (!url && this.cameraIp) {
             const user = this.cameraUser || 'admin';
             const pass = this.cameraPass || 'admin1234';
-            const rtspPort = 555; // Sunell RTSP port chuẩn
+            const rtspPort = 554; // Sunell RTSP port chuẩn
             url = `rtsp://${user}:${pass}@${this.cameraIp}:${rtspPort}/snl/live/1/1`;
             this.log('IN', `[RTSP] Auto-generated RTSP URL: rtsp://${user}:***@${this.cameraIp}:${rtspPort}/snl/live/1/1`);
         }
         if (!url) {
             this.log('IN', 'captureSnapshotBase64: RTSP URL chưa cấu hình và không có IP camera');
             return null;
+        }
+
+        // ⚠️ Phát hiện và sửa port sai: SDK port (30001) không phải RTSP port
+        // Sunell dùng 30001 cho SDK control, RTSP streaming dùng port 554 (chuẩn RTSP)
+        const SDK_PORTS = [30001, 30000];
+        const RTSP_FALLBACK_PORT = 554;
+        try {
+            const parsedUrl = new URL(url);
+            const configuredPort = parseInt(parsedUrl.port, 10);
+            if (SDK_PORTS.includes(configuredPort)) {
+                const fixedUrl = url.replace(`:${configuredPort}/`, `:${RTSP_FALLBACK_PORT}/`);
+                this.log('IN', `[RTSP] ⚠️ Phát hiện SDK port (${configuredPort}) trong RTSP URL — tự động chuyển sang port ${RTSP_FALLBACK_PORT}`);
+                this.log('IN', `[RTSP] URL gốc: ${url.replace(/:[^:@]+@/, ':***@')}`);
+                this.log('IN', `[RTSP] URL sửa: ${fixedUrl.replace(/:[^:@]+@/, ':***@')}`);
+                url = fixedUrl;
+            }
+        } catch (_) {
+            // Nếu URL không hợp lệ thì bỏ qua bước sửa port
         }
 
         if (url.includes('fake') || this.cameraIp === '127.0.0.1') {

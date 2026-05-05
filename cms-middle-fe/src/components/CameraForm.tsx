@@ -20,7 +20,7 @@ export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: Camer
     cameraUser: 'admin',
     cameraPass: 'admin1234',
     // rtspUrl: 'rtsp://fake-camera:554/stream'
-    rtspUrl: 'rtsp://admin:admin1234@192.168.1.208:30001/snl/live/1/1',
+    rtspUrl: 'rtsp://admin:admin1234@192.168.1.208:554/snl/live/1/1', // port 554 = RTSP, port 30001 = SDK control (khác nhau!)
   });
 
   const handleSubmitDevice = async (e: React.FormEvent) => {

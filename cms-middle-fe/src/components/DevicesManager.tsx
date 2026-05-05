@@ -513,9 +513,61 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
   );
 }
 
+// ── Sunell Sub-event definitions ─────────────────────────────────────────────
+const SUNELL_SUBEVENTS: Record<string, { code: string; label: string }[]> = {
+  enableMotion: [
+    { code: '1/2',  label: 'Phát hiện chuyển động (Motion detection)' },
+    { code: '1/9',  label: 'Phát hiện thân nhiệt PIR' },
+  ],
+  enableLPR: [
+    { code: '6/37', label: 'Nhận diện biển số xe (LPR)' },
+    { code: 'detect/lpr', label: 'Luồng AI nhận diện biển số (Stream)' },
+  ],
+  enableFace: [
+    { code: 'detect/face', label: 'Phát hiện khuôn mặt qua luồng AI (Stream)' },
+    { code: 'detect/person', label: 'Phát hiện người (Person detection)' },
+  ],
+  enableIVA: [
+    { code: '6/21', label: 'Vượt hàng rào ảo (Trip Wire)' },
+    { code: '6/22', label: 'Phát hiện đối tượng di chuyển (SMD)' },
+    { code: '6/23', label: 'Camera bị che khuất (Occlusion)' },
+    { code: '6/24', label: 'Xâm nhập vùng cấm (Perimeter Intrusion)' },
+    { code: '6/25', label: 'Hàng rào ảo kép (Double Trip Wire)' },
+    { code: '6/26', label: 'Lảng vảng (Loitering)' },
+    { code: '6/27', label: 'Đám đông lảng vảng (Multi-person Loitering)' },
+    { code: '6/28', label: 'Bỏ quên đồ vật (Object Left)' },
+    { code: '6/29', label: 'Mất cắp đồ vật (Object Removed)' },
+    { code: '6/30', label: 'Quá tốc độ (Abnormal Speed)' },
+    { code: '6/31', label: 'Đi ngược chiều (Retrograde)' },
+    { code: '6/32', label: 'Đậu xe trái phép (Illegal Parking)' },
+    { code: '6/33', label: 'Camera bị dời góc (Camera Shift)' },
+    { code: '6/34', label: 'Tín hiệu video bất thường (Video Signal Bad)' },
+  ],
+  enableSystem: [
+    { code: '1/1',  label: 'Báo động I/O' },
+    { code: '1/3',  label: 'Camera bị che khuất (Camera Blocking)' },
+    { code: '1/4',  label: 'Mất tín hiệu hình ảnh (Video Loss)' },
+    { code: '1/5',  label: 'Rớt mạng (Network Disconnection)' },
+    { code: '1/10', label: 'Báo động cổng I/O NVR' },
+    { code: '4/2',  label: 'Lỗi đọc/ghi ổ cứng' },
+    { code: '4/4',  label: 'Ổ cứng đầy' },
+    { code: '4/5',  label: 'Không có ổ cứng' },
+    { code: '5/2',  label: 'Sai user/pass luồng dữ liệu' },
+    { code: '5/4',  label: 'Đạt giới hạn số lượng kết nối luồng' },
+    { code: '7/0',  label: 'Cảnh báo ngưỡng nhiệt độ (Thermal)' },
+    { code: '7/1',  label: 'Báo động vượt ngưỡng nhiệt độ (Thermal)' },
+    { code: '7/4',  label: 'Cảnh báo chênh lệch nhiệt (Thermal)' },
+    { code: '7/5',  label: 'Báo động chênh lệch nhiệt (Thermal)' },
+    { code: '7/16', label: 'Phát hiện điểm cháy (Thermal)' },
+    { code: '7/17', label: 'Phát hiện hút thuốc (Smoking)' },
+    { code: '7/18', label: 'Phát hiện khói lửa (Smoke/Flame)' },
+  ],
+};
+
 function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
   const { t } = useTranslation();
   const features = (cam as any).features || {};
+  const [expandedSub, setExpandedSub] = useState<Record<string, boolean>>({});
 
   const handleToggle = (feature: 'enableMotion' | 'enableLPR' | 'enableFace' | 'enableIVA' | 'enableSystem', value: boolean) => {
     socket.emit('update-camera-features', {
@@ -524,19 +576,28 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
     });
   };
 
+  const toggleSub = (key: string) =>
+    setExpandedSub(p => ({ ...p, [key]: !p[key] }));
+
   const isSunell = cam.type === 'sunell';
 
-  const featureList: { key: 'enableMotion' | 'enableLPR' | 'enableFace' | 'enableIVA' | 'enableSystem'; label: string }[] = [
-    { key: 'enableMotion', label: 'Motion' },
-    { key: 'enableLPR',    label: 'LPR / Biển số' },
-    { key: 'enableFace',   label: 'Face / Khuôn mặt' },
-    { key: 'enableIVA',    label: 'IVA / Hành vi AI' },
-    { key: 'enableSystem', label: 'System / Hệ thống' },
+  const featureList: {
+    key: 'enableMotion' | 'enableLPR' | 'enableFace' | 'enableIVA' | 'enableSystem';
+    label: string;
+    color: string;
+  }[] = [
+    { key: 'enableMotion', label: 'Motion / Chuyển động',    color: 'text-amber-400' },
+    { key: 'enableLPR',    label: 'LPR / Biển số xe',        color: 'text-blue-400' },
+    { key: 'enableFace',   label: 'Face / Khuôn mặt',        color: 'text-pink-400' },
+    { key: 'enableIVA',    label: 'IVA / Hành vi thông minh', color: 'text-purple-400' },
+    { key: 'enableSystem', label: 'System / Hệ thống',       color: 'text-red-400' },
   ];
 
   return (
-    <div className="flex flex-col gap-1">
-      <h3 className="text-lg font-black text-on-surface mb-2">Camera: {cam.cameraIp}</h3>
+    <div className="CameraDetail flex flex-col gap-1">
+      <h3 className="text-lg font-black text-on-surface mb-2">
+        {(cam as any).name || `Camera: ${cam.cameraIp}`}
+      </h3>
       <div className="mb-3"><StatusBadge status={cam.status} /></div>
       <InfoRow label={t('app.monitor.camera_id')} value={cam.id} mono />
       <InfoRow label={t('app.monitor.camera_ip')} value={cam.cameraIp} mono />
@@ -548,25 +609,96 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
 
       {isSunell && (
         <div className="mt-5 pt-4 border-t border-outline-variant/10">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant block mb-3">
-            Event Filter
-          </span>
-          <div className="flex flex-col gap-0">
-            {featureList.map(({ key, label }) => {
+          {/* Section title */}
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
+              🎛 Event Filter — Sunell SDK
+            </span>
+            <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
+              {featureList.filter(f => features[f.key] ?? true).length}/{featureList.length} bật
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            {featureList.map(({ key, label, color }) => {
               const enabled = features[key] ?? true;
+              const subEvents = SUNELL_SUBEVENTS[key] || [];
+              const subExpanded = !!expandedSub[key];
+
               return (
-                <div key={key} className="flex items-center justify-between py-2 border-b border-outline-variant/5">
-                  <span className="text-[12px] text-on-surface">{label}</span>
-                  <button
-                    onClick={() => handleToggle(key, !enabled)}
-                    className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 ${enabled ? 'bg-primary' : 'bg-surface-container-high'}`}
-                  >
-                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${enabled ? 'left-[18px]' : 'left-0.5'}`} />
-                  </button>
+                <div
+                  key={key}
+                  className={`rounded-md border transition-all duration-200 overflow-hidden
+                    ${enabled
+                      ? 'border-outline-variant/20 bg-surface-container/40'
+                      : 'border-outline-variant/10 bg-surface-container/10 opacity-60'
+                    }`}
+                >
+                  {/* Category row */}
+                  <div className="flex items-center gap-2 px-3 py-2.5">
+                    {/* Expand toggle */}
+                    <button
+                      onClick={() => toggleSub(key)}
+                      className="shrink-0 p-0.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer"
+                      title={subExpanded ? 'Thu gọn' : 'Xem sub-events'}
+                    >
+                      <ChevronRight
+                        className={`w-3 h-3 text-on-surface-variant transition-transform duration-200 ${subExpanded ? 'rotate-90' : ''}`}
+                      />
+                    </button>
+
+                    {/* Label */}
+                    <button
+                      onClick={() => toggleSub(key)}
+                      className="flex-1 text-left cursor-pointer"
+                    >
+                      <span className={`text-[12px] font-semibold ${enabled ? color : 'text-on-surface-variant'}`}>
+                        {label}
+                      </span>
+                      <span className="ml-2 text-[9px] font-mono text-on-surface-variant/40">
+                        {subEvents.length} sub-events
+                      </span>
+                    </button>
+
+                    {/* Enable toggle */}
+                    <button
+                      onClick={() => handleToggle(key, !enabled)}
+                      className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0
+                        ${enabled ? 'bg-primary' : 'bg-surface-container-high'}`}
+                      title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
+                    >
+                      <span
+                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200
+                          ${enabled ? 'left-[18px]' : 'left-0.5'}`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Sub-event list */}
+                  {subExpanded && subEvents.length > 0 && (
+                    <div className={`border-t border-outline-variant/10 px-3 py-2 flex flex-col gap-0 ${!enabled ? 'opacity-50' : ''}`}>
+                      {subEvents.map(sub => (
+                        <div
+                          key={sub.code}
+                          className="flex items-start gap-2 py-1.5 border-b border-outline-variant/5 last:border-0"
+                        >
+                          <span className={`w-1 h-1 rounded-full shrink-0 mt-1.5 ${enabled ? color.replace('text-', 'bg-') : 'bg-on-surface-variant/30'}`} />
+                          <span className="text-[11px] text-on-surface-variant leading-tight">
+                            {sub.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
+
+          {/* Footer hint */}
+          <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
+            💡 Tắt category sẽ bỏ qua toàn bộ sub-events thuộc nhóm đó. Click ▶ để xem danh sách sub-event.
+          </p>
         </div>
       )}
     </div>

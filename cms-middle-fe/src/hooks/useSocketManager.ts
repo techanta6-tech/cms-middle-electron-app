@@ -461,7 +461,7 @@ export function useSocketManager() {
 
     const onReceiveSunellLog = (raw: any) => {
       const timeNumber = raw.timestamp ? new Date(raw.timestamp).getTime() / 1000 : Date.now() / 1000;
-      
+
       const newLog: LogData = {
         id: raw.id,
         time: Math.floor(timeNumber),

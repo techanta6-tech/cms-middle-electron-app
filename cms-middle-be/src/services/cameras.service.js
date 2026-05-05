@@ -8,17 +8,20 @@ if (!fs.existsSync(sampleLogsDir)) {
 }
 const loggedEventTypes = new Set();
 let CameraDevice;
+let getAlarmName;
 let _cameraModuleSource = 'DummyCamera'; // track which module is loaded
 try {
   if (process.pkg) {
     // Production: cameraModule.js nằm cạnh file exe
     const mod = require(path.join(path.dirname(process.execPath), 'cameraModule.js'));
     CameraDevice = mod.CameraDevice;
+    getAlarmName = mod.getAlarmName;
     _cameraModuleSource = 'pkg/cameraModule.js';
   } else {
     // Dev: cms-middle-be/src/services/ → ../../../ = repo root
     const mod = require('../../../cameraModule');
     CameraDevice = mod.CameraDevice;
+    getAlarmName = mod.getAlarmName;
     _cameraModuleSource = 'dev/cameraModule.js';
   }
   console.log(`[Cameras-Service] ✅ cameraModule loaded from: ${_cameraModuleSource}`);
@@ -116,16 +119,19 @@ async function addCameraDevice(deviceConfig) {
         }
 
         // 2. Phân tích sự kiện báo động (Alarms) từ alarm_cb
+        let globalMainType = null;
+        let globalSubType = null;
         if (payload.data && typeof payload.data.main_type !== 'undefined') {
-          const mainType = payload.data.main_type;
-          const subType = payload.data.sub_type;
+          globalMainType = payload.data.main_type;
+          globalSubType = payload.data.sub_type;
 
-          if (mainType === 1 && subType === 2) {
+          if (globalMainType === 1 && globalSubType === 2) {
             isMotion = true;
-          } else if (mainType === 6) {
+          } else if (globalMainType === 6) {
             isIVA = true;
-            ivaSubType = subType;
-          } else if (mainType === 1 || mainType === 4 || mainType === 5) {
+            ivaSubType = globalSubType;
+          } else if (globalMainType === 1 || globalMainType === 4 || globalMainType === 5 || globalMainType === 7) {
+            // 1: Safety, 4: Disk, 5: Video, 7: Temperature/Thermal
             isSystem = true;
           }
         }
@@ -137,22 +143,22 @@ async function addCameraDevice(deviceConfig) {
           else isMotion = true; // Fallback cuối cùng
         }
 
-        // Map IVA sub_type → logType + description (theo Sunell SDK main_type=6)
+        // Map IVA sub_type → logType
         const IVA_SUBTYPE_MAP = {
-          21: { logType: 'iva_trip_wire',           description: 'Vượt hàng rào ảo (Trip Wire)' },
-          22: { logType: 'iva_smd',                 description: 'Phát hiện đối tượng di chuyển (SMD)' },
-          23: { logType: 'iva_occlusion',            description: 'Camera bị che khuất (Occlusion)' },
-          24: { logType: 'iva_perimeter_intrusion',  description: 'Xâm nhập vùng cấm (Perimeter Intrusion)' },
-          25: { logType: 'iva_double_trip_wire',     description: 'Hàng rào ảo kép (Double Trip Wire)' },
-          26: { logType: 'iva_loitering',            description: 'Lảng vảng (Loitering)' },
-          27: { logType: 'iva_crowd_loitering',      description: 'Đám đông lảng vảng (Multi-person Loitering)' },
-          28: { logType: 'iva_object_left',          description: 'Bỏ quên đồ vật (Object Left)' },
-          29: { logType: 'iva_object_removed',       description: 'Mất cắp đồ vật (Object Removed)' },
-          30: { logType: 'iva_abnormal_speed',       description: 'Quá tốc độ (Abnormal Speed)' },
-          31: { logType: 'iva_retrograde',           description: 'Đi ngược chiều (Retrograde)' },
-          32: { logType: 'iva_illegal_parking',      description: 'Đậu xe trái phép (Illegal Parking)' },
-          33: { logType: 'iva_camera_shift',         description: 'Camera bị dời (Camera Shift)' },
-          34: { logType: 'iva_signal_bad',           description: 'Tín hiệu video bất thường (Video Signal Bad)' },
+          21: { logType: 'iva_trip_wire' },
+          22: { logType: 'iva_smd' },
+          23: { logType: 'iva_occlusion' },
+          24: { logType: 'iva_perimeter_intrusion' },
+          25: { logType: 'iva_double_trip_wire' },
+          26: { logType: 'iva_loitering' },
+          27: { logType: 'iva_crowd_loitering' },
+          28: { logType: 'iva_object_left' },
+          29: { logType: 'iva_object_removed' },
+          30: { logType: 'iva_abnormal_speed' },
+          31: { logType: 'iva_retrograde' },
+          32: { logType: 'iva_illegal_parking' },
+          33: { logType: 'iva_camera_shift' },
+          34: { logType: 'iva_signal_bad' },
         };
 
         // --- FILTERING ---
@@ -169,17 +175,24 @@ async function addCameraDevice(deviceConfig) {
         } else if (isMotion && enableMotion) {
           shouldProcess = true;
           logType = 'motion_event';
-          description = 'Phát hiện chuyển động (Motion)';
+          description = (globalMainType != null && globalSubType != null) 
+            ? getAlarmName(globalMainType, globalSubType) 
+            : 'Phát hiện chuyển động (Motion)';
         } else if (isIVA && enableIVA) {
           shouldProcess = true;
-          // Phân theo sub_type nếu có, fallback nếu không nhận ra
           const ivaInfo = IVA_SUBTYPE_MAP[ivaSubType];
-          logType = ivaInfo ? ivaInfo.logType : 'iva_event';
-          description = ivaInfo ? ivaInfo.description : 'Phân tích AI (IVS/IVA)';
+          logType = ivaInfo ? ivaInfo.logType : `iva_event_${ivaSubType}`;
+          description = (globalMainType != null && globalSubType != null) 
+            ? getAlarmName(globalMainType, globalSubType) 
+            : 'Phân tích AI (IVS/IVA)';
         } else if (isSystem && enableSystem) {
           shouldProcess = true;
-          logType = 'system_event';
-          description = 'Cảnh báo hệ thống / an ninh';
+          logType = (globalMainType != null && globalSubType != null) 
+            ? `system_event_${globalMainType}_${globalSubType}` 
+            : 'system_event';
+          description = (globalMainType != null && globalSubType != null) 
+            ? getAlarmName(globalMainType, globalSubType) 
+            : 'Cảnh báo hệ thống / an ninh';
         }
 
         // Nếu sự kiện không thuộc loại nào được bật thì bỏ qua
