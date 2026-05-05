@@ -195,13 +195,24 @@ const resources = {
           close: 'Đóng (ESC)',
           event_summary: 'Tóm tắt Sự kiện',
           system_metadata: 'Dữ liệu sự kiện',
+          detailed_metadata: 'Xem chi tiết',
           no_media: 'Không có tệp đính kèm',
           raw_data: 'Gói Dữ liệu Thô',
           close_report: 'Đóng Báo cáo'
         },
         logtype: {
           motion: 'Chuyển động',
-          a_motion_has_been_detected: 'Phát hiện chuyển động'
+          a_motion_has_been_detected: 'Phát hiện chuyển động',
+          lpr_event: 'Sự kiện biển số',
+          face_event: 'Sự kiện khuôn mặt',
+          motion_event: 'Sự kiện chuyển động',
+          iva_event: 'Phân tích AI',
+          system_event: 'Sự kiện hệ thống',
+          'phát_hiện_biển_số_(lpr)': 'Phát hiện biển số (LPR)',
+          'phát_hiện_khuôn_mặt_(face)': 'Phát hiện khuôn mặt (Face)',
+          'phát_hiện_chuyển_động_(motion)': 'Phát hiện chuyển động (Motion)',
+          'phân_tích_ai_(ivs/iva)': 'Phân tích AI (IVS/IVA)',
+          'cảnh_báo_hệ_thống_/_an_ninh': 'Cảnh báo hệ thống / an ninh'
         },
         mqtt_alarm_type: {
           '0': 'Ngã',
@@ -501,17 +512,28 @@ const resources = {
           error: 'Invalid credentials or server unreachable'
         },
         log_popup: {
-          title: 'Log Detai',
+          title: 'Log Detail',
           close: 'Close (ESC)',
           event_summary: 'Event Summary',
           system_metadata: 'Event Data',
+          detailed_metadata: 'Detailed Data',
           no_media: 'No media packet attached',
           raw_data: 'Raw Data Packet',
           close_report: 'Close Report'
         },
         logtype: {
           motion: 'Motion',
-          a_motion_has_been_detected: 'A motion has been detected'
+          a_motion_has_been_detected: 'A motion has been detected',
+          lpr_event: 'LPR Event',
+          face_event: 'Face Event',
+          motion_event: 'Motion Event',
+          iva_event: 'IVA Event',
+          system_event: 'System Event',
+          'phát_hiện_biển_số_(lpr)': 'License Plate Recognition (LPR)',
+          'phát_hiện_khuôn_mặt_(face)': 'Face Detection (Face)',
+          'phát_hiện_chuyển_động_(motion)': 'Motion Detection (Motion)',
+          'phân_tích_ai_(ivs/iva)': 'AI Analysis (IVS/IVA)',
+          'cảnh_báo_hệ_thống_/_an_ninh': 'System / Security Alert'
         },
         mqtt_alarm_type: {
           '0': 'Fall',

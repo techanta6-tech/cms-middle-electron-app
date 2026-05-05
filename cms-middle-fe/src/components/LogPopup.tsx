@@ -13,19 +13,79 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
   // console.log("log ", log)
   const [isShowImgRaw, setIsShowImgRaw] = useState<boolean>(false);
   const [isShowRawData, setIsShowRawData] = useState<boolean>(false);
+  const [isShowDetailed, setIsShowDetailed] = useState<boolean>(false);
+
+  const allMetadata = [
+    { label: 'Server ID', value: log.server?.server_id || log.raw?.body?.server?.server_id, isImportant: false },
+    { label: 'Server Serial', value: log.server?.serial || log.raw?.body?.server?.serial, isImportant: true },
+    { label: 'Device Name', value: log.device_name || log.raw?.body?.device_name, isImportant: true },
+    { label: 'Device IP', value: log.cameraIp || log.device_ip || 'Internal', isImportant: false },
+    { label: 'Device Port', value: log.raw?.body?.device_port, isImportant: false },
+    { label: 'Device Index', value: log.device_index ?? log.raw?.body?.device_index, isImportant: false },
+    { label: 'Device Type', value: log.device_type || log.raw?.body?.device_type, isImportant: true },
+    { label: 'Log Type', value: (log.log_type || log.raw?.body?.log_type) ? t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase()}`, { defaultValue: (log.log_type || log.raw?.body?.log_type) }) : undefined, isImportant: true },
+    { label: 'Description', value: (log.description || log.raw?.body?.description) ? t(`app.logtype.${(log.description || log.raw?.body?.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.description || log.raw?.body?.description) }) : undefined, isImportant: false },
+    { label: 'Source IP', value: log.ip || log.raw?.ip, isImportant: false },
+    { label: 'Timestamp', value: log.time ? new Date(log.time * 1000).toLocaleString() : '—', isImportant: true },
+  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
+
+  const importantMetadata = allMetadata.filter(item => item.isImportant);
+  const detailedMetadata = allMetadata.filter(item => !item.isImportant);
+
+  const renderEventSummary = () => {
+    if (log.raw?.payload?.object?.events?.length > 0) {
+      return log.raw.payload.object.events.map((evt: any, idx: number) => {
+        const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
+        const statusVal = evt.status !== undefined ? evt.status : evt.alarm_status;
+        const typeStr = typeVal !== undefined ? t(`app.mqtt_alarm_type.${typeVal}`, { defaultValue: String(typeVal) }) : 'Unknown Type';
+        const statusStr = statusVal !== undefined ? t(`app.mqtt_alarm_status.${statusVal}`, { defaultValue: String(statusVal) }) : 'Unknown Status';
+        return (
+          <span key={idx} className="flex items-center gap-2">
+            {idx > 0 && <span className="text-on-surface-variant/50">•</span>}
+            <span className="text-amber-400">{statusStr}</span>
+            <span className="text-on-surface-variant/50">|</span>
+            <span className="text-cyan-400">{typeStr}</span>
+          </span>
+        );
+      });
+    } else if (log.raw?.body?.log_type || log.log_type) {
+      const typeStr = t(`app.logtype.${(log.raw?.body?.log_type || log.log_type).toLowerCase()}`, { defaultValue: (log.raw?.body?.log_type || log.log_type).toLowerCase() });
+      const descStr = (log.raw?.body?.description || log.description) ? t(`app.logtype.${(log.raw?.body?.description || log.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.raw?.body?.description || log.description).toLowerCase() }) : '';
+      return (
+        <span className="flex items-center gap-2">
+          <span className="text-cyan-400">{typeStr}</span>
+          {descStr && (
+            <>
+              <span className="text-on-surface-variant/50">:</span>
+              <span className="text-amber-400">{descStr}</span>
+            </>
+          )}
+        </span>
+      );
+    }
+    return null;
+  };
+
+  const serverSerial = log.server?.serial || log.raw?.body?.server?.serial || 'UNKNOWN_SERVER';
+  const deviceName = log.device_name || log.raw?.body?.device_name || 'UNKNOWN_DEVICE';
+  const summaryContent = renderEventSummary();
+
   return (
     <div onClick={onClickOutside} className="log-popup-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
       <div className="log-popup-container relative w-full max-w-6xl bg-surface-container-low border border-outline-variant/30 rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in scale-up">
         {/* Header */}
         <div className="log-popup-header p-4 border-b border-outline-variant/20 bg-surface-container flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {/* <div className={`w-2 h-10 rounded-full ${log.type === 'error' ? 'bg-tertiary' :
-              log.type === 'warning' ? 'bg-amber-400' :
-                log.type === 'success' ? 'bg-secondary' : 'bg-primary'
-              }`}></div> */}
             <div>
-              <h3 className="text-sm font-black tracking-widest uppercase text-on-surface">{log.raw?.body?.server?.serial} / {log.raw?.body?.device_name} / DETAILED_REPORT</h3>
-              <p className="text-[10px] text-on-surface-variant font-mono">{log.time} • {log.cameraIp || 'SYSTEM'}</p>
+              <h3 className="text-sm font-black tracking-widest uppercase text-on-surface flex flex-wrap items-center gap-2">
+                <span>{serverSerial} / {deviceName} / DETAILED_REPORT</span>
+                {summaryContent && (
+                  <>
+                    <span className="text-on-surface-variant/50">/</span>
+                    {summaryContent}
+                  </>
+                )}
+              </h3>
             </div>
           </div>
           <button
@@ -37,105 +97,85 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
         </div>
 
         {/* Content */}
-        <div className="log-popup-content flex-1 overflow-y-auto p-6 bg-[#0d0d0f] custom-scrollbar">
-          <div className="grid grid-cols-1 md:grid-cols-[35%_1fr] gap-6">
-            {/* Left: Info & Metadata */}
-            <div className="space-y-6 max-h-[calc(90vh-8rem)] overflow-y-auto custom-scrollbar pr-2">
-              <section>
-                <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3">{t('app.log_popup.event_summary')}</h4>
-                <div className="p-4 bg-surface-container-lowest/50 border border-outline-variant/10 rounded-sm">
-                  {log.raw?.payload?.object?.events?.length > 0 ? (
-                    <div className="flex flex-col gap-2">
-                      {log.raw.payload.object.events.map((evt: any, idx: number) => {
-                        const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
-                        const statusVal = evt.status !== undefined ? evt.status : evt.alarm_status;
-
-                        const typeStr = typeVal !== undefined ? t(`app.mqtt_alarm_type.${typeVal}`, { defaultValue: String(typeVal) }) : 'Unknown Type';
-                        const statusStr = statusVal !== undefined ? t(`app.mqtt_alarm_status.${statusVal}`, { defaultValue: String(statusVal) }) : 'Unknown Status';
-
-                        return (
-                          <p key={idx} className="text-[12px] font-mono text-on-surface font-medium leading-relaxed flex items-center gap-2">
-                            <span className="font-bold text-amber-400">{statusStr}</span>
-                            <span className="text-on-surface-variant/50">|</span>
-                            <span className="text-cyan-400">{typeStr}</span>
-                          </p>
-                        );
-                      })}
-                    </div>
-                  ) : (log.raw?.body?.log_type || log.log_type) ? (
-                    <p className="text-[12px] font-mono text-on-surface font-medium leading-relaxed">
-                      {t(`app.logtype.${(log.raw?.body?.log_type || log.log_type).toLowerCase()}`, { defaultValue: (log.raw?.body?.log_type || log.log_type).toLowerCase() })} : {(log.raw?.body?.description || log.description) ? t(`app.logtype.${(log.raw?.body?.description || log.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.raw?.body?.description || log.description).toLowerCase() }) : ''}
-                    </p>
-                  ) : (
-                    <p className="text-[12px] font-mono text-on-surface font-medium leading-relaxed italic text-on-surface-variant/50">
-                      No event summary available
-                    </p>
-                  )}
+        <div className="log-popup-content flex-1 overflow-y-auto p-6 bg-[#0d0d0f] custom-scrollbar space-y-8">
+          {/* Top: Media Evidence */}
+          <section>
+            <div className="bg-black rounded-sm overflow-hidden border border-outline-variant/20 relative shadow-inner max-h-[60vh] flex items-center justify-center">
+              {snapshot ? (
+                <img
+                  src={snapshot}
+                  alt="Event Evidence"
+                  className="w-full h-full object-contain max-h-[60vh]"
+                />
+              ) : (
+                <div className="w-full aspect-video flex flex-col items-center justify-center opacity-20 gap-2">
+                  <Cloud className="w-10 h-10" />
+                  <span className="text-[9px] uppercase font-black">{t('app.log_popup.no_media')}</span>
                 </div>
-              </section>
-
-              <section>
-                <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3">{t('app.log_popup.system_metadata')}</h4>
-                <div className="space-y-2">
-                  {[
-                    { label: 'Server ID', value: log.server?.server_id || log.raw?.body?.server?.server_id },
-                    { label: 'Server Serial', value: log.server?.serial || log.raw?.body?.server?.serial },
-                    { label: 'Device Name', value: log.device_name || log.raw?.body?.device_name },
-                    { label: 'Device IP', value: log.cameraIp || log.device_ip || 'Internal' },
-                    { label: 'Device Port', value: log.raw?.body?.device_port },
-                    { label: 'Device Index', value: log.device_index ?? log.raw?.body?.device_index },
-                    { label: 'Device Type', value: log.device_type || log.raw?.body?.device_type },
-                    { label: 'Log Type', value: (log.log_type || log.raw?.body?.log_type) ? t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase()}`, { defaultValue: (log.log_type || log.raw?.body?.log_type) }) : undefined },
-                    { label: 'Description', value: (log.description || log.raw?.body?.description) ? t(`app.logtype.${(log.description || log.raw?.body?.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.description || log.raw?.body?.description) }) : undefined },
-                    { label: 'Source IP', value: log.ip || log.raw?.ip },
-                    { label: 'Timestamp', value: log.time ? new Date(log.time * 1000).toLocaleString() : '—' },
-                  ].filter(item => item.value !== undefined && item.value !== null && item.value !== '').map(item => (
-                    <div key={item.label} className="flex justify-between items-center py-1.5">
-                      <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">{item.label}</span>
-                      <span className="text-[10px] font-mono text-on-surface font-medium">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-
-            {/* Right: Media Evidence */}
-            <div className="space-y-6">
-              <section>
-                <div className="aspect-video bg-black rounded-sm overflow-hidden border border-outline-variant/20 relative shadow-inner">
-                  {snapshot ? (
-                    <img
-                      src={snapshot}
-                      alt="Event Evidence"
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center opacity-20 gap-2">
-                      <Cloud className="w-10 h-10" />
-                      <span className="text-[9px] uppercase font-black">{t('app.log_popup.no_media')}</span>
-                    </div>
-                  )}
-                </div>
-              </section>
-              {log.raw && (
-                <section>
-                  <h4
-                    className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3 cursor-pointer flex items-center gap-1 hover:text-primary/80 transition-colors w-fit"
-                    onClick={() => setIsShowRawData(!isShowRawData)}
-                  >
-                    {isShowRawData ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                    {t('app.log_popup.raw_data')}
-                  </h4>
-                  {isShowRawData && (
-                    <div className="p-3 bg-black/40 rounded-sm border border-outline-variant/10">
-                      <pre onClick={() => setIsShowImgRaw(!isShowImgRaw)} className="cursor-pointer text-[9px] font-mono text-secondary-dim overflow-x-auto custom-scrollbar leading-tight whitespace-pre-wrap">
-                        {JSON.stringify(log.raw.body || log.raw, (key, value) => (key === 'snapshot' && !isShowImgRaw) ? '[IMAGE_BUFFER]' : value, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </section>
               )}
             </div>
+          </section>
+
+          {/* Middle: Important Info */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Important System Metadata */}
+            <section className="col-span-1 md:col-span-2">
+              <h4 className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3">{t('app.log_popup.system_metadata')}</h4>
+              <div className="space-y-2 p-4 bg-surface-container-lowest/30 border border-outline-variant/10 rounded-sm">
+                {importantMetadata.map(item => (
+                  <div key={item.label} className="flex justify-between items-center py-1.5 border-b border-outline-variant/5 last:border-0">
+                    <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">{item.label}</span>
+                    <span className="text-[10px] font-mono text-on-surface font-medium">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          {/* Bottom: Detailed Metadata & Raw Data */}
+          <div className="space-y-6 pt-4 border-t border-outline-variant/10">
+            {/* Detailed Metadata */}
+            {detailedMetadata.length > 0 && (
+              <section>
+                <h4
+                  className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3 cursor-pointer flex items-center gap-1 hover:text-primary/80 transition-colors w-fit"
+                  onClick={() => setIsShowDetailed(!isShowDetailed)}
+                >
+                  {isShowDetailed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                  {t('app.log_popup.detailed_metadata', { defaultValue: 'Detailed Data' })}
+                </h4>
+                {isShowDetailed && (
+                  <div className="space-y-2 p-4 bg-black/40 rounded-sm border border-outline-variant/10 grid grid-cols-1 md:grid-cols-2 gap-x-8">
+                    {detailedMetadata.map(item => (
+                      <div key={item.label} className="flex justify-between items-center py-1.5 border-b border-outline-variant/5">
+                        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">{item.label}</span>
+                        <span className="text-[10px] font-mono text-on-surface font-medium">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* Raw Data */}
+            {log.raw && (
+              <section>
+                <h4
+                  className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-3 cursor-pointer flex items-center gap-1 hover:text-primary/80 transition-colors w-fit"
+                  onClick={() => setIsShowRawData(!isShowRawData)}
+                >
+                  {isShowRawData ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                  {t('app.log_popup.raw_data')}
+                </h4>
+                {isShowRawData && (
+                  <div className="p-3 bg-black/40 rounded-sm border border-outline-variant/10">
+                    <pre onClick={() => setIsShowImgRaw(!isShowImgRaw)} className="cursor-pointer text-[9px] font-mono text-secondary-dim overflow-x-auto custom-scrollbar leading-tight whitespace-pre-wrap">
+                      {JSON.stringify(log.raw.body || log.raw, (key, value) => (key === 'snapshot' && !isShowImgRaw) ? '[IMAGE_BUFFER]' : value, 2)}
+                    </pre>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         </div>
 

@@ -203,3 +203,68 @@ export interface MqttLogEntry {
   brokerHost?: string;
   brokerPort?: string;
 }
+
+// ─── Sunell Log Types ────────────────────────────────────────────────────────
+
+export interface SunellLogEntry {
+  // IVA, Face, Motion Events
+  data?: {
+    dev_ip?: string;
+    src_type?: number;
+    src_id?: number;
+    src_name?: string;
+    dev_id?: string;
+    dev_descript?: string;
+    io_port_id?: number;
+    targer_type?: number;
+    upleft_x?: number;
+    upleft_y?: number;
+    lowright_x?: number;
+    lowright_y?: number;
+    alarm_pic_len?: number;
+    alarm_pic?: string;
+    dev_type?: number;
+    main_type?: number;
+    sub_type?: number;
+    alarm_flag?: number;
+    time?: string;
+  };
+  SNPointList?: any[];
+  AlarmAreaList?: any[];
+  eventName?: string;
+
+  // LPR Events
+  Magic?: string;
+  Vesion?: number;
+  TotalLen?: number;
+  PictureLen?: number;
+  FullImageWidth?: number;
+  FullImageHeight?: number;
+  Capture_TimeH?: number;
+  Capture_TimeL?: number;
+  SequenceID?: number;
+  Full_crop?: number;
+  TargetSize?: number;
+  TargetDetectList?: {
+    TargeId?: number;
+    Type?: number;
+    X?: number;
+    Y?: number;
+    W?: number;
+    H?: number;
+    AttrDataLen?: number;
+    PlateInfo?: {
+      Have_plate?: number;
+      Plate_angleH?: number;
+      Plate_angleV?: number;
+      Plate_color?: number;
+      Plate_type?: number;
+      Plate_confidence?: number;
+      Plate_country?: number;
+      Char_num?: number;
+      Plate_num?: string;
+      Plate_char_confidence?: string;
+    };
+  }[];
+  snapshotBase64?: string;
+}

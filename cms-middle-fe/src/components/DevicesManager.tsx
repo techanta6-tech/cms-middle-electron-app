@@ -7,11 +7,8 @@ import {
 } from 'lucide-react';
 import { CameraForm } from './CameraForm';
 import { AddExternalServer } from './AddExternalServer';
-<<<<<<< Updated upstream
 import { socket } from '../socket';
 import apiClient from '../api/apiClient';
-=======
->>>>>>> Stashed changes
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type SelectedItemType =
@@ -334,13 +331,12 @@ function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onCl
         <span className="w-4" />
       )}
       {status && (
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-          status === 'connected' ? 'bg-secondary' :
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${status === 'connected' ? 'bg-secondary' :
           status === 'connecting' ? 'bg-amber-400 animate-pulse' :
-          status === 'error' ? 'bg-red-500' :
-          status === 'ready' ? 'bg-cyan-400' :
-          'bg-tertiary animate-pulse'
-        }`} />
+            status === 'error' ? 'bg-red-500' :
+              status === 'ready' ? 'bg-cyan-400' :
+                'bg-tertiary animate-pulse'
+          }`} />
       )}
       <div className="flex flex-col min-w-0 flex-1">
         <span className="font-bold truncate leading-tight">{label}</span>
@@ -388,8 +384,8 @@ function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDe
   };
 
   // Lấy dữ liệu mới nhất từ props để tránh lỗi stale-state khi React useState không tự cập nhật
-  const latestCam = item.kind === 'camera' 
-    ? cameraDevices.find(c => c.id === item.data.id) || item.data 
+  const latestCam = item.kind === 'camera'
+    ? cameraDevices.find(c => c.id === item.data.id) || item.data
     : null;
 
   return (
@@ -519,7 +515,6 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
 function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
   const { t } = useTranslation();
-<<<<<<< Updated upstream
 
   const handleToggle = (feature: 'enableMotion' | 'enableLPR' | 'enableFace' | 'enableIVA' | 'enableSystem', value: boolean) => {
     socket.emit('update-camera-features', {

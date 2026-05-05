@@ -5,19 +5,15 @@ import { TriangleAlert, Info, AlertCircle } from 'lucide-react';
 export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }) {
   const { t } = useTranslation();
   let Icon = Info;
-  let colorClass = 'text-primary';
-  let bgBorderClass = 'bg-primary';
+  const colorClass = 'text-primary';
+  const bgBorderClass = 'bg-primary';
 
   const logType = typeof log.log_type === 'string' ? log.log_type.toLowerCase() : 'info';
 
   if (logType.includes('event') || logType.includes('error')) {
     Icon = AlertCircle;
-    colorClass = 'text-tertiary';
-    bgBorderClass = 'bg-tertiary';
   } else if (logType.includes('warning')) {
     Icon = TriangleAlert;
-    colorClass = 'text-amber-400';
-    bgBorderClass = 'bg-amber-400';
   }
 
   let displayDesc = log.description;

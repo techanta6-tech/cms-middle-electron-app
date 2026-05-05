@@ -66,20 +66,22 @@ async function addCameraDevice(deviceConfig) {
     cameraUser: cameraUser || 'admin',
     cameraPass: cameraPass || 'admin1234',
     logger: (direction, label, data) => {
+      if (!cameraDevices.some(d => d.id === id)) return;
       const ts = new Date().toLocaleTimeString('vi-VN', { hour12: false });
       const arrow = direction === 'IN' ? '⬇️' : '⬆️';
       const msg = `[${ts}] ${arrow} | [${id}] ${label}` + (data !== undefined ? ` | ${typeof data === 'string' ? data : JSON.stringify(data)}` : '');
       console.log(msg);
-      
+
       const sockets = getClientSockets();
       if (sockets) {
         sockets.emit('debug-camera-snapshot', { time: new Date().toISOString(), message: msg });
       }
     },
     onAlarm: (rawJsonStr) => {
+      if (!cameraDevices.some(d => d.id === id)) return;
       try {
         const payload = typeof rawJsonStr === 'string' ? JSON.parse(rawJsonStr) : rawJsonStr;
-        
+
         console.log(`[Camera-${id}] Raw Payload keys:`, Object.keys(payload));
         if (payload.snapshotBase64) {
           console.log(`[Camera-${id}] snapshotBase64 length:`, payload.snapshotBase64.length);
@@ -92,7 +94,7 @@ async function addCameraDevice(deviceConfig) {
 
         const strBody = JSON.stringify(payload).toLowerCase();
         const isLpr = strBody.includes('plate') || strBody.includes('targetdetectlist');
-        
+
         // Neu device chua co features mac dinh thi coi nhu dc bat
         const features = device.features || {};
         const enableLPR = features.enableLPR ?? true;
@@ -102,7 +104,7 @@ async function addCameraDevice(deviceConfig) {
         const enableSystem = features.enableSystem ?? true;
 
         // Phân tích loại sự kiện
-        let isLpr = false;
+        // let isLpr = false;
         let isFace = false;
         let isMotion = false;
         let isIVA = false;
@@ -333,10 +335,10 @@ function updateCameraFeatures(deviceId, features) {
   if (!device.features) {
     device.features = { enableMotion: true, enableLPR: true };
   }
-  
+
   Object.assign(device.features, features);
   console.log(`[Camera-Device] Updated features for '${deviceId}':`, device.features);
-  
+
   _emitCamerasUpdate();
   return { success: true, features: device.features };
 }
