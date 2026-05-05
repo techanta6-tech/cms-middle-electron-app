@@ -108,9 +108,9 @@ export function DevicesManager({
         />
       )}
       {(addingForm === 'camera' || addingForm === 'sunell_camera') && (
-        <CameraForm 
-          onCancel={() => setAddingForm(null)} 
-          onSuccess={() => { setAddingForm(null); fetchCameras(); }} 
+        <CameraForm
+          onCancel={() => setAddingForm(null)}
+          onSuccess={() => { setAddingForm(null); fetchCameras(); }}
           initialType={addingForm === 'sunell_camera' ? 'sunell' : 'other'}
         />
       )}
@@ -195,26 +195,6 @@ export function DevicesManager({
             </div>
           )}
 
-          {/* Independent Cameras */}
-          <GroupHeader icon={<Camera className="w-3.5 h-3.5" />} label={t('app.devices.cameras')} color="text-cyan-500" count={otherCameras.length}
-            expanded={!!expandedGroups.cameras} onToggle={() => toggleGroup('cameras')}
-            onAdd={() => setAddingForm('camera')}
-          />
-          {expandedGroups.cameras && (
-            <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-cyan-500/10 pl-2">
-              {otherCameras.length === 0 && <EmptyHint text={t('app.devices.no_cameras')} />}
-              {otherCameras.map(cam => (
-                <TreeItem key={cam.id}
-                  label={(cam as any).name || `Camera: ${cam.cameraIp}`}
-                  sublabel={cam.id}
-                  onClick={() => setSelected({ kind: 'camera', data: cam })}
-                  isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
-                  status={cam.status === 'connected' ? 'connected' : 'disconnected'}
-                />
-              ))}
-            </div>
-          )}
-
           {/* Sunell Cameras */}
           <GroupHeader icon={<Camera className="w-3.5 h-3.5" />} label={t('app.devices.sunell_cameras')} color="text-green-500" count={sunellCameras.length}
             expanded={!!expandedGroups.sunell} onToggle={() => toggleGroup('sunell')}
@@ -226,6 +206,26 @@ export function DevicesManager({
               {sunellCameras.map(cam => (
                 <TreeItem key={cam.id}
                   label={(cam as any).name || `Camera Sunell: ${cam.cameraIp}`}
+                  sublabel={cam.id}
+                  onClick={() => setSelected({ kind: 'camera', data: cam })}
+                  isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
+                  status={cam.status === 'connected' ? 'connected' : 'disconnected'}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Independent Cameras */}
+          <GroupHeader icon={<Camera className="w-3.5 h-3.5" />} label={t('app.devices.cameras')} color="text-cyan-500" count={otherCameras.length}
+            expanded={!!expandedGroups.cameras} onToggle={() => toggleGroup('cameras')}
+            onAdd={() => setAddingForm('camera')}
+          />
+          {expandedGroups.cameras && (
+            <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-cyan-500/10 pl-2">
+              {otherCameras.length === 0 && <EmptyHint text={t('app.devices.no_cameras')} />}
+              {otherCameras.map(cam => (
+                <TreeItem key={cam.id}
+                  label={(cam as any).name || `Camera: ${cam.cameraIp}`}
                   sublabel={cam.id}
                   onClick={() => setSelected({ kind: 'camera', data: cam })}
                   isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
@@ -456,7 +456,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
 function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
   const { t } = useTranslation();
-  
+
   const handleToggle = (feature: 'enableMotion' | 'enableLPR', value: boolean) => {
     socket.emit('update-camera-features', {
       id: cam.id,

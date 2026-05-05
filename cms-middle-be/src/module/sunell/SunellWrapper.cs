@@ -99,43 +99,152 @@ public class Startup
 
         string snapshotBase64 = "";
         string snapshotPath = "";
+
+        // === CÁCH 1 (ƯU TIÊN): Đọc ảnh trực tiếp từ p_data pointer ===
+        // Camera Sunell gửi kèm binary ảnh JPEG trong p_data, kích thước = PictureLen trong JSON
         try
         {
-            if (_deviceHandle > 0 && !string.IsNullOrEmpty(_snapshotDir))
+            if (p_data != IntPtr.Zero)
             {
-                string filename = "snap_detect_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".jpg";
-                snapshotPath = Path.Combine(_snapshotDir, filename);
-
-                Int32 snapResult = -1;
-                if (_mdHandle > 0)
+                // Parse PictureLen từ JSON metadata
+                int pictureLen = 0;
+                try
                 {
-                    snapResult = sdk_md_capture(_mdHandle, snapshotPath);
-                    Console.WriteLine("[SNAP DETECT] sdk_md_capture result = " + snapResult + " -> " + snapshotPath);
+                    string searchKey = "\"PictureLen\":";
+                    int idx = json.IndexOf(searchKey);
+                    if (idx >= 0)
+                    {
+                        int start = idx + searchKey.Length;
+                        int end = json.IndexOfAny(new char[] { ',', '}', ' ' }, start);
+                        if (end > start)
+                        {
+                            string numStr = json.Substring(start, end - start).Trim();
+                            int.TryParse(numStr, out pictureLen);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("[SNAP DETECT p_data] Error parsing PictureLen: " + ex.Message);
                 }
 
-                if (snapResult != 0)
+                if (pictureLen > 0 && pictureLen < 50 * 1024 * 1024) // Safety: max 50MB
                 {
-                    snapResult = sdk_open_snap(_deviceHandle, 0, snapshotPath);
-                    Console.WriteLine("[SNAP DETECT] sdk_open_snap result = " + snapResult + " -> " + snapshotPath);
-                }
+                    byte[] imgBytes = new byte[pictureLen];
+                    Marshal.Copy(p_data, imgBytes, 0, pictureLen);
 
-                System.Threading.Thread.Sleep(200);
+                    // Kiểm tra JPEG header (FF D8 FF)
+                    bool isJpeg = imgBytes.Length >= 3 && imgBytes[0] == 0xFF && imgBytes[1] == 0xD8 && imgBytes[2] == 0xFF;
 
-                if (File.Exists(snapshotPath) && new FileInfo(snapshotPath).Length > 0)
-                {
-                    byte[] imgBytes = File.ReadAllBytes(snapshotPath);
-                    snapshotBase64 = Convert.ToBase64String(imgBytes);
-                    Console.WriteLine("[SNAP DETECT] OK! Size = " + imgBytes.Length + " bytes");
+                    if (isJpeg)
+                    {
+                        snapshotBase64 = Convert.ToBase64String(imgBytes);
+                        Console.WriteLine("[SNAP DETECT] ✅ Extracted JPEG from p_data! Size = " + imgBytes.Length + " bytes");
+                    }
+                    else
+                    {
+                        // Log header bytes để debug
+                        string headerHex = BitConverter.ToString(imgBytes, 0, Math.Min(16, imgBytes.Length));
+                        Console.WriteLine("[SNAP DETECT] p_data header (not JPEG): " + headerHex);
+
+                        // Thử tìm JPEG header trong data (có thể có offset header trước ảnh)
+                        int jpegStart = -1;
+                        int searchLimit = Math.Min(1024, imgBytes.Length - 3); // Tìm trong 1KB đầu
+                        for (int i = 0; i < searchLimit; i++)
+                        {
+                            if (imgBytes[i] == 0xFF && imgBytes[i + 1] == 0xD8 && imgBytes[i + 2] == 0xFF)
+                            {
+                                jpegStart = i;
+                                break;
+                            }
+                        }
+
+                        if (jpegStart >= 0)
+                        {
+                            int jpegLen = imgBytes.Length - jpegStart;
+                            byte[] jpegBytes = new byte[jpegLen];
+                            Array.Copy(imgBytes, jpegStart, jpegBytes, 0, jpegLen);
+                            snapshotBase64 = Convert.ToBase64String(jpegBytes);
+                            Console.WriteLine("[SNAP DETECT] ✅ Found JPEG at offset " + jpegStart + "! Size = " + jpegLen + " bytes");
+                        }
+                        else
+                        {
+                            // Fallback: convert nguyên khối (có thể là format khác)
+                            snapshotBase64 = Convert.ToBase64String(imgBytes);
+                            Console.WriteLine("[SNAP DETECT] ⚠️ No JPEG header found, raw base64 size = " + imgBytes.Length + " bytes");
+                        }
+                    }
+
+                    // Lưu file ảnh để debug (tùy chọn)
+                    if (!string.IsNullOrEmpty(_snapshotDir) && !string.IsNullOrEmpty(snapshotBase64))
+                    {
+                        try
+                        {
+                            string filename = "snap_detect_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".jpg";
+                            snapshotPath = Path.Combine(_snapshotDir, filename);
+                            File.WriteAllBytes(snapshotPath, imgBytes);
+                            Console.WriteLine("[SNAP DETECT] Saved to: " + snapshotPath);
+                        }
+                        catch {}
+                    }
                 }
                 else
                 {
-                    snapshotPath = "";
+                    Console.WriteLine("[SNAP DETECT] PictureLen = " + pictureLen + " (invalid or not found in JSON)");
                 }
+            }
+            else
+            {
+                Console.WriteLine("[SNAP DETECT] p_data is NULL — no image data from camera");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine("[SNAP ERROR DETECT] " + ex.Message);
+            Console.WriteLine("[SNAP DETECT p_data] Error: " + ex.Message);
+        }
+
+        // === CÁCH 2 (FALLBACK): Chụp qua SDK nếu chưa extract được ảnh từ p_data ===
+        if (string.IsNullOrEmpty(snapshotBase64))
+        {
+            try
+            {
+                if (_deviceHandle > 0 && !string.IsNullOrEmpty(_snapshotDir))
+                {
+                    string filename = "snap_detect_sdk_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".jpg";
+                    snapshotPath = Path.Combine(_snapshotDir, filename);
+
+                    Int32 snapResult = -1;
+                    if (_mdHandle > 0)
+                    {
+                        snapResult = sdk_md_capture(_mdHandle, snapshotPath);
+                        Console.WriteLine("[SNAP DETECT SDK] sdk_md_capture result = " + snapResult);
+                    }
+
+                    if (snapResult != 0)
+                    {
+                        snapResult = sdk_open_snap(_deviceHandle, 0, snapshotPath);
+                        Console.WriteLine("[SNAP DETECT SDK] sdk_open_snap result = " + snapResult);
+                    }
+
+                    System.Threading.Thread.Sleep(200);
+
+                    if (File.Exists(snapshotPath) && new FileInfo(snapshotPath).Length > 0)
+                    {
+                        byte[] imgBytes = File.ReadAllBytes(snapshotPath);
+                        snapshotBase64 = Convert.ToBase64String(imgBytes);
+                        Console.WriteLine("[SNAP DETECT SDK] OK! Size = " + imgBytes.Length + " bytes");
+                    }
+                    else
+                    {
+                        snapshotPath = "";
+                        Console.WriteLine("[SNAP DETECT SDK] File empty or not created");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[SNAP DETECT SDK FALLBACK] " + ex.Message);
+            }
         }
 
         if (globalNodeCallback != null)

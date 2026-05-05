@@ -627,6 +627,23 @@ export function useSocketManager() {
     socket.on('external-server-err-connect', onErrorExternalServer);
     socket.on('receive-log', onReceiveLog);
     socket.on('receive-sunell-log', onReceiveSunellLog);
+
+    // DEBUG: Log toàn bộ raw data Sunell camera gửi về
+    const onSunellTest = (raw: any) => {
+      console.log('%c[SUNELL-TEST] 📷 Raw data từ Sunell Camera:', 'color: #ff6b6b; font-weight: bold; font-size: 14px; background: #1a1a2e; padding: 4px 8px; border-radius: 4px');
+      console.log('[SUNELL-TEST] Timestamp:', raw._debug_timestamp);
+      console.log('[SUNELL-TEST] Camera:', raw._camera_name, `(${raw._camera_id})`);
+      console.log('[SUNELL-TEST] Is LPR:', raw._is_lpr);
+      console.log(`%c[SUNELL-TEST] 🖼️ Snapshot: ${raw._has_snapshot ? '✅ CÓ ẢNH' : '❌ KHÔNG CÓ ẢNH'} | Length: ${raw._snapshot_length} chars`,
+        `color: ${raw._has_snapshot ? '#22c55e' : '#ef4444'}; font-weight: bold; font-size: 13px`);
+      if (raw._has_snapshot) {
+        console.log('[SUNELL-TEST] Snapshot preview:', raw._snapshot_preview);
+      }
+      console.log('[SUNELL-TEST] Parsed Payload:', raw._parsed_payload);
+      console.log('[SUNELL-TEST] Full object:', raw);
+      console.log('─'.repeat(80));
+    };
+    socket.on('sunell-test', onSunellTest);
     socket.on('update-client', onUpdateClients);
     socket.on('log-dispatched', onLogDispatched);
     socket.on('receive-server-information', onReceiveServerInformation);
@@ -662,6 +679,7 @@ export function useSocketManager() {
       socket.off('external-server-err-connect', onErrorExternalServer);
       socket.off('receive-log', onReceiveLog);
       socket.off('receive-sunell-log', onReceiveSunellLog);
+      socket.off('sunell-test', onSunellTest);
       socket.off('update-client', onUpdateClients);
       socket.off('log-dispatched', onLogDispatched);
       socket.off('receive-server-information', onReceiveServerInformation);

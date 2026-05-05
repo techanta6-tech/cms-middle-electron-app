@@ -91,6 +91,19 @@ async function addCameraDevice(deviceConfig) {
 
         const sockets = getClientSockets();
         if (sockets) {
+          // DEBUG: Emit toàn bộ raw data Sunell gửi về để FE console.log
+          sockets.emit('sunell-test', {
+            _debug_timestamp: new Date().toISOString(),
+            _raw_json_string: rawJsonStr,
+            _parsed_payload: payload,
+            _camera_id: device.id,
+            _camera_name: device.name,
+            _is_lpr: isLpr,
+            _has_snapshot: !!payload.snapshotBase64,
+            _snapshot_length: payload.snapshotBase64 ? payload.snapshotBase64.length : 0,
+            _snapshot_preview: payload.snapshotBase64 ? payload.snapshotBase64.substring(0, 100) + '...' : '(empty)'
+          });
+
           // Bắn log qua socket với mục raw_data chứa toàn bộ event, các mục khác là placeholder
           sockets.emit('receive-sunell-log', {
             id: `sunell-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
