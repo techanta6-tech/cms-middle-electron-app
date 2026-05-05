@@ -100,6 +100,9 @@ export interface MqttServerConfig {
 export interface CameraFeatures {
   enableMotion: boolean;
   enableLPR: boolean;
+  enableFace?: boolean;
+  enableIVA?: boolean;
+  enableSystem?: boolean;
 }
 
 /** Camera device added manually (independent of MQTT/SVMS). */

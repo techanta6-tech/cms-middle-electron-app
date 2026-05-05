@@ -161,5 +161,26 @@ app.use(mqttRoutes);
 app.use(camerasRoutes);
 app.use(deviceCameraLinkRoutes);
 app.use(gridLayoutRoutes);
+// ─── Debug: dump toàn bộ in-memory state ─────────────────────────────────────
+const socketState = require('./socketState');
+
+app.get('/api/v1/debug/state', (req, res) => {
+  const serversObj = {};
+  socketState.servers.forEach((v, k) => { serversObj[k] = v; });
+
+  const devicesObj = {};
+  socketState.devices.forEach((v, k) => { devicesObj[k] = v; });
+
+  res.json({
+    _export_time: new Date().toISOString(),
+    connections: socketState.connections,
+    servers: serversObj,
+    devices: devicesObj,
+    mqttServers: socketState.mqttServers,
+    cameraDevices: socketState.cameraDevices,
+    deviceCameraLinks: socketState.deviceCameraLinks,
+    gridLayout: socketState.gridLayout,
+  });
+});
 
 module.exports = app;

@@ -236,6 +236,79 @@ const resources = {
           'status_report': 'Báo cáo trạng thái',
           'alarm_triggered': 'Báo động',
           'alarm_canceled': 'Đã giải quyết'
+        },
+        // ─── Sunell Camera: Alarm System ───
+        sunell_main_type: {
+          '1': 'Báo động an ninh',
+          '4': 'Báo động ổ cứng',
+          '5': 'Báo động luồng Video',
+          '6': 'Phân tích AI thông minh'
+        },
+        sunell_alarm: {
+          // main_type 1: An ninh cơ bản
+          '1/1': 'Báo động I/O',
+          '1/2': 'Phát hiện chuyển động',
+          '1/3': 'Camera bị che khuất',
+          '1/4': 'Mất tín hiệu hình ảnh',
+          '1/5': 'Rớt kết nối mạng',
+          '1/9': 'Phát hiện thân nhiệt PIR',
+          '1/10': 'Báo động cổng I/O NVR',
+          // main_type 4: Ổ cứng
+          '4/1': 'Ổ cứng bình thường',
+          '4/2': 'Lỗi đọc/ghi ổ cứng',
+          '4/3': 'Mất kết nối ổ mạng',
+          '4/4': 'Ổ cứng đầy',
+          '4/5': 'Không có ổ cứng',
+          '4/6': 'Dung lượng đạt ngưỡng cảnh báo',
+          '4/7': 'Ổ cứng chưa được format',
+          '4/8': 'Thiếu dung lượng lưu trữ',
+          // main_type 5: Luồng Video
+          '5/1': 'Kết nối luồng thành công',
+          '5/2': 'Sai tài khoản/mật khẩu luồng',
+          '5/3': 'Không có quyền truy cập',
+          '5/4': 'Đạt giới hạn số kết nối',
+          // main_type 6: AI / IVS
+          '6/21': 'Vượt hàng rào ảo',
+          '6/22': 'Phát hiện đối tượng di chuyển (SMD)',
+          '6/23': 'Phân tích che khuất',
+          '6/24': 'Xâm nhập vùng cấm',
+          '6/25': 'Vượt hàng rào ảo kép',
+          '6/26': 'Lảng vảng',
+          '6/27': 'Đám đông lảng vảng',
+          '6/28': 'Bỏ quên đồ vật',
+          '6/29': 'Mất cắp đồ vật',
+          '6/30': 'Đi quá tốc độ',
+          '6/31': 'Đi ngược chiều',
+          '6/32': 'Đậu xe trái phép',
+          '6/33': 'Camera bị dời góc',
+          '6/34': 'Lỗi tín hiệu video AI',
+          '6/37': 'Nhận diện biển số',
+          'unknown': 'Sự kiện chưa xác định'
+        },
+        // ─── Sunell Camera: AI Detection Target Types ───
+        sunell_detect_type: {
+          '0': 'Khuôn mặt',
+          '2': 'Thân người',
+          '3': 'Biển số xe',
+          '4': 'Phương tiện',
+          'unknown': 'Đối tượng không xác định'
+        },
+        sunell_alarm_flag: {
+          '0': 'Kết thúc',
+          '1': 'Đang xảy ra'
+        },
+        sunell_log_type: {
+          'lpr_event': 'Sự kiện biển số (LPR)',
+          'motion_event': 'Sự kiện chuyển động',
+          'face_event': 'Sự kiện khuôn mặt',
+          'alarm_event': 'Sự kiện báo động',
+          'tripwire_event': 'Sự kiện hàng rào ảo',
+          'perimeter_event': 'Sự kiện xâm nhập vùng cấm',
+          'loiter_event': 'Sự kiện lảng vảng',
+          'object_left_event': 'Sự kiện bỏ quên đồ vật',
+          'object_removed_event': 'Sự kiện mất cắp đồ vật',
+          'illegal_parking_event': 'Sự kiện đậu xe trái phép',
+          'unknown': 'Sự kiện không xác định'
         }
       }
     }
@@ -473,6 +546,79 @@ const resources = {
           'status_report': 'Status report',
           'alarm_triggered': 'Alarm',
           'alarm_canceled': 'Resolve'
+        },
+        // ─── Sunell Camera: Alarm System ───
+        sunell_main_type: {
+          '1': 'Safety Alarm',
+          '4': 'Disk Alarm',
+          '5': 'Video Stream Alarm',
+          '6': 'AI Intelligent Analysis'
+        },
+        sunell_alarm: {
+          // main_type 1: Safety
+          '1/1': 'I/O Alarm',
+          '1/2': 'Motion Detection',
+          '1/3': 'Camera Blocked',
+          '1/4': 'Video Signal Loss',
+          '1/5': 'Network Disconnection',
+          '1/9': 'PIR Thermal Detection',
+          '1/10': 'NVR Channel I/O Alarm',
+          // main_type 4: Disk
+          '4/1': 'Disk Status OK',
+          '4/2': 'Disk Read/Write Error',
+          '4/3': 'Network Disk Connection Failed',
+          '4/4': 'Disk Full',
+          '4/5': 'Disk Not Found',
+          '4/6': 'Storage Threshold Reached',
+          '4/7': 'Disk Not Formatted',
+          '4/8': 'Insufficient Storage Space',
+          // main_type 5: Video Stream
+          '5/1': 'Stream Connected',
+          '5/2': 'Invalid Credentials',
+          '5/3': 'Access Denied',
+          '5/4': 'Max Connections Reached',
+          // main_type 6: AI / IVS
+          '6/21': 'Trip Wire Detection',
+          '6/22': 'Smart Motion Detection (SMD)',
+          '6/23': 'Occlusion Detection',
+          '6/24': 'Perimeter Intrusion',
+          '6/25': 'Double Trip Wire',
+          '6/26': 'Loitering',
+          '6/27': 'Crowd Loitering',
+          '6/28': 'Object Left Behind',
+          '6/29': 'Object Removed',
+          '6/30': 'Abnormal Speed',
+          '6/31': 'Wrong Way / Retrograde',
+          '6/32': 'Illegal Parking',
+          '6/33': 'Camera Tampered',
+          '6/34': 'Video Signal Abnormal',
+          '6/37': 'License Plate Recognition',
+          'unknown': 'Unidentified Event'
+        },
+        // ─── Sunell Camera: AI Detection Target Types ───
+        sunell_detect_type: {
+          '0': 'Face',
+          '2': 'Person (Body)',
+          '3': 'License Plate',
+          '4': 'Vehicle',
+          'unknown': 'Unknown Object'
+        },
+        sunell_alarm_flag: {
+          '0': 'Ended',
+          '1': 'Active'
+        },
+        sunell_log_type: {
+          'lpr_event': 'License Plate Event (LPR)',
+          'motion_event': 'Motion Event',
+          'face_event': 'Face Recognition Event',
+          'alarm_event': 'Alarm Event',
+          'tripwire_event': 'Trip Wire Event',
+          'perimeter_event': 'Perimeter Intrusion Event',
+          'loiter_event': 'Loitering Event',
+          'object_left_event': 'Object Left Behind Event',
+          'object_removed_event': 'Object Removed Event',
+          'illegal_parking_event': 'Illegal Parking Event',
+          'unknown': 'Unknown Event'
         }
       }
     }

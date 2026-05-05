@@ -94,36 +94,103 @@ async function addCameraDevice(deviceConfig) {
         const isLpr = strBody.includes('plate') || strBody.includes('targetdetectlist');
         
         // Neu device chua co features mac dinh thi coi nhu dc bat
-        const enableLPR = device.features ? device.features.enableLPR : true;
-        const enableMotion = device.features ? device.features.enableMotion : true;
+        const features = device.features || {};
+        const enableLPR = features.enableLPR ?? true;
+        const enableMotion = features.enableMotion ?? true;
+        const enableFace = features.enableFace ?? true;
+        const enableIVA = features.enableIVA ?? true;
+        const enableSystem = features.enableSystem ?? true;
 
-        if (isLpr && !enableLPR) return;
-        if (!isLpr && !enableMotion) return;
+        // Phân tích loại sự kiện
+        let isLpr = false;
+        let isFace = false;
+        let isMotion = false;
+        let isIVA = false;
+        let isSystem = false;
+        let logType = 'unknown';
+        let description = 'Sự kiện không xác định';
+
+        // 1. Phân tích sự kiện nhận diện (AI Targets)
+        if (payload.TargetDetectList && Array.isArray(payload.TargetDetectList)) {
+          for (const target of payload.TargetDetectList) {
+            if (target.Type === 3) isLpr = true;
+            if (target.Type === 0) isFace = true;
+          }
+        }
+
+        // 2. Phân tích sự kiện báo động (Alarms)
+        if (payload.data && typeof payload.data.main_type !== 'undefined') {
+          const mainType = payload.data.main_type;
+          const subType = payload.data.sub_type;
+
+          if (mainType === 1 && subType === 2) {
+            isMotion = true;
+          } else if (mainType === 6) {
+            isIVA = true;
+          } else if (mainType === 1 || mainType === 4 || mainType === 5) {
+            isSystem = true;
+          }
+        }
+
+        // Nếu parse lỗi JSON nhưng vẫn có 'plate' trong string thô thì fallback
+        if (!isLpr && !isFace && !isMotion && !isIVA && !isSystem) {
+          const strBody = JSON.stringify(payload).toLowerCase();
+          if (strBody.includes('plate')) isLpr = true;
+          else isMotion = true; // Fallback
+        }
+
+        // --- FILTERING ---
+        let shouldProcess = false;
+
+        if (isLpr && enableLPR) {
+          shouldProcess = true;
+          logType = 'lpr_event';
+          description = 'Phát hiện biển số (LPR)';
+        } else if (isFace && enableFace) {
+          shouldProcess = true;
+          logType = 'face_event';
+          description = 'Phát hiện khuôn mặt (Face)';
+        } else if (isMotion && enableMotion) {
+          shouldProcess = true;
+          logType = 'motion_event';
+          description = 'Phát hiện chuyển động (Motion)';
+        } else if (isIVA && enableIVA) {
+          shouldProcess = true;
+          logType = 'iva_event';
+          description = 'Phân tích AI (IVS/IVA)';
+        } else if (isSystem && enableSystem) {
+          shouldProcess = true;
+          logType = 'system_event';
+          description = 'Cảnh báo hệ thống / an ninh';
+        }
+
+        // Nếu sự kiện không thuộc loại nào được bật thì bỏ qua
+        if (!shouldProcess) return;
 
         const sockets = getClientSockets();
         if (sockets) {
           // DEBUG: Emit toàn bộ raw data Sunell gửi về để FE console.log
           sockets.emit('sunell-test', {
             _debug_timestamp: new Date().toISOString(),
-            _raw_json_string: rawJsonStr,
+            _raw_json_string: typeof rawJsonStr === 'string' ? rawJsonStr : JSON.stringify(rawJsonStr),
             _parsed_payload: payload,
             _camera_id: device.id,
             _camera_name: device.name,
-            _is_lpr: isLpr,
+            _log_type: logType,
             _has_snapshot: !!payload.snapshotBase64,
             _snapshot_length: payload.snapshotBase64 ? payload.snapshotBase64.length : 0,
             _snapshot_preview: payload.snapshotBase64 ? payload.snapshotBase64.substring(0, 100) + '...' : '(empty)'
           });
 
-          // Bắn log qua socket với mục raw_data chứa toàn bộ event, các mục khác là placeholder
+          // Bắn log qua socket với mục raw_data chứa toàn bộ event
           sockets.emit('receive-sunell-log', {
             id: `sunell-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             timestamp: new Date().toISOString(),
             source: 'sunell-camera',
             camera_id: device.id,
             camera_name: device.name,
-            log_type: isLpr ? 'lpr_event' : 'motion_event',
-            description: isLpr ? 'Phát hiện biển số (LPR)' : 'Phát hiện chuyển động (Motion)',
+            log_type: logType,
+            description: description,
             raw_data: payload,
             image_data: payload.snapshotBase64
           });

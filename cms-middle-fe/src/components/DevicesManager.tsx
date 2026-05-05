@@ -387,6 +387,11 @@ function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDe
     'camera': isSunell ? 'text-green-500 border-green-500/30' : 'text-cyan-500 border-cyan-500/30',
   };
 
+  // Lấy dữ liệu mới nhất từ props để tránh lỗi stale-state khi React useState không tự cập nhật
+  const latestCam = item.kind === 'camera' 
+    ? cameraDevices.find(c => c.id === item.data.id) || item.data 
+    : null;
+
   return (
     <div className="animate-in fade-in duration-300">
       {/* Content */}
@@ -394,7 +399,7 @@ function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDe
       {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} />}
       {item.kind === 'mqtt-server' && <MqttServerDetail srv={item.data} devices={item.mqttDevices} />}
       {item.kind === 'mqtt-device' && <MqttDeviceDetail dev={item.data} srv={item.server} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} />}
-      {item.kind === 'camera' && <CameraDetail cam={item.data} />}
+      {item.kind === 'camera' && latestCam && <CameraDetail cam={latestCam} />}
     </div>
   );
 }
@@ -516,19 +521,13 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
   const { t } = useTranslation();
 <<<<<<< Updated upstream
 
-  const handleToggle = (feature: 'enableMotion' | 'enableLPR', value: boolean) => {
+  const handleToggle = (feature: 'enableMotion' | 'enableLPR' | 'enableFace' | 'enableIVA' | 'enableSystem', value: boolean) => {
     socket.emit('update-camera-features', {
       id: cam.id,
       features: { [feature]: value }
     });
   };
 
-  const isSunell = cam.type === 'sunell';
-  const enableMotion = cam.features?.enableMotion ?? true;
-  const enableLPR = cam.features?.enableLPR ?? true;
-
-=======
->>>>>>> Stashed changes
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">Camera: {cam.cameraIp}</h3>

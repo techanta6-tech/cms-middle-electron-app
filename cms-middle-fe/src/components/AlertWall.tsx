@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DeviceData, LogData, DeviceCameraLink } from '../types';
-import { CameraOff, Plus, Minus, X, Settings, Camera } from 'lucide-react';
+import { CameraOff, X, Settings, Camera, ZoomIn, ZoomOut } from 'lucide-react';
 import { CameraFeed } from './CameraFeed';
 
 export function AlertWall({
@@ -144,9 +144,9 @@ export function AlertWall({
                 }
               } else {
                 if (
-                  log.device_ip === camera.ip && 
-                  log.device_name === camera.name && 
-                  log.server?.server_id === camera.server_id && 
+                  log.device_ip === camera.ip &&
+                  log.device_name === camera.name &&
+                  log.server?.server_id === camera.server_id &&
                   log.server?.serial === camera.server_serial
                 ) {
                   cameraLog = log;
@@ -248,7 +248,7 @@ export function AlertWall({
                 </>
               ) : isMqttSensor && mqttRenderState === 'black' ? (
                 <>
-                  <div 
+                  <div
                     className={`no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-4 py-2 bg-black ${mqttCameraLog ? 'cursor-pointer hover:bg-surface-container-highest/50' : ''}`}
                     onClick={() => mqttCameraLog && onSelectLog(mqttCameraLog)}
                   >
@@ -289,7 +289,7 @@ export function AlertWall({
                   {cameraLog && cameraLog.snapshot ? (
                     <CameraFeed key={idx} cam={cameraLog} onClick={() => onSelectLog(cameraLog!)} />
                   ) : (
-                    <div 
+                    <div
                       className={`no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-4 py-2 bg-black ${cameraLog ? 'cursor-pointer hover:bg-surface-container-highest/50' : ''}`}
                       onClick={() => cameraLog && onSelectLog(cameraLog)}
                     >
@@ -341,30 +341,30 @@ export function AlertWall({
               <Settings className="w-5 h-5 group-hover:rotate-90 transition-transform duration-500" />
             </button>
           ) : (
-            <div className="flex flex-col bg-surface-container-high/90 backdrop-blur-xl p-1.5 rounded-full border border-outline-variant/30 shadow-2xl animate-in slide-in-from-bottom-4 duration-300 zoom-in-95 fade-in">
-              <div className='flex flex-col gap-2'>
+            <div className="flex flex-col bg-surface-container-high/50 backdrop-blur-xl p-1 rounded-full border border-outline-variant/30 shadow-2xl animate-in slide-in-from-bottom-4 duration-300 zoom-in-95 fade-in">
+              <div className='flex flex-col gap-1'>
                 {/* Nút Cộng: Tăng ma trận lưới thành (gridCols+1) x (gridCols+1) */}
                 <button
                   onClick={() => setGridCols(gridCols + 1)}
-                  className="p-2 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
+                  className="p-2.5 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
                   title={t('app.alert_wall.inc_grid')}
                 >
-                  <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  <ZoomOut className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 </button>
                 {/* Nút Trừ: Giảm ma trận lưới (Tối thiểu phải còn 1x1) */}
                 <button
                   onClick={() => gridCols > 1 && setGridCols(gridCols - 1)}
-                  className="p-2 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
+                  className="p-2.5 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
                   title={t('app.alert_wall.dec_grid')}
                 >
-                  <Minus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  <ZoomIn className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 </button>
               </div>
-              <div className="h-[1px] w-full bg-outline-variant/20 my-1" />
+              <div className="h-[1px] w-full bg-outline-variant/20 my-0.5" />
               {/* Nút (X): Ẩn panel Setting */}
               <button
                 onClick={() => setShowGridSettings(false)}
-                className="p-2 bg-error/10 hover:bg-surface-container-highest text-error hover:text-white rounded-full transition-all duration-300 group cursor-pointer"
+                className="p-2.5 bg-error/10 hover:bg-surface-container-highest text-error hover:text-white rounded-full transition-all duration-300 group cursor-pointer"
                 title={t('app.alert_wall.close_settings')}
               >
                 <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />

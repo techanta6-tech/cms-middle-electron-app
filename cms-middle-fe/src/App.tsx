@@ -754,7 +754,7 @@ function Dashboard() {
         {/* MQTT Data Toggle */}
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => {
+            onClick={async () => {
               console.log("=== THÔNG TIN CHUNG TỪ PROVIDER (useSocketManager) ===");
               console.log("1. MQTT Servers:", mqttServers);
               console.log("2. MQTT Logs (Realtime):", mqttLogs);
@@ -768,7 +768,61 @@ function Dashboard() {
               console.log("10. Socket Connected:", isConnected);
               console.log("11. Event Types:", eventTypes);
               console.log("12. Total Log Count:", totalLogCount);
-              alert(`Đã in ra console trình duyệt!\n\nTổng MQTT Logs: ${mqttLogs.length}\nTổng MQTT Servers: ${mqttServers.length}\nTổng Camera Devices: ${cameraDevices.length}`);
+
+              // === Lấy data từ BE ===
+              let backendState = null;
+              try {
+                const res = await apiClient.get('/api/v1/debug/state');
+                backendState = res.data;
+                console.log("13. Backend In-Memory State:", backendState);
+              } catch (err) {
+                console.warn("[DEBUG] Không lấy được BE state:", err);
+              }
+
+              // === Lưu data ra file .txt để phân tích ===
+              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const debugData = {
+                _export_time: new Date().toISOString(),
+                _summary: {
+                  totalMqttLogs: mqttLogs.length,
+                  totalMqttServers: mqttServers.length,
+                  totalCameraDevices: cameraDevices.length,
+                  totalSvmsServers: Object.keys(servers).length,
+                  totalSvmsLogs: logs.length,
+                  totalSvmsDevices: Object.keys(devices).length,
+                  totalSendConnections: sendServers.length,
+                  totalReceiveConnections: receiveServers.length,
+                  socketConnected: isConnected,
+                  totalLogCount,
+                },
+                // --- FE State ---
+                frontend: {
+                  mqttServers,
+                  mqttLogs,
+                  cameraDevices,
+                  svmsServers: servers,
+                  svmsLogs: logs,
+                  svmsDevices: devices,
+                  sendConnections: sendServers,
+                  receiveConnections: receiveServers,
+                  systemConfig,
+                  eventTypes,
+                },
+                // --- BE State (in-memory) ---
+                backend: backendState,
+              };
+              const jsonStr = JSON.stringify(debugData, null, 2);
+              const blob = new Blob([jsonStr], { type: 'text/plain;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `cms-debug-data_${timestamp}.txt`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+
+              alert(`Đã xuất file: cms-debug-data_${timestamp}.txt\n\nTổng MQTT Logs: ${mqttLogs.length}\nTổng MQTT Servers: ${mqttServers.length}\nTổng Camera Devices: ${cameraDevices.length}\nBackend state: ${backendState ? '✅' : '❌'}`);
             }}
             className="px-2 py-0.5 bg-primary text-on-primary text-[8px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity"
           >
