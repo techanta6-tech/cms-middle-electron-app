@@ -343,21 +343,21 @@ export function AlertWall({
           ) : (
             <div className="flex flex-col bg-surface-container-high/50 backdrop-blur-xl p-1 rounded-full border border-outline-variant/30 shadow-2xl animate-in slide-in-from-bottom-4 duration-300 zoom-in-95 fade-in">
               <div className='flex flex-col gap-1'>
-                {/* Nút Cộng: Tăng ma trận lưới thành (gridCols+1) x (gridCols+1) */}
-                <button
-                  onClick={() => setGridCols(gridCols + 1)}
-                  className="p-2.5 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
-                  title={t('app.alert_wall.inc_grid')}
-                >
-                  <ZoomOut className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                </button>
-                {/* Nút Trừ: Giảm ma trận lưới (Tối thiểu phải còn 1x1) */}
+                {/* Nút Phóng to (Zoom In): Giảm ma trận lưới (Tối thiểu phải còn 1x1) */}
                 <button
                   onClick={() => gridCols > 1 && setGridCols(gridCols - 1)}
                   className="p-2.5 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
                   title={t('app.alert_wall.dec_grid')}
                 >
                   <ZoomIn className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                </button>
+                {/* Nút Thu nhỏ (Zoom Out): Tăng ma trận lưới thành (gridCols+1) x (gridCols+1) */}
+                <button
+                  onClick={() => setGridCols(gridCols + 1)}
+                  className="p-2.5 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
+                  title={t('app.alert_wall.inc_grid')}
+                >
+                  <ZoomOut className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 </button>
               </div>
               <div className="h-[1px] w-full bg-outline-variant/20 my-0.5" />

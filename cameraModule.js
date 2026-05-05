@@ -147,6 +147,8 @@ class CameraDevice {
             const args = [
                 '-y',
                 '-rtsp_transport', 'tcp',
+                '-probesize', '10000000',
+                '-analyzeduration', '10000000',
                 '-i', url,
                 '-frames:v', '1',
                 '-q:v', '2',
