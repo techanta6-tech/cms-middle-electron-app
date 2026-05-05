@@ -28,6 +28,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 function LogFilter({
   servers,
   devices,
+  mqttServers,
+  mqttDevicesByServer,
+  cameraDevices,
   eventTypes,
   selectedServers,
   selectedDevices,
@@ -38,6 +41,9 @@ function LogFilter({
 }: {
   servers: Record<string, ServerData>;
   devices: Record<string, DeviceData>;
+  mqttServers?: any[];
+  mqttDevicesByServer?: Record<string, any[]>;
+  cameraDevices?: any[];
   eventTypes: string[];
   selectedServers: Set<string>;
   selectedDevices: Set<string>;
@@ -59,21 +65,77 @@ function LogFilter({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const serverList = Object.values(servers);
+  const serverList = useMemo(() => {
+    const svms = Object.values(servers)
+      .filter(srv => srv.type !== 'mqtt' && !srv.id?.toString().startsWith('mqtt-'))
+      .map(srv => ({
+        id: srv.id || srv.serial,
+        name: srv.server_name || srv.id || srv.serial,
+        ip: srv.svms_ipv4_ip || srv.server_ip,
+        type: 'SVMS',
+      }));
+    const mqtt = (mqttServers || []).map(m => ({
+      id: m.id,
+      name: m.brokerHost || m.id,
+      ip: `${m.brokerHost}:${m.brokerPort}`,
+      type: 'MQTT',
+    }));
+    return [...svms, ...mqtt];
+  }, [servers, mqttServers]);
+
   const deviceList = useMemo(() => {
     const seen = new Set<string>();
-    return Object.values(devices).flatMap(serverData =>
+    const svmsDevs = Object.values(devices).flatMap(serverData =>
       (serverData.devices || []).map(d => ({
         ...d,
-        serverId: serverData.server.server_id
+        ip: d.ip || d.device_ip || 'unknown-ip',
+        serverId: serverData.server.server_id,
+        originalName: undefined
       }))
     ).filter(d => {
       const uniqueKey = `${d.serverId}_${d.ip}_${d.name}`;
-      if (!d.ip || seen.has(uniqueKey)) return false;
+      if (seen.has(uniqueKey)) return false;
       seen.add(uniqueKey);
       return true;
     });
-  }, [devices]);
+
+    const indepCams = (cameraDevices || []).map(cam => {
+      const d = {
+        name: cam.name || cam.cameraIp,
+        ip: cam.id,
+        type: cam.type || 'sunell',
+        index: 0,
+        serverId: 'SUNELL-LOCAL',
+        originalName: undefined
+      };
+      return d;
+    }).filter(d => {
+      const uniqueKey = `${d.serverId}_${d.ip}_${d.name}`;
+      if (seen.has(uniqueKey)) return false;
+      seen.add(uniqueKey);
+      return true;
+    });
+
+    const mqttDevs = Object.entries(mqttDevicesByServer || {}).flatMap(([serverId, devs]) => {
+      const mqttSrv = (mqttServers || []).find(s => s.id === serverId);
+      const brokerHost = mqttSrv?.brokerHost || '';
+      return devs.map(d => ({
+        name: d.deviceName || d.deviceProfileName || d.devEui,
+        ip: brokerHost,
+        type: 'radar',
+        index: 0,
+        serverId: `mqtt-${serverId}`,
+        originalName: d.deviceName || 'MQTT Device'
+      }));
+    }).filter(d => {
+      const uniqueKey = `${d.serverId}_${d.ip}_${d.originalName}`;
+      if (seen.has(uniqueKey)) return false;
+      seen.add(uniqueKey);
+      return true;
+    });
+
+    return [...svmsDevs, ...indepCams, ...mqttDevs];
+  }, [devices, cameraDevices, mqttDevicesByServer, mqttServers]);
 
   const activeCount = selectedServers.size + selectedDevices.size + (selectedEventType ? 1 : 0);
 
@@ -107,7 +169,7 @@ function LogFilter({
             ) : (
               <div className="flex flex-col gap-0.5">
                 {serverList.map(srv => {
-                  const id = srv.id || srv.serial;
+                  const id = srv.id;
                   const checked = selectedServers.has(id);
                   return (
                     <button
@@ -119,8 +181,8 @@ function LogFilter({
                         }`}>
                         {checked && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
                       </div>
-                      <span className="text-[11px] font-semibold text-on-surface shrink-0">{srv.server_name || id}</span>
-                      <span className="text-[9px] font-mono text-on-surface-variant/50 ml-auto truncate">{srv.svms_ipv4_ip || srv.server_ip} - {srv.id}</span>
+                      <span className="text-[11px] font-semibold text-on-surface shrink-0">{srv.name}</span>
+                      <span className="text-[9px] font-mono text-on-surface-variant/50 ml-auto truncate">{srv.type} - {srv.ip}</span>
                     </button>
                   );
                 })}
@@ -141,7 +203,7 @@ function LogFilter({
             ) : (
               <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto custom-scrollbar">
                 {deviceList.map(dev => {
-                  const uniqueKey = `${dev.serverId}_${dev.ip}_${dev.name}`;
+                  const uniqueKey = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
                   const checked = selectedDevices.has(uniqueKey);
                   return (
                     <button
@@ -308,17 +370,57 @@ function Dashboard() {
     return map;
   }, [mqttLogs]);
 
-  const toggleServer = (id: string) =>
-    setSelectedServers(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const toggleServer = useCallback((id: string) => {
+    const isSelecting = !selectedServers.has(id);
+    
+    setSelectedServers(prev => {
+      const s = new Set(prev);
+      if (isSelecting) s.add(id); else s.delete(id);
+      return s;
+    });
+
+    setSelectedDevices(prevDevs => {
+      const d = new Set(prevDevs);
+      
+      if (devices[id]) {
+        devices[id].devices?.forEach(dev => {
+          const devKey = `${devices[id].server.server_id}_${dev.ip}_${dev.name}`;
+          if (isSelecting) d.add(devKey);
+          else d.delete(devKey);
+        });
+      }
+      
+      if (mqttDevicesByServer[id]) {
+        const mqttSrv = mqttServers?.find(m => m.id === id);
+        const brokerHost = mqttSrv?.brokerHost || '';
+        mqttDevicesByServer[id].forEach(dev => {
+          const devName = dev.deviceName || 'MQTT Device';
+          const devKey = `mqtt-${id}_${brokerHost}_${devName}`;
+          if (isSelecting) d.add(devKey);
+          else d.delete(devKey);
+        });
+      }
+      
+      return d;
+    });
+  }, [selectedServers, devices, mqttDevicesByServer, mqttServers]);
 
   const toggleDevice = (ip: string) =>
-    setSelectedDevices(prev => { const s = new Set(prev); s.has(ip) ? s.delete(ip) : s.add(ip); return s; });
+    setSelectedDevices(prev => {
+      const s = new Set(prev);
+      if (s.has(ip)) {
+        s.delete(ip);
+      } else {
+        s.add(ip);
+      }
+      return s;
+    });
 
   // Lọc logs theo server, device và event_type đang được chọn
   const filteredLogs = useMemo(() => {
     if (selectedServers.size === 0 && selectedDevices.size === 0 && !selectedEventType) return logs;
     return logs.filter(log => {
-      const logServerId = log.server?.server_id || log.server?.serial || '';
+      const logServerId = log.mqttServerId || log.server?.server_id || log.server?.serial || '';
       const serverMatch = selectedServers.size > 0 && selectedServers.has(logServerId);
       const devKey = `${log.server?.server_id}_${log.device_ip}_${log.device_name}`;
       const deviceMatch = selectedDevices.size > 0 && selectedDevices.has(devKey);
@@ -462,6 +564,9 @@ function Dashboard() {
                   <LogFilter
                     servers={servers}
                     devices={devices}
+                    mqttServers={mqttServers}
+                    mqttDevicesByServer={mqttDevicesByServer}
+                    cameraDevices={cameraDevices}
                     eventTypes={eventTypes}
                     selectedServers={selectedServers}
                     selectedDevices={selectedDevices}

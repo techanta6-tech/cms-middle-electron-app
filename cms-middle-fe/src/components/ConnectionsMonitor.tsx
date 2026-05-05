@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
-import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight, Radio } from 'lucide-react';
+import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight, Radio, Camera } from 'lucide-react';
 import { AddExternalServer } from './AddExternalServer';
 import { ConfigSystem } from './ConfigSystem';
 import apiClient from '../api/apiClient';
@@ -173,7 +173,7 @@ export function ConnectionsMonitor({
               ) : (
                 <>
                   {/* SVMS Servers */}
-                  {Object.values(servers).filter(srv => srv.type !== 'mqtt').map((srv, idx) => {
+                  {Object.values(servers).filter(srv => srv.type !== 'mqtt' && !srv.id?.toString().startsWith('mqtt-')).map((srv, idx) => {
                     const serverId = srv.id || srv.serial || srv.server_ip || srv.svms_ipv4_ip || '';
                     const matchedDevices = devices[serverId] || devices[srv.id] || devices[srv.serial];
                     return (
@@ -197,6 +197,9 @@ export function ConnectionsMonitor({
                       onLinkDeviceCamera={onLinkDeviceCamera}
                     />
                   ))}
+
+                  {/* Camera Devices */}
+                  <CameraDevicesCard cameras={cameraDevices} logs={logs} />
 
                   <UnknownDevicesCard orphanDevices={orphanDevices} />
                 </>
@@ -276,6 +279,143 @@ function UnknownDevicesCard({ orphanDevices }: { orphanDevices: { name: string; 
                 isOrphan={true}
               />
             ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CameraDevicesCard({ cameras, logs }: { cameras: MqttDeviceConfig[]; logs: LogData[] }) {
+  const { t } = useTranslation();
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Count logs per camera (source === 'sunell-camera', match by cameraIp === cam.id)
+  const cameraLogStats = useMemo(() => {
+    const stats: Record<string, number> = {};
+    (logs || []).forEach(log => {
+      if (log.source !== 'sunell-camera') return;
+      const camId = log.cameraIp || '';
+      stats[camId] = (stats[camId] || 0) + 1;
+    });
+    return stats;
+  }, [logs]);
+
+  const totalLogs = useMemo(() => Object.values(cameraLogStats).reduce((sum, n) => sum + n, 0), [cameraLogStats]);
+
+  if (!cameras || cameras.length === 0) return null;
+
+  const connectedCount = cameras.filter(c => c.status === 'connected').length;
+  const errorCount = cameras.filter(c => c.status === 'error').length;
+
+  return (
+    <div className="camera-devices-card bg-surface-container border border-outline-variant/10 px-4 py-3 pb-4 rounded-md border-l-[3px] border-l-cyan-500/50 shadow-sm transition-all group">
+      {/* Header */}
+      <div
+        className="flex items-center justify-between border-b border-outline-variant/5 cursor-pointer select-none"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-start gap-3">
+          <div className="p-2 bg-cyan-500/10 rounded-lg shrink-0">
+            <Camera className="w-4 h-4 text-cyan-500" />
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-1">
+                <InfoTooltip content="Các camera kết nối độc lập như Sunell và RTSP">
+                  <span className="text-[14px] font-black text-on-surface tracking-wide leading-none group-hover:text-cyan-500 transition-colors">Camera Devices</span>
+                </InfoTooltip>
+                <div className='flex gap-1 items-center'>
+                  <InfoTooltip content="Phân loại thiết bị">
+                    <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Sunell & Other Cameras</span>
+                  </InfoTooltip>
+                  <span className="w-1 h-1 rounded-full bg-outline-variant/30"></span>
+                  <InfoTooltip content="Tổng logs nhận được từ cameras">
+                    <span className="text-[10px] font-mono font-medium text-on-surface-variant">{totalLogs} logs</span>
+                  </InfoTooltip>
+                </div>
+              </div>
+              {/* Status Badge */}
+              <InfoTooltip content={`${connectedCount} camera đang hoạt động`}>
+                <span className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${connectedCount > 0
+                  ? 'text-secondary bg-secondary/10 border-secondary/20'
+                  : 'text-tertiary bg-tertiary/10 border-tertiary/20'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${connectedCount > 0 ? 'bg-secondary' : 'bg-tertiary animate-pulse'}`}></span>
+                  {connectedCount > 0 ? `${connectedCount} ${t('app.monitor.online')}` : t('app.monitor.offline')}
+                </span>
+              </InfoTooltip>
+              {errorCount > 0 && (
+                <InfoTooltip content={`${errorCount} camera lỗi`}>
+                  <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm border text-red-500 bg-red-500/10 border-red-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                    {errorCount} ERROR
+                  </span>
+                </InfoTooltip>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.devices')}</span>
+            <span className="text-[14px] font-black font-mono text-cyan-500 leading-none">{cameras.length}</span>
+          </div>
+          <ChevronDown className={`w-4 h-4 text-on-surface-variant transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+        </div>
+      </div>
+
+      {/* Camera list with per-camera log counts */}
+      <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
+        <div className={`min-h-0 ${isExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
+          <div className="grid gap-2 border-l-2 border-outline-variant/10 pl-2 ml-1">
+            {cameras.map((cam) => {
+              const logCount = cameraLogStats[cam.id] || 0;
+              const isConnected = cam.status === 'connected';
+              const isError = cam.status === 'error';
+              const connStatus: 'connected' | 'disconnected' = isConnected ? 'connected' : 'disconnected';
+
+              return (
+                <div key={cam.id} className={`flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border transition-colors ${
+                  isError
+                    ? 'border-red-500/20 bg-red-500/5'
+                    : !isConnected
+                      ? 'border-tertiary/20 bg-tertiary/5'
+                      : 'border-outline-variant/5 hover:border-outline-variant/20'
+                }`}>
+                  {/* Connection status dot */}
+                  <InfoTooltip content={isConnected ? 'Đang kết nối' : isError ? 'Lỗi kết nối' : 'Mất kết nối'} side="bottom">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${
+                      isConnected
+                        ? 'bg-secondary ring-secondary/20'
+                        : isError
+                          ? 'bg-red-500 ring-red-500/20 animate-pulse'
+                          : 'bg-tertiary ring-tertiary/20 animate-pulse'
+                    }`}></div>
+                  </InfoTooltip>
+                  <InfoTooltip content="Loại camera" side="bottom">
+                    <span className="text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 uppercase">
+                      {cam.type}
+                    </span>
+                  </InfoTooltip>
+                  <InfoTooltip content="Tên Camera" side="bottom">
+                    <span className={`text-[11px] font-bold tracking-wide flex-1 truncate max-w-[200px] block ${
+                      !isConnected ? 'text-on-surface-variant/50' : 'text-on-surface-variant'
+                    }`}>{cam.name || cam.cameraIp}</span>
+                  </InfoTooltip>
+                  <div className="flex w-full items-center justify-between gap-4">
+                    <InfoTooltip content="Địa chỉ IP Camera" side="bottom">
+                      <span className="text-[10px] font-mono font-medium text-on-surface-variant/70 min-w-[100px] bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/5">{cam.cameraIp}:{cam.cameraPort}</span>
+                    </InfoTooltip>
+                    <InfoTooltip content="Tổng Logs nhận được">
+                      <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${logCount > 0 ? 'text-secondary bg-secondary/15 ring-1 ring-secondary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
+                        {logCount} logs
+                      </span>
+                    </InfoTooltip>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

@@ -15,6 +15,21 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
   const [isShowRawData, setIsShowRawData] = useState<boolean>(false);
   const [isShowDetailed, setIsShowDetailed] = useState<boolean>(false);
 
+  const isLPREvent = (log.log_type?.toUpperCase() === 'LPR_EVENT') || (log.raw?.body?.log_type?.toUpperCase() === 'LPR_EVENT');
+  let plateNum;
+  let plateConfidence;
+  
+  if (isLPREvent) {
+    const targetList = log.raw?.body?.TargetDetectList || log.raw?.TargetDetectList;
+    if (Array.isArray(targetList) && targetList.length > 0) {
+      const firstPlate = targetList[0]?.PlateInfo;
+      if (firstPlate) {
+        plateNum = firstPlate.Plate_num;
+        plateConfidence = firstPlate.Plate_confidence;
+      }
+    }
+  }
+
   const allMetadata = [
     { label: 'Server ID', value: log.server?.server_id || log.raw?.body?.server?.server_id, isImportant: false },
     { label: 'Server Serial', value: log.server?.serial || log.raw?.body?.server?.serial, isImportant: true },
@@ -24,6 +39,8 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
     { label: 'Device Index', value: log.device_index ?? log.raw?.body?.device_index, isImportant: false },
     { label: 'Device Type', value: log.device_type || log.raw?.body?.device_type, isImportant: true },
     { label: 'Log Type', value: (log.log_type || log.raw?.body?.log_type) ? t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase()}`, { defaultValue: (log.log_type || log.raw?.body?.log_type) }) : undefined, isImportant: true },
+    { label: t('app.log_popup.plate_number', { defaultValue: 'Plate Number' }), value: plateNum, isImportant: true },
+    { label: t('app.log_popup.confidence', { defaultValue: 'Confidence' }), value: plateConfidence !== undefined ? `${plateConfidence}%` : undefined, isImportant: true },
     { label: 'Description', value: (log.description || log.raw?.body?.description) ? t(`app.logtype.${(log.description || log.raw?.body?.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.description || log.raw?.body?.description) }) : undefined, isImportant: false },
     { label: 'Source IP', value: log.ip || log.raw?.ip, isImportant: false },
     { label: 'Timestamp', value: log.time ? new Date(log.time * 1000).toLocaleString() : '—', isImportant: true },
@@ -78,7 +95,7 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
           <div className="flex items-center gap-3">
             <div>
               <h3 className="text-sm font-black tracking-widest uppercase text-on-surface flex flex-wrap items-center gap-2">
-                <span>{serverSerial} / {deviceName} / DETAILED_REPORT</span>
+                <span>{serverSerial} / {deviceName}</span>
                 {summaryContent && (
                   <>
                     <span className="text-on-surface-variant/50">/</span>
