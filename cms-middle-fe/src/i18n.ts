@@ -116,7 +116,13 @@ const resources = {
           camera_port: "Cổng camera",
           username: "Username",
           rtsp_url: "RTSP URL",
-          handle: "Handle"
+          handle: "Handle",
+          search_logs: "Tìm kiếm logs...",
+          all_types: "Tất cả loại",
+          no_logs_found: "Không tìm thấy bản ghi nào",
+          log_details: "Chi tiết bản ghi",
+          show_more: "Xem thêm",
+          recent_logs: "logs gần nhất"
         },
         devices: {
           svms_servers: "SVMS Servers",
@@ -179,7 +185,9 @@ const resources = {
           connect_mqtt: 'Kết nối MQTT',
           confirm: 'Xác nhận đồng bộ',
           mqtt_note: 'Client MQTT sẽ kết nối tới broker và đăng ký nhận thông tin từ topic được chỉ định.',
-          svms_note: 'Lưu ý: Thay đổi sẽ khởi tạo lại giao thức socket handshake.'
+          svms_note: 'Lưu ý: Thay đổi sẽ khởi tạo lại giao thức socket handshake.',
+          mqtt_name: 'Tên Server (Tuỳ chọn)',
+          mqtt_name_placeholder: 'Tên gợi nhớ'
         },
         login: {
           title: 'CMS Middle Server',
@@ -212,6 +220,7 @@ const resources = {
           iva_perimeter_intrusion: 'Xâm nhập vùng cấm',
           iva_double_trip_wire: 'Hàng rào ảo kép',
           iva_trip_wire: 'Hàng rào ảo',
+          video_loss: 'Mất kết nối camera',
           iva_retrograde: 'Đi ngược chiều',
           system_event: 'Sự kiện hệ thống',
           'phát_hiện_biển_số_(lpr)': 'Phát hiện biển số (LPR)',
@@ -442,7 +451,13 @@ const resources = {
           camera_port: "Camera Port",
           username: "Username",
           rtsp_url: "RTSP URL",
-          handle: "Handle"
+          handle: "Handle",
+          search_logs: "Search logs...",
+          all_types: "All types",
+          no_logs_found: "No logs found",
+          log_details: "Log details",
+          show_more: "Show more",
+          recent_logs: "recent logs"
         },
         devices: {
           svms_servers: "SVMS Servers",
@@ -506,7 +521,9 @@ const resources = {
           connect_mqtt: 'Connect MQTT',
           confirm: 'Confirm Sync',
           mqtt_note: 'MQTT client will connect to the broker and subscribe to the specified topic.',
-          svms_note: 'Note: Changes will re-initialize the socket handshake protocol.'
+          svms_note: 'Note: Changes will re-initialize the socket handshake protocol.',
+          mqtt_name: 'Server Name (Optional)',
+          mqtt_name_placeholder: 'Friendly name'
         },
         login: {
           title: 'CMS Middle Server',
@@ -540,6 +557,7 @@ const resources = {
           iva_double_trip_wire: 'Double Tripwire',
           iva_trip_wire: 'Tripwire',
           iva_retrograde: 'Retrograde',
+          video_loss: 'Video Loss',
           system_event: 'System Event',
           'phát_hiện_biển_số_(lpr)': 'License Plate Recognition (LPR)',
           'phát_hiện_khuôn_mặt_(face)': 'Face Detection (Face)',

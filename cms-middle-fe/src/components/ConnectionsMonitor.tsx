@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
-import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight, Radio, Camera } from 'lucide-react';
+import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight, Radio, Camera, Search, Filter } from 'lucide-react';
 import { AddExternalServer } from './AddExternalServer';
 import { ConfigSystem } from './ConfigSystem';
 import apiClient from '../api/apiClient';
@@ -17,6 +17,123 @@ function InfoTooltip({ children, content, side = "top" }: { children: React.Reac
         {content}
         <div className={`absolute left-1/2 -translate-x-1/2 ${isBottom ? 'bottom-full border-b-[4px] border-b-on-surface' : 'top-full border-t-[4px] border-t-on-surface'} border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent`}></div>
       </div>
+    </div>
+  );
+}
+
+// ─── Reusable DeviceLogPanel: filtered + searchable log list ───────────────
+function DeviceLogPanel({ logs }: { logs: LogData[] }) {
+  const { t } = useTranslation();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>('__all__');
+  const [displayLimit, setDisplayLimit] = useState(30);
+
+  // Extract unique log_type values
+  const logTypes = useMemo(() => {
+    const types = new Set<string>();
+    logs.forEach(l => { if (l.log_type) types.add(l.log_type); });
+    return Array.from(types).sort();
+  }, [logs]);
+
+  // Filter logs
+  const filteredLogs = useMemo(() => {
+    let result = logs;
+    if (typeFilter !== '__all__') {
+      result = result.filter(l => l.log_type === typeFilter);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(l =>
+        (l.description || '').toLowerCase().includes(q) ||
+        (l.log_type || '').toLowerCase().includes(q) ||
+        (l.device_name || '').toLowerCase().includes(q)
+      );
+    }
+    // Sort by time descending (newest first)
+    return result.sort((a, b) => b.time - a.time);
+  }, [logs, typeFilter, searchQuery]);
+
+  const displayedLogs = filteredLogs.slice(0, displayLimit);
+  const hasMore = filteredLogs.length > displayLimit;
+
+  const logTypeBadgeColor = (type: string) => {
+    const t = type?.toUpperCase() || '';
+    if (t.includes('ALARM') || t.includes('ALERT')) return 'text-tertiary bg-tertiary/15 border-tertiary/25';
+    if (t.includes('EVENT') || t.includes('MOTION')) return 'text-amber-400 bg-amber-400/15 border-amber-400/25';
+    if (t.includes('FACE') || t.includes('RECOGNIZE')) return 'text-primary bg-primary/15 border-primary/25';
+    return 'text-on-surface-variant bg-surface-container-high border-outline-variant/20';
+  };
+
+  return (
+    <div className="device-log-panel mt-2 bg-surface-container-lowest/60 border border-outline-variant/10 rounded-md overflow-hidden">
+      {/* Filters row */}
+      <div className="flex items-center gap-2 p-2.5 border-b border-outline-variant/10 bg-surface-container/30">
+        <div className="relative flex-1">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-on-surface-variant/40" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder={t('app.monitor.search_logs')}
+            className="w-full text-[10px] font-mono bg-surface-container border border-outline-variant/15 rounded pl-6 pr-2 py-1.5 text-on-surface placeholder:text-on-surface-variant/30 focus:border-secondary/40 focus:outline-none transition-colors"
+          />
+        </div>
+        <div className="relative">
+          <Filter className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-on-surface-variant/40" />
+          <select
+            value={typeFilter}
+            onChange={e => setTypeFilter(e.target.value)}
+            className="text-[10px] font-mono bg-surface-container border border-outline-variant/15 rounded pl-6 pr-6 py-1.5 text-on-surface appearance-none cursor-pointer focus:border-secondary/40 focus:outline-none transition-colors"
+          >
+            <option value="__all__">{t('app.monitor.all_types')}</option>
+            {logTypes.map(lt => (
+              <option key={lt} value={lt}>{lt}</option>
+            ))}
+          </select>
+        </div>
+        <span className="text-[9px] font-mono font-bold text-on-surface-variant/50 shrink-0">
+          {filteredLogs.length} / {logs.length}
+        </span>
+      </div>
+
+      {/* Log entries */}
+      <div className="max-h-[260px] overflow-y-auto custom-scrollbar">
+        {displayedLogs.length === 0 ? (
+          <div className="py-6 flex flex-col items-center justify-center gap-1.5 opacity-40">
+            <Search className="w-4 h-4" />
+            <span className="text-[9px] font-bold uppercase tracking-widest">{t('app.monitor.no_logs_found')}</span>
+          </div>
+        ) : (
+          <div className="divide-y divide-outline-variant/5">
+            {displayedLogs.map((log, i) => (
+              <div key={log.id || i} className="flex items-start gap-2.5 px-3 py-2 hover:bg-surface-container/30 transition-colors">
+                <span className="text-[9px] font-mono text-on-surface-variant/50 shrink-0 pt-0.5 min-w-[55px]">
+                  {new Date(log.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+                <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 min-w-[55px] text-center ${logTypeBadgeColor(log.log_type)}`}>
+                  {log.log_type || 'LOG'}
+                </span>
+                <span className="text-[10px] text-on-surface-variant leading-snug flex-1 break-words">
+                  {log.description || '—'}
+                </span>
+                <span className="text-[8px] font-mono text-on-surface-variant/30 shrink-0">
+                  {log.server?.server_id || ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Show more */}
+      {hasMore && (
+        <button
+          onClick={() => setDisplayLimit(prev => prev + 30)}
+          className="w-full py-2 text-[9px] font-bold uppercase tracking-widest text-secondary hover:bg-secondary/5 border-t border-outline-variant/10 transition-colors"
+        >
+          {t('app.monitor.show_more')} ({filteredLogs.length - displayLimit} {t('app.monitor.recent_logs')})
+        </button>
+      )}
     </div>
   );
 }
@@ -47,6 +164,7 @@ export function ConnectionsMonitor({
     const stats: Record<string, { serverId: string; serverSerial: string; deviceName: string; deviceIp: string; logCount: number }> = {};
     (logs || []).forEach(log => {
       if (log.source === 'mqtt') return; // MQTT logs handled by MqttServerCard
+      if (log.source === 'sunell-camera') return; // Camera logs handled by CameraDevicesCard
       const sId = log.server?.server_id || '';
       const sSerial = log.server?.serial || '';
       const dName = log.device_name || '';
@@ -90,6 +208,9 @@ export function ConnectionsMonitor({
     Object.keys(deviceLogStats).forEach(key => {
       if (!knownKeys.has(key)) {
         const stat = deviceLogStats[key];
+        const isCamera = cameraDevices.some(cam => cam.cameraIp === stat.deviceIp || cam.id === stat.deviceName);
+        if (isCamera) return;
+
         orphans.push({
           name: stat.deviceName || 'UNKNOWN',
           ip: stat.deviceIp || 'UNKNOWN',
@@ -182,6 +303,7 @@ export function ConnectionsMonitor({
                         srv={srv}
                         matchedDevices={matchedDevices}
                         deviceLogStats={deviceLogStats}
+                        logs={logs}
                       />
                     );
                   })}
@@ -373,52 +495,98 @@ function CameraDevicesCard({ cameras, logs }: { cameras: MqttDeviceConfig[]; log
               const logCount = cameraLogStats[cam.id] || 0;
               const isConnected = cam.status === 'connected';
               const isError = cam.status === 'error';
-              const connStatus: 'connected' | 'disconnected' = isConnected ? 'connected' : 'disconnected';
+
+              // Filter logs for this specific camera
+              const cameraLogs = (logs || []).filter(l =>
+                l.source === 'sunell-camera' && (l.cameraIp === cam.id)
+              );
 
               return (
-                <div key={cam.id} className={`flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border transition-colors ${
-                  isError
-                    ? 'border-red-500/20 bg-red-500/5'
-                    : !isConnected
-                      ? 'border-tertiary/20 bg-tertiary/5'
-                      : 'border-outline-variant/5 hover:border-outline-variant/20'
-                }`}>
-                  {/* Connection status dot */}
-                  <InfoTooltip content={isConnected ? 'Đang kết nối' : isError ? 'Lỗi kết nối' : 'Mất kết nối'} side="bottom">
-                    <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${
-                      isConnected
-                        ? 'bg-secondary ring-secondary/20'
-                        : isError
-                          ? 'bg-red-500 ring-red-500/20 animate-pulse'
-                          : 'bg-tertiary ring-tertiary/20 animate-pulse'
-                    }`}></div>
-                  </InfoTooltip>
-                  <InfoTooltip content="Loại camera" side="bottom">
-                    <span className="text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 uppercase">
-                      {cam.type}
-                    </span>
-                  </InfoTooltip>
-                  <InfoTooltip content="Tên Camera" side="bottom">
-                    <span className={`text-[11px] font-bold tracking-wide flex-1 truncate max-w-[200px] block ${
-                      !isConnected ? 'text-on-surface-variant/50' : 'text-on-surface-variant'
-                    }`}>{cam.name || cam.cameraIp}</span>
-                  </InfoTooltip>
-                  <div className="flex w-full items-center justify-between gap-4">
-                    <InfoTooltip content="Địa chỉ IP Camera" side="bottom">
-                      <span className="text-[10px] font-mono font-medium text-on-surface-variant/70 min-w-[100px] bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/5">{cam.cameraIp}:{cam.cameraPort}</span>
-                    </InfoTooltip>
-                    <InfoTooltip content="Tổng Logs nhận được">
-                      <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${logCount > 0 ? 'text-secondary bg-secondary/15 ring-1 ring-secondary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
-                        {logCount} logs
-                      </span>
-                    </InfoTooltip>
-                  </div>
-                </div>
+                <CameraItemWithLogs
+                  key={cam.id}
+                  cam={cam}
+                  logCount={logCount}
+                  isConnected={isConnected}
+                  isError={isError}
+                  cameraLogs={cameraLogs}
+                />
               );
             })}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function CameraItemWithLogs({ cam, logCount, isConnected, isError, cameraLogs }: {
+  cam: MqttDeviceConfig;
+  logCount: number;
+  isConnected: boolean;
+  isError: boolean;
+  cameraLogs: LogData[];
+}) {
+  const [isLogExpanded, setIsLogExpanded] = useState(false);
+  const hasLogs = cameraLogs.length > 0;
+
+  return (
+    <div className="camera-item-wrapper">
+      <div
+        className={`flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border transition-colors ${
+          isError
+            ? 'border-red-500/20 bg-red-500/5'
+            : !isConnected
+              ? 'border-tertiary/20 bg-tertiary/5'
+              : isLogExpanded
+                ? 'border-cyan-500/30 bg-cyan-500/5'
+                : 'border-outline-variant/5 hover:border-outline-variant/20'
+        } ${hasLogs ? 'cursor-pointer' : ''}`}
+        onClick={() => { if (hasLogs) setIsLogExpanded(prev => !prev); }}
+      >
+        {/* Connection status dot */}
+        <InfoTooltip content={isConnected ? 'Đang kết nối' : isError ? 'Lỗi kết nối' : 'Mất kết nối'} side="bottom">
+          <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${
+            isConnected
+              ? 'bg-secondary ring-secondary/20'
+              : isError
+                ? 'bg-red-500 ring-red-500/20 animate-pulse'
+                : 'bg-tertiary ring-tertiary/20 animate-pulse'
+          }`}></div>
+        </InfoTooltip>
+        <InfoTooltip content="Loại camera" side="bottom">
+          <span className="text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 uppercase">
+            {cam.type}
+          </span>
+        </InfoTooltip>
+        <div className="flex flex-col flex-1 min-w-0">
+          <InfoTooltip content="Tên Camera" side="bottom">
+            <span className={`text-[11px] font-bold tracking-wide truncate max-w-[200px] block ${
+              !isConnected ? 'text-on-surface-variant/50' : 'text-on-surface-variant'
+            }`}>{cam.name || cam.id}</span>
+          </InfoTooltip>
+          <InfoTooltip content="Địa chỉ IP Camera" side="bottom">
+            <span className="text-[10px] font-mono text-on-surface-variant/70 truncate">{cam.cameraIp}:{cam.cameraPort}</span>
+          </InfoTooltip>
+        </div>
+        <div className="flex items-center gap-2">
+          <InfoTooltip content="Tổng Logs nhận được">
+            <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${logCount > 0 ? 'text-secondary bg-secondary/15 ring-1 ring-secondary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
+              {logCount} logs
+            </span>
+          </InfoTooltip>
+          {hasLogs && (
+            <ChevronDown className={`w-3.5 h-3.5 text-on-surface-variant/40 transition-transform duration-300 ${isLogExpanded ? 'rotate-180' : ''}`} />
+          )}
+        </div>
+      </div>
+      {/* Expandable Log Panel */}
+      {hasLogs && (
+        <div className={`grid transition-all duration-300 ease-in-out ${isLogExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+          <div className={`min-h-0 ${isLogExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
+            <DeviceLogPanel logs={cameraLogs} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -429,7 +597,8 @@ function DeviceItemRow({
   type,
   logCount,
   isOrphan = false,
-  connectionStatus
+  connectionStatus,
+  filteredLogs
 }: {
   name: string;
   ip: string;
@@ -437,43 +606,66 @@ function DeviceItemRow({
   logCount: number;
   isOrphan?: boolean;
   connectionStatus?: 'connected' | 'disconnected';
+  filteredLogs?: LogData[];
 }) {
   const isConnected = connectionStatus === 'connected';
   const isDisconnected = connectionStatus === 'disconnected';
+  const [isLogExpanded, setIsLogExpanded] = useState(false);
+  const hasLogs = filteredLogs && filteredLogs.length > 0;
 
   return (
-    <div className={`device-item-row flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border transition-colors ${isDisconnected
-      ? 'border-tertiary/20 bg-tertiary/5'
-      : 'border-outline-variant/5 hover:border-outline-variant/20'
-      }`}>
-      {/* Connection status dot */}
-      {connectionStatus && (
-        <InfoTooltip content={isConnected ? 'Đang kết nối' : 'Mất kết nối'} side="bottom">
-          <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${isConnected
-            ? 'bg-secondary ring-secondary/20'
-            : 'bg-tertiary ring-tertiary/20 animate-pulse'
-            }`}></div>
-        </InfoTooltip>
-      )}
-      <InfoTooltip content="Phân loại thiết bị" side="bottom">
-        <span className={`text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm ${isOrphan ? "text-tertiary bg-tertiary/10 border border-tertiary/20" : "text-secondary bg-secondary/10 border border-secondary/20"}`}>
-          {isOrphan ? "UNKNOWN" : (type ? type.toUpperCase() : "UNKNOWN")}
-        </span>
-      </InfoTooltip>
-      <InfoTooltip content="Tên Thiết bị" side="bottom">
-        <span className={`text-[11px] font-bold tracking-wide flex-1 truncate max-w-[200px] block ${isDisconnected ? 'text-on-surface-variant/50' : 'text-on-surface-variant'
-          }`}>{name}</span>
-      </InfoTooltip>
-      <div className="flex w-full items-center justify-between gap-4">
-        <InfoTooltip content="IP Thiết bị" side="bottom">
-          <span className="text-[10px] font-mono font-medium text-on-surface-variant/70 min-w-[100px] bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/5">{ip}</span>
-        </InfoTooltip>
-        <InfoTooltip content="Tổng Logs nhận được">
-          <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${logCount > 0 ? 'text-secondary bg-secondary/15 ring-1 ring-secondary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
-            {logCount} logs
+    <div className="device-item-row-wrapper">
+      <div
+        className={`device-item-row flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border transition-colors ${isDisconnected
+          ? 'border-tertiary/20 bg-tertiary/5'
+          : isLogExpanded
+            ? 'border-secondary/30 bg-secondary/5'
+            : 'border-outline-variant/5 hover:border-outline-variant/20'
+        } ${hasLogs ? 'cursor-pointer' : ''}`}
+        onClick={() => { if (hasLogs) setIsLogExpanded(prev => !prev); }}
+      >
+        {/* Connection status dot */}
+        {connectionStatus && (
+          <InfoTooltip content={isConnected ? 'Đang kết nối' : 'Mất kết nối'} side="bottom">
+            <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${isConnected
+              ? 'bg-secondary ring-secondary/20'
+              : 'bg-tertiary ring-tertiary/20 animate-pulse'
+              }`}></div>
+          </InfoTooltip>
+        )}
+        <InfoTooltip content="Phân loại thiết bị" side="bottom">
+          <span className={`text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm ${isOrphan ? "text-tertiary bg-tertiary/10 border border-tertiary/20" : "text-secondary bg-secondary/10 border border-secondary/20"}`}>
+            {isOrphan ? "UNKNOWN" : (type ? type.toUpperCase() : "UNKNOWN")}
           </span>
         </InfoTooltip>
+        <InfoTooltip content="Tên Thiết bị" side="bottom">
+          <span className={`text-[11px] font-bold tracking-wide flex-1 truncate max-w-[200px] block ${isDisconnected ? 'text-on-surface-variant/50' : 'text-on-surface-variant'
+            }`}>{name}</span>
+        </InfoTooltip>
+        <div className="flex w-full items-center justify-between gap-4">
+          <InfoTooltip content="IP Thiết bị" side="bottom">
+            <span className="text-[10px] font-mono font-medium text-on-surface-variant/70 min-w-[100px] bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/5">{ip}</span>
+          </InfoTooltip>
+          <div className="flex items-center gap-2">
+            <InfoTooltip content="Tổng Logs nhận được">
+              <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${logCount > 0 ? 'text-secondary bg-secondary/15 ring-1 ring-secondary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
+                {logCount} logs
+              </span>
+            </InfoTooltip>
+            {hasLogs && (
+              <ChevronDown className={`w-3.5 h-3.5 text-on-surface-variant/40 transition-transform duration-300 ${isLogExpanded ? 'rotate-180' : ''}`} />
+            )}
+          </div>
+        </div>
       </div>
+      {/* Expandable Log Panel */}
+      {hasLogs && (
+        <div className={`grid transition-all duration-300 ease-in-out ${isLogExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+          <div className={`min-h-0 ${isLogExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
+            <DeviceLogPanel logs={filteredLogs!} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -610,7 +802,7 @@ function SendTargetCard({ conn }: { conn: SystemConnection }) {
   );
 }
 
-function ServerInputCard({ srv, matchedDevices, deviceLogStats }: { srv: any, matchedDevices: any, deviceLogStats: Record<string, any> }) {
+function ServerInputCard({ srv, matchedDevices, deviceLogStats, logs }: { srv: any, matchedDevices: any, deviceLogStats: Record<string, any>, logs: LogData[] }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -714,6 +906,17 @@ function ServerInputCard({ srv, matchedDevices, deviceLogStats }: { srv: any, ma
 
                 const dStats = deviceLogStats[key];
                 const logCount = dStats?.logCount || 0;
+
+                // Filter logs for this specific device
+                const deviceLogs = (logs || []).filter(l => {
+                  if (l.source === 'mqtt' || l.source === 'sunell-camera') return false;
+                  const lsId = l.server?.server_id || '';
+                  const lsSerial = l.server?.serial || '';
+                  const ldName = l.device_name || '';
+                  const ldIp = l.device_ip || '';
+                  return `${lsId}_${lsSerial}_${ldName}_${ldIp}` === key;
+                });
+
                 return (
                   <DeviceItemRow
                     key={dIdx}
@@ -722,6 +925,7 @@ function ServerInputCard({ srv, matchedDevices, deviceLogStats }: { srv: any, ma
                     type={device.type}
                     logCount={logCount}
                     connectionStatus={device.connectionStatus}
+                    filteredLogs={deviceLogs}
                   />
                 );
               })}
@@ -778,14 +982,18 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
               <div className="flex flex-col gap-1">
                 <InfoTooltip content="MQTT Broker">
                   <span className={`text-[14px] font-black tracking-wide leading-none group-hover:text-primary transition-colors ${status === 'disconnected' ? 'text-on-surface/60' : 'text-on-surface'}`}>
-                    {server.protocol}://{server.brokerHost}:{server.brokerPort}
+                    {server.name || `${server.brokerHost}:${server.brokerPort}`}
                   </span>
                 </InfoTooltip>
                 <div className='flex gap-1 items-center'>
-                  <InfoTooltip content="MQTT Server ID">
-                    <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{server.id}</span>
-                  </InfoTooltip>
-                  <span className="w-1 h-1 rounded-full bg-outline-variant/30"></span>
+                  {server.name && (
+                    <>
+                      <InfoTooltip content="MQTT Broker Address">
+                        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{server.protocol}://{server.brokerHost}:{server.brokerPort}</span>
+                      </InfoTooltip>
+                      <span className="w-1 h-1 rounded-full bg-outline-variant/30"></span>
+                    </>
+                  )}
                   <InfoTooltip content="Topic đang subscribe">
                     <span className="text-[10px] font-mono font-medium text-on-surface-variant truncate max-w-[300px] block">{server.topic || server.defaultTopic || '(no topic)'}</span>
                   </InfoTooltip>
@@ -857,7 +1065,7 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
                         >
                           <option value="">{t('app.monitor.no_camera_disabled')}</option>
                           {allCameras.map(cam => (
-                            <option key={cam.id} value={cam.id}>{cam.type.toUpperCase()} - {cam.cameraIp}:{cam.cameraPort}</option>
+                            <option key={cam.id} value={cam.id}>{cam.name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
                           ))}
                         </select>
                       </div>
@@ -933,7 +1141,10 @@ function CameraDevicesList({ cameras }: { cameras: MqttDeviceConfig[] }) {
             <span className="text-[9.5px] font-mono font-medium min-w-[50px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 uppercase">
               {cam.type}
             </span>
-            <span className="text-[11px] font-bold tracking-wide text-on-surface-variant flex-1 truncate">{cam.cameraIp}:{cam.cameraPort}</span>
+            <div className="flex-1 flex flex-col min-w-0">
+              <span className="text-[11px] font-bold tracking-wide text-on-surface-variant truncate">{cam.name || cam.id}</span>
+              <span className="text-[10px] font-mono text-on-surface-variant/70 truncate">{cam.cameraIp}:{cam.cameraPort}</span>
+            </div>
             <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${cam.status === 'connected' ? 'text-secondary bg-secondary/10 border-secondary/20' : cam.status === 'error' ? 'text-red-500 bg-red-500/10 border-red-500/20' : 'text-amber-400 bg-amber-400/10 border-amber-400/20'}`}>{cam.status}</span>
             <button
               onClick={() => handleDeleteDevice(cam.id)}

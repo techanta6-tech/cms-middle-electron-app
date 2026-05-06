@@ -14,6 +14,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
   const [mode, setMode] = useState<'receive' | 'send'>(initialMode);
 
   // MQTT fields — placeholders from current .env defaults
+  const [mqttName, setMqttName] = useState('');
   const [mqttProtocol, setMqttProtocol] = useState<'mqtt' | 'mqtts'>('mqtt');
   const [mqttHost, setMqttHost] = useState('192.168.1.93');
   const [mqttPort, setMqttPort] = useState('1883');
@@ -28,6 +29,7 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
     } else if (connectionType === 'mqtt' && onSaveMqtt) {
       const config: MqttServerConfig = {
         id: '', // BE will generate
+        name: mqttName,
         brokerHost: mqttHost,
         brokerPort: mqttPort,
         protocol: mqttProtocol,
@@ -200,8 +202,24 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
                 </div>
               </div>
 
-              {/* Host + Port row */}
-              <div className="flex gap-3">
+            {/* MQTT Name */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold text-on-surface-variant/70 uppercase tracking-widest flex items-center gap-1.5">
+                {t('app.add_server.mqtt_name')}
+              </span>
+              <div className="relative group">
+                <input
+                  type="text"
+                  value={mqttName}
+                  onChange={(e) => setMqttName(e.target.value)}
+                  placeholder={t('app.add_server.mqtt_name_placeholder')}
+                  className="w-full bg-surface-container-highest border border-outline-variant/30 rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-secondary focus:ring-1 focus:ring-secondary/50 transition-all font-mono"
+                />
+              </div>
+            </div>
+
+            {/* MQTT Server Config */}
+            <div className="flex gap-3">
                 <div className="space-y-1.5 flex-[2]">
                   <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">
                     {t('app.add_server.broker_host')}

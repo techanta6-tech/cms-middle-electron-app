@@ -40,7 +40,7 @@ const connectMqttServer = (serverConfig) => {
     id: `mqtt-${id}`,
     serial: '',
     server_ip: brokerHost,
-    server_name: `MQTT: ${brokerHost}:${brokerPort}`,
+    server_name: serverConfig.name || `MQTT: ${brokerHost}:${brokerPort}`,
     version: '',
     location: '',
     day: 0, month: 0, year: 0,
@@ -232,6 +232,7 @@ const disconnectMqttServer = (id) => {
 const getMqttServersList = () => {
   return mqttServers.map(s => ({
     id: s.id,
+    name: s.name || '',
     brokerHost: s.brokerHost,
     brokerPort: s.brokerPort,
     protocol: s.protocol,
