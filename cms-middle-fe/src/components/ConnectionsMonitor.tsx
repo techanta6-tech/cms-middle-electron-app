@@ -525,7 +525,6 @@ const CameraDevicesCard = memo(function CameraDevicesCard({ cameras, sunellLogs 
                   ? 'text-secondary bg-secondary/10 border-secondary/20'
                   : 'text-tertiary bg-tertiary/10 border-tertiary/20'
                   }`}>
-                  }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${connectedCount > 0 ? 'bg-secondary' : 'bg-tertiary animate-pulse'}`}></span>
                   {connectedCount > 0 ? `${connectedCount} ${t('app.monitor.online')}` : t('app.monitor.offline')}
                 </span>
