@@ -87,7 +87,7 @@ async function addCameraDevice(deviceConfig) {
         sockets.emit('debug-camera-snapshot', { time: new Date().toISOString(), message: msg });
       }
     },
-    onAlarm: (rawJsonStr) => {
+    onAlarm: async (rawJsonStr) => {
       if (!cameraDevices.some(d => d.id === id)) return;
       try {
         const payload = typeof rawJsonStr === 'string' ? JSON.parse(rawJsonStr) : rawJsonStr;
@@ -127,7 +127,7 @@ async function addCameraDevice(deviceConfig) {
 
           if (globalMainType === 1 && globalSubType === 2) {
             isMotion = true;
-          } else if (globalMainType === 6) {
+          } else if (globalMainType === 6 || globalMainType === 9) {
             isIVA = true;
             ivaSubType = globalSubType;
           } else if (globalMainType === 1 || globalMainType === 4 || globalMainType === 5 || globalMainType === 7) {
@@ -197,6 +197,24 @@ async function addCameraDevice(deviceConfig) {
 
         // Nếu sự kiện không thuộc loại nào được bật thì bỏ qua
         if (!shouldProcess) return;
+
+        // --- FALLBACK SNAPSHOT ---
+        // Nếu sự kiện lọt qua được bộ lọc mà chưa có ảnh từ SDK, ta tiến hành chụp RTSP
+        if (!payload.snapshotBase64) {
+          try {
+            console.log(`[Camera-${id}] [FALLBACK] Bắt đầu chụp ảnh RTSP cho sự kiện [${description}]`);
+            const b64 = await device.instance.captureSnapshotBase64();
+            if (b64) {
+              payload.snapshotBase64 = b64;
+              console.log(`[Camera-${id}] [FALLBACK] ✅ RTSP snapshot OK, size=${b64.length}`);
+            } else {
+              console.log(`[Camera-${id}] [FALLBACK] ❌ RTSP snapshot trả về null`);
+            }
+          } catch (err) {
+            console.error(`[Camera-${id}] [FALLBACK] ❌ RTSP snapshot lỗi: ${err.message}`);
+          }
+        }
+
 
         // YÊU CẦU: Ghi log sự kiện lần đầu tiên ra file txt
         // Nếu có eventName thì lưu ra file riêng cho từng loại eventName (như IVA có nhiều loại)

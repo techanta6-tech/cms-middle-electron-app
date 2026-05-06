@@ -126,6 +126,12 @@ const connectMqttServer = (serverConfig) => {
 
           // Tạo 1 log entry riêng cho mỗi event trong mảng
           for (const event of events) {
+            // Lọc bỏ các sự kiện có trạng thái deactivated hoặc ignored
+            const status = (event.alarm_status || '').toLowerCase();
+            if (status.includes('deactivated') || status.includes('ignored')) {
+              console.log(`[MQTT][${id}] Skipped event with status: ${event.alarm_status}`);
+              continue;
+            }
             // Tách riêng payload để mỗi log mới chỉ lưu một event
             const isolatedPayload = {
               ...parsedBody,

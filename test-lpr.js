@@ -25,7 +25,7 @@ const testCamera = new CameraDevice({
   onAlarm: (rawJsonStr) => {
     console.log('\n=============================================');
     console.log(`🚨 [NHẬN SỰ KIỆN THÔNG MINH]`);
-    
+
     try {
       // In ra dạng object đẹp
       const data = typeof rawJsonStr === 'string' ? JSON.parse(rawJsonStr) : rawJsonStr;

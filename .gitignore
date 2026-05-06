@@ -16,3 +16,5 @@ scripts/update-map.js
 *.txt
 /build-be
 .env.generated
+/snapshots
+/docs

@@ -17,7 +17,9 @@
     "arch-map:update": "node scripts/update-map.js"
   },
   "dependencies": {
-    "mqtt": "^5.15.1"
+    "express": "^5.2.1",
+    "mqtt": "^5.15.1",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

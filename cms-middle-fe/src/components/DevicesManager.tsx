@@ -400,6 +400,14 @@ function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDe
   );
 }
 
+const formatDate = (dateStr: string | undefined) => {
+  if (!dateStr) return '---';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+};
+
 function InfoRow({ label, value, mono }: { label: string; value: string | number | undefined; mono?: boolean }) {
   return (
     <div className="flex items-start gap-3 py-2 border-b border-outline-variant/5">
@@ -440,7 +448,7 @@ function SvmsServerDetail({ srv, devices }: { srv: ServerData; devices?: DeviceD
       <InfoRow label={t('app.monitor.location')} value={srv.location} />
       <InfoRow label={t('app.monitor.type')} value={srv.type || 'direct'} />
       <InfoRow label={t('app.monitor.device_count')} value={devices?.devices?.length ?? 0} />
-      <InfoRow label={t('app.monitor.last_seen')} value={srv.lastSeen} />
+      <InfoRow label={t('app.monitor.last_seen')} value={formatDate(srv.lastSeen)} />
     </div>
   );
 }
@@ -491,7 +499,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
       <InfoRow label={t('app.monitor.dev_eui')} value={dev.devEui} mono />
       <InfoRow label={t('app.monitor.profile')} value={dev.deviceProfileName} />
       <InfoRow label={t('app.monitor.alarm_count')} value={dev.alarmCount} />
-      <InfoRow label={t('app.monitor.last_seen')} value={dev.lastSeen} />
+      <InfoRow label={t('app.monitor.last_seen')} value={formatDate(dev.lastSeen)} />
       <div className="mt-4 pt-3 border-t border-outline-variant/10">
         <InfoRow label={t('app.monitor.parent_mqtt')} value={`${srv.brokerHost}:${srv.brokerPort}`} mono />
         <InfoRow label={t('app.monitor.topic')} value={srv.topic || srv.defaultTopic} mono />
@@ -542,6 +550,10 @@ const SUNELL_SUBEVENTS: Record<string, { code: string; label: string }[]> = {
     { code: '6/32', label: 'Đậu xe trái phép (Illegal Parking)' },
     { code: '6/33', label: 'Camera bị dời góc (Camera Shift)' },
     { code: '6/34', label: 'Tín hiệu video bất thường (Video Signal Bad)' },
+    { code: '9/50', label: 'CĐ thông minh - Không xác định (SMD Unknown)' },
+    { code: '9/51', label: 'CĐ thông minh - Người (SMD Human)' },
+    { code: '9/52', label: 'CĐ thông minh - Xe (SMD Vehicle)' },
+    { code: '9/53', label: 'CĐ thông minh - Xe thô sơ (SMD Non-motor)' },
   ],
   enableSystem: [
     { code: '1/1',  label: 'Báo động I/O' },

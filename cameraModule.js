@@ -65,7 +65,13 @@ const ALARM_NAMES = {
     '7/5': 'Báo động chênh lệch nhiệt (Temperature difference alarm)',
     '7/16': 'Phát hiện điểm cháy (Fire spot detection)',
     '7/17': 'Phát hiện hút thuốc (Smoking detection)',
-    '7/18': 'Phát hiện khói và lửa (Smoke & flame detection)'
+    '7/18': 'Phát hiện khói và lửa (Smoke & flame detection)',
+
+    // main_type 9: Báo động chuyển động thông minh (SMD)
+    '9/50': 'Phát hiện chuyển động thông minh (Không xác định)',
+    '9/51': 'Phát hiện chuyển động thông minh - Người (SMD Human)',
+    '9/52': 'Phát hiện chuyển động thông minh - Xe (SMD Vehicle)',
+    '9/53': 'Phát hiện chuyển động thông minh - Xe thô sơ (SMD Non-motor)'
 };
 
 function getAlarmName(mainType, subType) {
@@ -294,7 +300,7 @@ class CameraDevice {
         } catch (err) {
             this.log('IN', '[RTSP→Base64] FAIL', err.message);
             try { fs.unlinkSync(outputPath); } catch (_) {}
-            return null;
+            throw new Error(`Snapshot Error: ${err.message}`);
         }
     }
 
@@ -386,22 +392,8 @@ class CameraDevice {
 
                     if (payload.snapshotBase64) {
                         parsed.snapshotBase64 = payload.snapshotBase64;
-                        if (this.onAlarm) this.onAlarm(JSON.stringify(parsed));
-                    } else {
-                        this.log('IN', `[FALLBACK] Chụp ảnh RTSP do SDK không trả về ảnh cho sự kiện [${parsed.eventName}]`);
-                        this.captureSnapshotBase64().then(b64 => {
-                            if (b64) {
-                                parsed.snapshotBase64 = b64;
-                                this.log('IN', `[FALLBACK] ✅ RTSP snapshot OK cho [${parsed.eventName}], size=${b64.length}`);
-                            } else {
-                                this.log('IN', `[FALLBACK] ❌ RTSP snapshot trả về null cho [${parsed.eventName}]`);
-                            }
-                            if (this.onAlarm) this.onAlarm(JSON.stringify(parsed));
-                        }).catch((err) => {
-                            this.log('IN', `[FALLBACK] ❌ RTSP snapshot lỗi cho [${parsed.eventName}]: ${err.message}`);
-                            if (this.onAlarm) this.onAlarm(JSON.stringify(parsed));
-                        });
                     }
+                    if (this.onAlarm) this.onAlarm(JSON.stringify(parsed));
                 } catch (error) {
                     this.log('IN', 'Lỗi xử lý alarm', error.message);
                 }
