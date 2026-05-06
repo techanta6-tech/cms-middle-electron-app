@@ -98,16 +98,16 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
 
   const logTypeBadgeColor = (type: string) => {
     const t = type?.toUpperCase() || '';
-    if (t.includes('ALARM') || t.includes('ALERT')) return 'text-tertiary bg-tertiary/15 border-tertiary/25';
-    if (t.includes('EVENT') || t.includes('MOTION')) return 'text-amber-400 bg-amber-400/15 border-amber-400/25';
-    if (t.includes('FACE') || t.includes('RECOGNIZE')) return 'text-primary bg-primary/15 border-primary/25';
-    return 'text-on-surface-variant bg-surface-container-high border-outline-variant/20';
+    if (t.includes('ALARM') || t.includes('ALERT')) return 'text-tertiary';
+    if (t.includes('EVENT') || t.includes('MOTION')) return 'text-amber-400';
+    if (t.includes('FACE') || t.includes('RECOGNIZE')) return 'text-primary';
+    return 'text-on-surface-variant';
   };
 
   return (
-    <div className="device-log-panel mt-2 bg-surface-container-lowest/60 border border-outline-variant/10 rounded-md overflow-hidden">
+    <div className="device-log-panel mt-1 bg-surface-container-lowest/60 border border-outline-variant/10 rounded-md overflow-hidden">
       {/* Filters row */}
-      <div className="flex items-center gap-2 p-2.5 border-b border-outline-variant/10 bg-surface-container/30">
+      <div className="flex items-center gap-2 p-1.5 border-b border-outline-variant/10 bg-surface-container/30">
         <div className="relative flex-1">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-on-surface-variant/40" />
           <input
@@ -115,7 +115,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder={t('app.monitor.search_logs')}
-            className="w-full text-[10px] font-mono bg-surface-container border border-outline-variant/15 rounded pl-6 pr-2 py-1.5 text-on-surface placeholder:text-on-surface-variant/30 focus:border-secondary/40 focus:outline-none transition-colors"
+            className="w-full text-[9px] font-mono bg-surface-container border border-outline-variant/15 rounded pl-6 pr-2 py-1 text-on-surface placeholder:text-on-surface-variant/30 focus:border-secondary/40 focus:outline-none transition-colors"
           />
         </div>
         <div className="relative">
@@ -123,7 +123,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
           <select
             value={typeFilter}
             onChange={e => setTypeFilter(e.target.value)}
-            className="text-[10px] font-mono bg-surface-container border border-outline-variant/15 rounded pl-6 pr-6 py-1.5 text-on-surface appearance-none cursor-pointer focus:border-secondary/40 focus:outline-none transition-colors"
+            className="text-[9px] font-mono bg-surface-container border border-outline-variant/15 rounded pl-6 pr-6 py-1 text-on-surface appearance-none cursor-pointer focus:border-secondary/40 focus:outline-none transition-colors"
           >
             <option value="__all__">{t('app.monitor.all_types')}</option>
             {logTypes.map(lt => (
@@ -137,26 +137,26 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
       </div>
 
       {/* Log entries */}
-      <div className="max-h-[260px] overflow-y-auto custom-scrollbar">
+      <div className="max-h-[180px] overflow-y-auto custom-scrollbar">
         {displayedLogs.length === 0 ? (
-          <div className="py-6 flex flex-col items-center justify-center gap-1.5 opacity-40">
-            <Search className="w-4 h-4" />
-            <span className="text-[9px] font-bold uppercase tracking-widest">{t('app.monitor.no_logs_found')}</span>
+          <div className="py-4 flex flex-col items-center justify-center gap-1.5 opacity-40">
+            <Search className="w-3.5 h-3.5" />
+            <span className="text-[8.5px] font-bold uppercase tracking-widest">{t('app.monitor.no_logs_found')}</span>
           </div>
         ) : (
           <div className="divide-y divide-outline-variant/5">
             {displayedLogs.map((log, i) => (
-              <div key={log.id || i} className="flex items-start gap-2.5 px-3 py-2 hover:bg-surface-container/30 transition-colors">
-                <span className="text-[9px] font-mono text-on-surface-variant/50 shrink-0 pt-0.5 min-w-[55px]">
+              <div key={log.id || i} className="flex items-baseline gap-2 px-2 py-1 hover:bg-surface-container/30 transition-colors">
+                <span className="text-[8.5px] font-mono text-on-surface-variant/50 shrink-0 min-w-[50px]">
                   {new Date(log.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
-                <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 min-w-[55px] text-center ${logTypeBadgeColor(log.log_type)}`}>
+                <span className={`min-w-[150px] text-[7.5px] font-bold uppercase tracking-wider shrink-0 min-w-[45px] text-left ${logTypeBadgeColor(log.log_type)}`}>
                   {log.log_type || 'LOG'}
                 </span>
-                <span className="text-[10px] text-on-surface-variant leading-snug flex-1 break-words">
+                <span className="text-[9px] text-on-surface-variant leading-tight flex-1 break-words">
                   {log.description || '—'}
                 </span>
-                <span className="text-[8px] font-mono text-on-surface-variant/30 shrink-0">
+                <span className="text-[7.5px] font-mono text-on-surface-variant/30 shrink-0">
                   {log.server?.server_id || ''}
                 </span>
               </div>
@@ -169,7 +169,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
       {hasMore && (
         <button
           onClick={() => setDisplayLimit(prev => prev + 30)}
-          className="w-full py-2 text-[9px] font-bold uppercase tracking-widest text-secondary hover:bg-secondary/5 border-t border-outline-variant/10 transition-colors"
+          className="w-full py-1.5 text-[8.5px] font-bold uppercase tracking-widest text-secondary hover:bg-secondary/5 border-t border-outline-variant/10 transition-colors"
         >
           {t('app.monitor.show_more')} ({filteredLogs.length - displayLimit} {t('app.monitor.recent_logs')})
         </button>
@@ -525,6 +525,7 @@ const CameraDevicesCard = memo(function CameraDevicesCard({ cameras, sunellLogs 
                   ? 'text-secondary bg-secondary/10 border-secondary/20'
                   : 'text-tertiary bg-tertiary/10 border-tertiary/20'
                   }`}>
+                  }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${connectedCount > 0 ? 'bg-secondary' : 'bg-tertiary animate-pulse'}`}></span>
                   {connectedCount > 0 ? `${connectedCount} ${t('app.monitor.online')}` : t('app.monitor.offline')}
                 </span>
@@ -613,6 +614,12 @@ const CameraItemWithLogs = memo(function CameraItemWithLogs({ cam, logCount, isC
               ? 'bg-red-500 ring-red-500/20 animate-pulse'
               : 'bg-tertiary ring-tertiary/20 animate-pulse'
             }`}></div>
+          <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${isConnected
+            ? 'bg-secondary ring-secondary/20'
+            : isError
+              ? 'bg-red-500 ring-red-500/20 animate-pulse'
+              : 'bg-tertiary ring-tertiary/20 animate-pulse'
+            }`}></div>
         </InfoTooltip>
         <InfoTooltip content="Loại camera" side="bottom">
           <span className="text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 uppercase">
@@ -621,6 +628,8 @@ const CameraItemWithLogs = memo(function CameraItemWithLogs({ cam, logCount, isC
         </InfoTooltip>
         <div className="flex flex-col flex-1 min-w-0">
           <InfoTooltip content="Tên Camera" side="bottom">
+            <span className={`text-[11px] font-bold tracking-wide truncate max-w-[200px] block ${!isConnected ? 'text-on-surface-variant/50' : 'text-on-surface-variant'
+              }`}>{cam.name || cam.id}</span>
             <span className={`text-[11px] font-bold tracking-wide truncate max-w-[200px] block ${!isConnected ? 'text-on-surface-variant/50' : 'text-on-surface-variant'
               }`}>{cam.name || cam.id}</span>
           </InfoTooltip>
@@ -634,19 +643,15 @@ const CameraItemWithLogs = memo(function CameraItemWithLogs({ cam, logCount, isC
               {logCount} logs
             </span>
           </InfoTooltip>
-          {hasLogs && (
-            <ChevronDown className={`w-3.5 h-3.5 text-on-surface-variant/40 transition-transform duration-300 ${isLogExpanded ? 'rotate-180' : ''}`} />
-          )}
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isLogExpanded ? 'rotate-180' : ''} ${hasLogs ? 'text-on-surface-variant/40' : 'text-on-surface-variant/10'}`} />
         </div>
       </div>
       {/* Expandable Log Panel */}
-      {hasLogs && (
-        <div className={`grid transition-all duration-300 ease-in-out ${isLogExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-          <div className={`min-h-0 ${isLogExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
-            <DeviceLogPanel logs={cameraLogs} />
-          </div>
+      <div className={`grid transition-all duration-300 ease-in-out ${isLogExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+        <div className={`min-h-0 ${isLogExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
+          <DeviceLogPanel logs={cameraLogs} />
         </div>
-      )}
+      </div>
     </div>
   );
 }, (prev, next) =>
@@ -682,7 +687,7 @@ const DeviceItemRow = memo(function DeviceItemRow({
   return (
     <div className="device-item-row-wrapper">
       <div
-        className={`device-item-row flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border transition-colors ${isDisconnected
+        className={`device-item-row flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border transition-colors cursor-pointer ${isDisconnected
           ? 'border-tertiary/20 bg-tertiary/5'
           : isLogExpanded
             ? 'border-secondary/30 bg-secondary/5'
@@ -718,20 +723,16 @@ const DeviceItemRow = memo(function DeviceItemRow({
                 {logCount} logs
               </span>
             </InfoTooltip>
-            {hasLogs && (
-              <ChevronDown className={`w-3.5 h-3.5 text-on-surface-variant/40 transition-transform duration-300 ${isLogExpanded ? 'rotate-180' : ''}`} />
-            )}
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isLogExpanded ? 'rotate-180' : ''} ${hasLogs ? 'text-on-surface-variant/40' : 'text-on-surface-variant/10'}`} />
           </div>
         </div>
       </div>
       {/* Expandable Log Panel */}
-      {hasLogs && (
-        <div className={`grid transition-all duration-300 ease-in-out ${isLogExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-          <div className={`min-h-0 ${isLogExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
-            <DeviceLogPanel logs={filteredLogs!} />
-          </div>
+      <div className={`grid transition-all duration-300 ease-in-out ${isLogExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+        <div className={`min-h-0 ${isLogExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
+          <DeviceLogPanel logs={filteredLogs || []} />
         </div>
-      )}
+      </div>
     </div>
   );
 }, (prev, next) =>

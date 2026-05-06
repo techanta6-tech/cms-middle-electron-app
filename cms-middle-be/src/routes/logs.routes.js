@@ -69,17 +69,18 @@ router.post('/api/v1/logs', async (req, res) => {
     req.body.sender_ip = (req.socket?.remoteAddress || req.ip || '').replace('::ffff:', '');
   }
 
+  const logBodyForFrontend = req.body || {};
   const logData = {
     timestamp: new Date().toISOString(),
     method: req.method,
     originalUrl: req.originalUrl,
     statusCode: res.statusCode,
     ip: req.ip,
-    body: req.body,
+    body: logBodyForFrontend,
   };
 
   // ─── CONNECTIVITY: AUTO-RECONNECT & TIMER RESET ────────────────────────────
-  const logBody = req.body || {};
+  const logBody = logBodyForFrontend;
   const serverId = logBody.server_id || logBody.server?.server_id;
   const deviceIndex = logBody.device_index;
 
@@ -131,28 +132,32 @@ router.post('/api/v1/logs', async (req, res) => {
   });
 
   const sendTargets = connections.filter(c => c.mode === 'send').filter(c => c.status === 'connected');
-  let sentServerList = []
-  for (const conn of sendTargets) {
-    try {
-      await forwardWithRetry(conn, req.body);
-      conn.sentCount = (conn.sentCount || 0) + 1;
-      sentServerList.push(conn.url)
-      if (conn.status !== 'connected') {
-        conn.status = 'connected';
-        notifyStatusToClients(conn.url, conn.mode, 'connected');
-      }
-    } catch (err) {
-      console.error(`  ├─ [FORWARD_FAIL] ${conn.url}: ${err.message}`);
-      if (conn.status !== 'disconnected') {
-        conn.status = 'disconnected';
-        notifyStatusToClients(conn.url, conn.mode, 'disconnected');
-      }
-    }
-  }
 
-  clientSockets.emit('log-dispatched', { timestamp: logData.timestamp, sentServerList });
+  // Trả về thành công ngay lập tức để không block phía gửi
+  res.status(200).send({ success: true });
 
-  return res.status(200).send({ success: true });
+  // Xử lý forward không đồng bộ (background)
+  (async () => {
+    let sentServerList = [];
+    await Promise.allSettled(sendTargets.map(async conn => {
+      try {
+        await forwardWithRetry(conn, req.body);
+        conn.sentCount = (conn.sentCount || 0) + 1;
+        sentServerList.push(conn.url);
+        if (conn.status !== 'connected') {
+          conn.status = 'connected';
+          notifyStatusToClients(conn.url, conn.mode, 'connected');
+        }
+      } catch (err) {
+        console.error(`  ├─ [FORWARD_FAIL] ${conn.url}: ${err.message}`);
+        if (conn.status !== 'disconnected') {
+          conn.status = 'disconnected';
+          notifyStatusToClients(conn.url, conn.mode, 'disconnected');
+        }
+      }
+    }));
+    clientSockets.emit('log-dispatched', { timestamp: logData.timestamp, sentServerList });
+  })();
 });
 
 module.exports = router;

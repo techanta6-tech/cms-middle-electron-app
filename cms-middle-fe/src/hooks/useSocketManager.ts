@@ -443,11 +443,11 @@ export function useSocketManager() {
         device_name: data.body?.device_name || 'Channel',
         log_type: data.body?.log_type || 'event.info',
         description: data.body?.description || 'Event received',
-        snapshot: data.body?.snapshot,
         server: serverData,
         ip: data.ip,
-        raw: raw,
-        cameraIp: data.body?.device_ip || 'SYSTEM'
+        cameraIp: data.body?.device_ip || 'SYSTEM',
+        raw: data,
+        snapshot: data.body?.snapshot || data.body?.picture || (data.body?.pictures && data.body?.pictures[0]) || undefined
       };
 
       if (data.ip && data.ip !== '127.0.0.1' && data.ip !== '::1') {
@@ -474,7 +474,6 @@ export function useSocketManager() {
         snapshot: raw.image_data,
         server: { server_id: 'SUNELL-LOCAL', serial: 'SUNELL' },
         ip: '127.0.0.1',
-        raw: raw.raw_data,
         cameraIp: raw.camera_id,
         source: 'sunell-camera'
       };
@@ -600,6 +599,9 @@ export function useSocketManager() {
       const deviceInfo = raw.payload?.deviceInfo;
       const event = raw.event;
       const eventDesc = event ? `${event.alarm_type}:${event.alarm_status}` : '';
+      const safeRaw = { ...raw };
+      if (safeRaw.snapshot) safeRaw.snapshot = '[BASE64_IMAGE_OMITTED_FROM_RAW]';
+      
       const newLog: LogData = {
         id: crypto.randomUUID(),
         time: Math.floor(new Date(raw.time || Date.now()).getTime() / 1000),
@@ -612,7 +614,7 @@ export function useSocketManager() {
         snapshot: raw.snapshot || undefined,
         server: { server_id: `mqtt-${raw.mqttServerId}`, serial: deviceInfo?.devEui || '' },
         ip: raw.brokerHost || '',
-        raw: raw,
+        raw: safeRaw,
         source: 'mqtt',
         mqttServerId: raw.mqttServerId,
       };
