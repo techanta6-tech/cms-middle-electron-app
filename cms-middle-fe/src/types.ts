@@ -87,6 +87,7 @@ export interface DeviceData {
 
 export interface MqttServerConfig {
   id: string;
+  name?: string;
   brokerHost: string;
   brokerPort: string;
   protocol: 'mqtt' | 'mqtts';

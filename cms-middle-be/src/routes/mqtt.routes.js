@@ -20,7 +20,7 @@ router.get('/api/v1/mqtt-servers/:id/logs', (req, res) => {
 
 // ─── POST /api/v1/mqtt-servers — Add new MQTT server & connect ───────────────
 router.post('/api/v1/mqtt-servers', (req, res) => {
-  const { brokerHost, brokerPort, protocol, topic, defaultTopic, cameraId } = req.body;
+  const { name, brokerHost, brokerPort, protocol, topic, defaultTopic, cameraId } = req.body;
 
   if (!brokerHost || !brokerPort) {
     return res.status(400).json({ success: false, message: 'Missing brokerHost or brokerPort' });
@@ -37,6 +37,7 @@ router.post('/api/v1/mqtt-servers', (req, res) => {
   const id = crypto.randomUUID().slice(0, 8);
   const serverConfig = {
     id,
+    name: name ? name.trim() : '',
     brokerHost: brokerHost.trim(),
     brokerPort: String(brokerPort).trim(),
     protocol: protocol || 'mqtt',
@@ -61,7 +62,7 @@ router.put('/api/v1/mqtt-servers/:id', (req, res) => {
     return res.status(404).json({ success: false, message: 'MQTT server not found' });
   }
 
-  const { brokerHost, brokerPort, protocol, topic, defaultTopic, cameraId } = req.body;
+  const { name, brokerHost, brokerPort, protocol, topic, defaultTopic, cameraId } = req.body;
 
   // Disconnect old
   disconnectMqttServer(id);
@@ -69,6 +70,7 @@ router.put('/api/v1/mqtt-servers/:id', (req, res) => {
   // Update config
   const updated = {
     ...mqttServers[idx],
+    name: name !== undefined ? (name ? name.trim() : '') : (mqttServers[idx].name || ''),
     brokerHost: brokerHost ? brokerHost.trim() : mqttServers[idx].brokerHost,
     brokerPort: brokerPort ? String(brokerPort).trim() : mqttServers[idx].brokerPort,
     protocol: protocol || mqttServers[idx].protocol,

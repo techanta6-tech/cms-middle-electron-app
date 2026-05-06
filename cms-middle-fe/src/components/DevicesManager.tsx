@@ -202,8 +202,8 @@ export function DevicesManager({
                 return (
                   <div key={ms.id}>
                     <TreeItem
-                      label={`${ms.brokerHost}:${ms.brokerPort}`}
-                      sublabel={ms.topic || ms.defaultTopic || ''}
+                      label={ms.name || `${ms.brokerHost}:${ms.brokerPort}`}
+                      sublabel={ms.name ? `${ms.protocol}://${ms.brokerHost}:${ms.brokerPort}` : (ms.topic || ms.defaultTopic || '')}
                       hasChildren={mqttDevs.length > 0}
                       expanded={expanded}
                       onToggle={() => toggleServer(`mqtt-${ms.id}`)}
@@ -237,7 +237,7 @@ export function DevicesManager({
               {sunellCameras.map(cam => (
                 <TreeItem key={cam.id}
                   label={(cam as any).name || `Camera Sunell: ${cam.cameraIp}`}
-                  sublabel={cam.id}
+                  sublabel={`${cam.cameraIp}:${cam.cameraPort}`}
                   onClick={() => setSelected({ kind: 'camera', data: cam })}
                   isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
                   status={cam.status || 'error'}
@@ -258,7 +258,7 @@ export function DevicesManager({
               {otherCameras.map(cam => (
                 <TreeItem key={cam.id}
                   label={(cam as any).name || `Camera: ${cam.cameraIp}`}
-                  sublabel={cam.id}
+                  sublabel={`${cam.cameraIp}:${cam.cameraPort}`}
                   onClick={() => setSelected({ kind: 'camera', data: cam })}
                   isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
                   status={cam.status || 'error'}
@@ -477,7 +477,7 @@ function MqttServerDetail({ srv, devices }: { srv: MqttServerConfig; devices: Mq
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
-      <h3 className="text-lg font-black text-on-surface mb-2">{srv.brokerHost}:{srv.brokerPort}</h3>
+      <h3 className="text-lg font-black text-on-surface mb-2">{srv.name || `${srv.brokerHost}:${srv.brokerPort}`}</h3>
       <div className="mb-3"><StatusBadge status={srv.status} /></div>
       <InfoRow label={t('app.monitor.server_id')} value={srv.id} mono />
       <InfoRow label={t('app.monitor.protocol')} value={srv.protocol} />
@@ -501,7 +501,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
       <InfoRow label={t('app.monitor.alarm_count')} value={dev.alarmCount} />
       <InfoRow label={t('app.monitor.last_seen')} value={formatDate(dev.lastSeen)} />
       <div className="mt-4 pt-3 border-t border-outline-variant/10">
-        <InfoRow label={t('app.monitor.parent_mqtt')} value={`${srv.brokerHost}:${srv.brokerPort}`} mono />
+        <InfoRow label={t('app.monitor.parent_mqtt')} value={srv.name || `${srv.brokerHost}:${srv.brokerPort}`} mono />
         <InfoRow label={t('app.monitor.topic')} value={srv.topic || srv.defaultTopic} mono />
       </div>
       <div className="mt-4 pt-3 border-t border-outline-variant/10 flex items-center gap-3">
@@ -513,7 +513,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
         >
           <option value="">{t('app.monitor.no_camera_disabled')}</option>
           {allCameras.map(cam => (
-            <option key={cam.id} value={cam.id}>{cam.type.toUpperCase()} - {cam.cameraIp}:{cam.cameraPort}</option>
+            <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
           ))}
         </select>
       </div>

@@ -31,8 +31,7 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
   }
 
   const allMetadata = [
-    { label: 'Server ID', value: log.server?.server_id || log.raw?.body?.server?.server_id, isImportant: false },
-    { label: 'Server Serial', value: log.server?.serial || log.raw?.body?.server?.serial, isImportant: true },
+    { label: 'Server ID', value: log.server?.server_id || log.raw?.body?.server?.server_id, isImportant: true },
     { label: 'Device Name', value: log.device_name || log.raw?.body?.device_name, isImportant: true },
     { label: 'Device IP', value: log.cameraIp || log.device_ip || 'Internal', isImportant: false },
     { label: 'Device Port', value: log.raw?.body?.device_port, isImportant: false },
@@ -83,7 +82,7 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
     return null;
   };
 
-  const serverSerial = log.server?.serial || log.raw?.body?.server?.serial || 'UNKNOWN_SERVER';
+  const serverId = log.server?.server_id || log.raw?.body?.server?.server_id || 'UNKNOWN_SERVER';
   const deviceName = log.device_name || log.raw?.body?.device_name || 'UNKNOWN_DEVICE';
   const summaryContent = renderEventSummary();
 
@@ -95,7 +94,7 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
           <div className="flex items-center gap-3">
             <div>
               <h3 className="text-sm font-black tracking-widest uppercase text-on-surface flex flex-wrap items-center gap-2">
-                <span>{serverSerial} / {deviceName}</span>
+                <span>{serverId} / {deviceName}</span>
                 {summaryContent && (
                   <>
                     <span className="text-on-surface-variant/50">/</span>
