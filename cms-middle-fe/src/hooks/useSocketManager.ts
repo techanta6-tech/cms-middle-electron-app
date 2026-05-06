@@ -445,7 +445,9 @@ export function useSocketManager() {
         description: data.body?.description || 'Event received',
         server: serverData,
         ip: data.ip,
-        cameraIp: data.body?.device_ip || 'SYSTEM'
+        cameraIp: data.body?.device_ip || 'SYSTEM',
+        raw: data,
+        snapshot: data.body?.snapshot || data.body?.picture || (data.body?.pictures && data.body?.pictures[0]) || undefined
       };
 
       if (data.ip && data.ip !== '127.0.0.1' && data.ip !== '::1') {
