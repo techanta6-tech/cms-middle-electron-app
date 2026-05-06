@@ -15,14 +15,16 @@ export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: Camer
   const [addDeviceForm, setAddDeviceForm] = useState({
     name: '',
     type: initialType,
-    cameraIp: '192.168.1.208',
-    cameraPort: '30001',
+    cameraIp: '192.168.1.252',
+    controlPort: '30001',
     rtspPort: '554',
     cameraUser: 'admin',
-    cameraPass: 'admin1234',
+    cameraPass: 'Admin1234',
     // rtspUrl: 'rtsp://fake-camera:554/stream'
     rtspUrl: 'rtsp://admin:admin1234@192.168.1.208:554/snl/live/1/1', // port 554 = RTSP, port 30001 = SDK control (khác nhau!)
   });
+
+
 
   const [isCustomRtsp, setIsCustomRtsp] = useState(false);
 
@@ -42,7 +44,7 @@ export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: Camer
   const handleSubmitDevice = async (e: React.FormEvent) => {
     e.preventDefault();
     // Validate
-    if (!addDeviceForm.cameraIp || (addDeviceForm.type === 'sunell' && !addDeviceForm.cameraPort) || !addDeviceForm.cameraUser || !addDeviceForm.cameraPass) {
+    if (!addDeviceForm.cameraIp || (addDeviceForm.type === 'sunell' && !addDeviceForm.controlPort) || !addDeviceForm.cameraUser || !addDeviceForm.cameraPass) {
       alert("Vui lòng điền đầy đủ: Camera IP, Port, Username, Password!");
       return;
     }
@@ -53,7 +55,7 @@ export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: Camer
         name: addDeviceForm.name || `Cam ${addDeviceForm.cameraIp}`,
         type: addDeviceForm.type,
         cameraIp: addDeviceForm.cameraIp,
-        cameraPort: parseInt(addDeviceForm.cameraPort || '30001'),
+        cameraPort: parseInt(addDeviceForm.controlPort || '30001'),
         cameraUser: addDeviceForm.cameraUser,
         cameraPass: addDeviceForm.cameraPass,
         rtspUrl: addDeviceForm.rtspUrl
@@ -133,8 +135,8 @@ export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: Camer
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">Control Port (*)</label>
                   <input
-                    value={addDeviceForm.cameraPort}
-                    onChange={e => setAddDeviceForm(f => ({ ...f, cameraPort: e.target.value }))}
+                    value={addDeviceForm.controlPort}
+                    onChange={e => setAddDeviceForm(f => ({ ...f, controlPort: e.target.value }))}
                     className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                     placeholder="30001"
                   />
@@ -177,11 +179,11 @@ export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: Camer
                   <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest">{t('app.camera_form.rtsp_optional')}</label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Custom RTSP</span>
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       className="accent-cyan-500 w-3 h-3 cursor-pointer"
-                      checked={isCustomRtsp} 
-                      onChange={(e) => setIsCustomRtsp(e.target.checked)} 
+                      checked={isCustomRtsp}
+                      onChange={(e) => setIsCustomRtsp(e.target.checked)}
                     />
                   </label>
                 </div>
@@ -206,7 +208,7 @@ export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: Camer
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !addDeviceForm.cameraIp || (addDeviceForm.type === 'sunell' && !addDeviceForm.cameraPort) || !addDeviceForm.cameraUser || !addDeviceForm.cameraPass}
+              disabled={isSubmitting || !addDeviceForm.cameraIp || (addDeviceForm.type === 'sunell' && !addDeviceForm.controlPort) || !addDeviceForm.cameraUser || !addDeviceForm.cameraPass}
               className="flex-1 px-6 py-3 text-[11px] font-black uppercase tracking-widest rounded-sm transition-all bg-cyan-600 text-white hover:bg-cyan-700 shadow-[0_0_20px_rgba(6,182,212,0.2)] disabled:opacity-50 cursor-pointer"
             >
               {isSubmitting ? t('app.camera_form.saving') : t('app.camera_form.save')}
