@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
 import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight, Radio, Camera, Search, Filter } from 'lucide-react';
@@ -7,6 +7,46 @@ import { ConfigSystem } from './ConfigSystem';
 import apiClient from '../api/apiClient';
 import { socket } from '../socket';
 import axios from 'axios';
+
+const EMPTY_LOGS: LogData[] = [];
+
+/** Throttle interval riêng cho tab Giám sát sự kiện (ms) */
+const MONITOR_THROTTLE_MS = 30000;
+
+/**
+ * Hook throttle: chỉ cập nhật giá trị mới mỗi MONITOR_THROTTLE_MS.
+ * Tab Giám sát sự kiện dùng hook này để giảm tần suất re-render
+ * xuống 1 lần/giây thay vì theo flush 500ms của useSocketManager.
+ */
+function useThrottledValue<T>(value: T, delayMs: number = MONITOR_THROTTLE_MS): T {
+  const [throttled, setThrottled] = useState(value);
+  const lastUpdated = useRef(Date.now());
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const now = Date.now();
+    const elapsed = now - lastUpdated.current;
+
+    if (elapsed >= delayMs) {
+      // Đủ thời gian → cập nhật ngay
+      setThrottled(value);
+      lastUpdated.current = now;
+    } else {
+      // Chưa đủ → schedule cập nhật khi hết interval
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        setThrottled(value);
+        lastUpdated.current = Date.now();
+      }, delayMs - elapsed);
+    }
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [value, delayMs]);
+
+  return throttled;
+}
 
 function InfoTooltip({ children, content, side = "top" }: { children: React.ReactNode, content: string, side?: "top" | "bottom" }) {
   const isBottom = side === "bottom";
@@ -159,12 +199,35 @@ export function ConnectionsMonitor({
   onSaveSystemConfig: (config: SystemConfig) => void,
   onRemoveConnection: (ip: string, port: string, mode: 'receive' | 'send') => void,
 }) {
+  // ─── Throttle logs riêng cho tab này: 1 lần/giây thay vì 500ms ──────────
+  const throttledLogs = useThrottledValue(logs, MONITOR_THROTTLE_MS);
+
+  // ─── Pre-filter logs by category to minimize cascading re-renders ────────
+  const svmsLogs = useMemo(() =>
+    (throttledLogs || []).filter(l => l.source !== 'mqtt' && l.source !== 'sunell-camera'),
+    [throttledLogs]
+  );
+
+  const sunellLogs = useMemo(() =>
+    (throttledLogs || []).filter(l => l.source === 'sunell-camera'),
+    [throttledLogs]
+  );
+
+  // Pre-group SVMS logs by server_id → each ServerInputCard gets its own small slice
+  const svmsLogsByServer = useMemo(() => {
+    const map: Record<string, LogData[]> = {};
+    svmsLogs.forEach(l => {
+      const sId = l.server?.server_id || '';
+      if (!map[sId]) map[sId] = [];
+      map[sId].push(l);
+    });
+    return map;
+  }, [svmsLogs]);
+
   // Group log stats strictly by server_id + server_serial + device_name + device_ip
   const deviceLogStats = useMemo(() => {
     const stats: Record<string, { serverId: string; serverSerial: string; deviceName: string; deviceIp: string; logCount: number }> = {};
-    (logs || []).forEach(log => {
-      if (log.source === 'mqtt') return; // MQTT logs handled by MqttServerCard
-      if (log.source === 'sunell-camera') return; // Camera logs handled by CameraDevicesCard
+    svmsLogs.forEach(log => {
       const sId = log.server?.server_id || '';
       const sSerial = log.server?.serial || '';
       const dName = log.device_name || '';
@@ -184,7 +247,7 @@ export function ConnectionsMonitor({
       stats[key].logCount += 1;
     });
     return stats;
-  }, [logs]);
+  }, [svmsLogs]);
 
   // Find logs that don't match any configured server/device
   const orphanDevices = useMemo(() => {
@@ -299,11 +362,11 @@ export function ConnectionsMonitor({
                     const matchedDevices = devices[serverId] || devices[srv.id] || devices[srv.serial];
                     return (
                       <ServerInputCard
-                        key={idx}
+                        key={srv.id || idx}
                         srv={srv}
                         matchedDevices={matchedDevices}
                         deviceLogStats={deviceLogStats}
-                        logs={logs}
+                        serverLogs={svmsLogsByServer[srv.id || ''] || EMPTY_LOGS}
                       />
                     );
                   })}
@@ -321,7 +384,7 @@ export function ConnectionsMonitor({
                   ))}
 
                   {/* Camera Devices */}
-                  <CameraDevicesCard cameras={cameraDevices} logs={logs} />
+                  <CameraDevicesCard cameras={cameraDevices} sunellLogs={sunellLogs} />
 
                   <UnknownDevicesCard orphanDevices={orphanDevices} />
                 </>
@@ -408,20 +471,19 @@ function UnknownDevicesCard({ orphanDevices }: { orphanDevices: { name: string; 
   );
 }
 
-function CameraDevicesCard({ cameras, logs }: { cameras: MqttDeviceConfig[]; logs: LogData[] }) {
+const CameraDevicesCard = memo(function CameraDevicesCard({ cameras, sunellLogs }: { cameras: MqttDeviceConfig[]; sunellLogs: LogData[] }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Count logs per camera (source === 'sunell-camera', match by cameraIp === cam.id)
+  // Count logs per camera (already pre-filtered to sunell-camera only)
   const cameraLogStats = useMemo(() => {
     const stats: Record<string, number> = {};
-    (logs || []).forEach(log => {
-      if (log.source !== 'sunell-camera') return;
+    sunellLogs.forEach(log => {
       const camId = log.cameraIp || '';
       stats[camId] = (stats[camId] || 0) + 1;
     });
     return stats;
-  }, [logs]);
+  }, [sunellLogs]);
 
   const totalLogs = useMemo(() => Object.values(cameraLogStats).reduce((sum, n) => sum + n, 0), [cameraLogStats]);
 
@@ -462,7 +524,7 @@ function CameraDevicesCard({ cameras, logs }: { cameras: MqttDeviceConfig[]; log
                 <span className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${connectedCount > 0
                   ? 'text-secondary bg-secondary/10 border-secondary/20'
                   : 'text-tertiary bg-tertiary/10 border-tertiary/20'
-                }`}>
+                  }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${connectedCount > 0 ? 'bg-secondary' : 'bg-tertiary animate-pulse'}`}></span>
                   {connectedCount > 0 ? `${connectedCount} ${t('app.monitor.online')}` : t('app.monitor.offline')}
                 </span>
@@ -496,10 +558,8 @@ function CameraDevicesCard({ cameras, logs }: { cameras: MqttDeviceConfig[]; log
               const isConnected = cam.status === 'connected';
               const isError = cam.status === 'error';
 
-              // Filter logs for this specific camera
-              const cameraLogs = (logs || []).filter(l =>
-                l.source === 'sunell-camera' && (l.cameraIp === cam.id)
-              );
+              // Filter pre-filtered sunell logs for this specific camera
+              const cameraLogs = sunellLogs.filter(l => l.cameraIp === cam.id);
 
               return (
                 <CameraItemWithLogs
@@ -517,9 +577,12 @@ function CameraDevicesCard({ cameras, logs }: { cameras: MqttDeviceConfig[]; log
       </div>
     </div>
   );
-}
+}, (prev, next) =>
+  prev.sunellLogs.length === next.sunellLogs.length &&
+  prev.cameras === next.cameras
+);
 
-function CameraItemWithLogs({ cam, logCount, isConnected, isError, cameraLogs }: {
+const CameraItemWithLogs = memo(function CameraItemWithLogs({ cam, logCount, isConnected, isError, cameraLogs }: {
   cam: MqttDeviceConfig;
   logCount: number;
   isConnected: boolean;
@@ -532,26 +595,24 @@ function CameraItemWithLogs({ cam, logCount, isConnected, isError, cameraLogs }:
   return (
     <div className="camera-item-wrapper">
       <div
-        className={`flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border transition-colors ${
-          isError
-            ? 'border-red-500/20 bg-red-500/5'
-            : !isConnected
-              ? 'border-tertiary/20 bg-tertiary/5'
-              : isLogExpanded
-                ? 'border-cyan-500/30 bg-cyan-500/5'
-                : 'border-outline-variant/5 hover:border-outline-variant/20'
-        } ${hasLogs ? 'cursor-pointer' : ''}`}
+        className={`flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border transition-colors ${isError
+          ? 'border-red-500/20 bg-red-500/5'
+          : !isConnected
+            ? 'border-tertiary/20 bg-tertiary/5'
+            : isLogExpanded
+              ? 'border-cyan-500/30 bg-cyan-500/5'
+              : 'border-outline-variant/5 hover:border-outline-variant/20'
+          } ${hasLogs ? 'cursor-pointer' : ''}`}
         onClick={() => { if (hasLogs) setIsLogExpanded(prev => !prev); }}
       >
         {/* Connection status dot */}
         <InfoTooltip content={isConnected ? 'Đang kết nối' : isError ? 'Lỗi kết nối' : 'Mất kết nối'} side="bottom">
-          <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${
-            isConnected
-              ? 'bg-secondary ring-secondary/20'
-              : isError
-                ? 'bg-red-500 ring-red-500/20 animate-pulse'
-                : 'bg-tertiary ring-tertiary/20 animate-pulse'
-          }`}></div>
+          <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${isConnected
+            ? 'bg-secondary ring-secondary/20'
+            : isError
+              ? 'bg-red-500 ring-red-500/20 animate-pulse'
+              : 'bg-tertiary ring-tertiary/20 animate-pulse'
+            }`}></div>
         </InfoTooltip>
         <InfoTooltip content="Loại camera" side="bottom">
           <span className="text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 uppercase">
@@ -560,9 +621,8 @@ function CameraItemWithLogs({ cam, logCount, isConnected, isError, cameraLogs }:
         </InfoTooltip>
         <div className="flex flex-col flex-1 min-w-0">
           <InfoTooltip content="Tên Camera" side="bottom">
-            <span className={`text-[11px] font-bold tracking-wide truncate max-w-[200px] block ${
-              !isConnected ? 'text-on-surface-variant/50' : 'text-on-surface-variant'
-            }`}>{cam.name || cam.id}</span>
+            <span className={`text-[11px] font-bold tracking-wide truncate max-w-[200px] block ${!isConnected ? 'text-on-surface-variant/50' : 'text-on-surface-variant'
+              }`}>{cam.name || cam.id}</span>
           </InfoTooltip>
           <InfoTooltip content="Địa chỉ IP Camera" side="bottom">
             <span className="text-[10px] font-mono text-on-surface-variant/70 truncate">{cam.cameraIp}:{cam.cameraPort}</span>
@@ -589,9 +649,15 @@ function CameraItemWithLogs({ cam, logCount, isConnected, isError, cameraLogs }:
       )}
     </div>
   );
-}
+}, (prev, next) =>
+  prev.cameraLogs.length === next.cameraLogs.length &&
+  prev.logCount === next.logCount &&
+  prev.isConnected === next.isConnected &&
+  prev.isError === next.isError &&
+  prev.cam === next.cam
+);
 
-function DeviceItemRow({
+const DeviceItemRow = memo(function DeviceItemRow({
   name,
   ip,
   type,
@@ -621,7 +687,7 @@ function DeviceItemRow({
           : isLogExpanded
             ? 'border-secondary/30 bg-secondary/5'
             : 'border-outline-variant/5 hover:border-outline-variant/20'
-        } ${hasLogs ? 'cursor-pointer' : ''}`}
+          } ${hasLogs ? 'cursor-pointer' : ''}`}
         onClick={() => { if (hasLogs) setIsLogExpanded(prev => !prev); }}
       >
         {/* Connection status dot */}
@@ -668,7 +734,13 @@ function DeviceItemRow({
       )}
     </div>
   );
-}
+}, (prev, next) =>
+  prev.logCount === next.logCount &&
+  prev.name === next.name &&
+  prev.ip === next.ip &&
+  prev.connectionStatus === next.connectionStatus &&
+  (prev.filteredLogs?.length || 0) === (next.filteredLogs?.length || 0)
+);
 
 function SendTargetCard({ conn }: { conn: SystemConnection }) {
   const { t } = useTranslation();
@@ -802,7 +874,7 @@ function SendTargetCard({ conn }: { conn: SystemConnection }) {
   );
 }
 
-function ServerInputCard({ srv, matchedDevices, deviceLogStats, logs }: { srv: any, matchedDevices: any, deviceLogStats: Record<string, any>, logs: LogData[] }) {
+const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, deviceLogStats, serverLogs }: { srv: any, matchedDevices: any, deviceLogStats: Record<string, any>, serverLogs: LogData[] }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -907,9 +979,8 @@ function ServerInputCard({ srv, matchedDevices, deviceLogStats, logs }: { srv: a
                 const dStats = deviceLogStats[key];
                 const logCount = dStats?.logCount || 0;
 
-                // Filter logs for this specific device
-                const deviceLogs = (logs || []).filter(l => {
-                  if (l.source === 'mqtt' || l.source === 'sunell-camera') return false;
+                // Filter pre-grouped server logs for this specific device
+                const deviceLogs = serverLogs.filter(l => {
                   const lsId = l.server?.server_id || '';
                   const lsSerial = l.server?.serial || '';
                   const ldName = l.device_name || '';
@@ -940,7 +1011,11 @@ function ServerInputCard({ srv, matchedDevices, deviceLogStats, logs }: { srv: a
       </div>
     </div>
   );
-}
+}, (prev, next) =>
+  prev.serverLogs.length === next.serverLogs.length &&
+  prev.srv === next.srv &&
+  prev.matchedDevices === next.matchedDevices
+);
 
 function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLinkDeviceCamera }: {
   server: MqttServerConfig;

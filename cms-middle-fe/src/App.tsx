@@ -372,7 +372,7 @@ function Dashboard() {
 
   const toggleServer = useCallback((id: string) => {
     const isSelecting = !selectedServers.has(id);
-    
+
     setSelectedServers(prev => {
       const s = new Set(prev);
       if (isSelecting) s.add(id); else s.delete(id);
@@ -381,7 +381,7 @@ function Dashboard() {
 
     setSelectedDevices(prevDevs => {
       const d = new Set(prevDevs);
-      
+
       if (devices[id]) {
         devices[id].devices?.forEach(dev => {
           const devKey = `${devices[id].server.server_id}_${dev.ip}_${dev.name}`;
@@ -389,7 +389,7 @@ function Dashboard() {
           else d.delete(devKey);
         });
       }
-      
+
       if (mqttDevicesByServer[id]) {
         const mqttSrv = mqttServers?.find(m => m.id === id);
         const brokerHost = mqttSrv?.brokerHost || '';
@@ -400,7 +400,7 @@ function Dashboard() {
           else d.delete(devKey);
         });
       }
-      
+
       return d;
     });
   }, [selectedServers, devices, mqttDevicesByServer, mqttServers]);
@@ -806,7 +806,7 @@ function Dashboard() {
                 })}
                 {cameraDevices.filter(cam => cam.type === 'sunell').length === 0 && (
                   <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
-                    <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.devices.no_sunell_cameras')}</span>                
+                    <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.devices.no_sunell_cameras')}</span>
                   </div>
                 )}
               </div>
