@@ -612,17 +612,40 @@ function Dashboard() {
                       setGrids((prevGrids: any[]) => {
                         const newGrids = [...prevGrids];
                         const maxGrids = Math.pow(gridCols, 2);
-                        const allDevices = Object.values(devices).flatMap(server => {
+                        const svmsDevices = Object.values(devices).flatMap(server => {
                           if (!server.server) return [];
                           return (server.devices || []).map(dev => ({
-                            ...dev,
                             server_serial: server.server.serial,
-                            server_id: server.server.server_id
+                            server_id: server.server.server_id,
+                            device_ip: dev.ip,
+                            device_name: dev.name,
+                            device_type: dev.type || 'vms'
                           }));
                         });
+
+                        const mqttDevices = mqttServers.flatMap(ms => {
+                          const mqttDevs = mqttDevicesByServer[ms.id] || [];
+                          return mqttDevs.map(dev => ({
+                            server_serial: ms.id,
+                            server_id: `mqtt-${ms.id}`,
+                            device_ip: dev.devEui,
+                            device_name: dev.deviceName,
+                            device_type: 'mqtt-sensor'
+                          }));
+                        });
+
+                        const sunellDevices = cameraDevices.filter(cam => cam.type === 'sunell').map(cam => ({
+                          server_serial: 'SUNELL',
+                          server_id: 'SUNELL-LOCAL',
+                          device_ip: cam.id,
+                          device_name: cam.name || cam.cameraIp,
+                          device_type: 'sunell'
+                        }));
+
+                        const allDevices = [...svmsDevices, ...mqttDevices, ...sunellDevices];
                         console.log('allDevices', allDevices)
                         for (const dev of allDevices) {
-                          const isAssigned = newGrids.some(g => g && g.device.server_id === dev.server_id && g.device.device_ip === dev.ip && g.device.device_name === dev.name);
+                          const isAssigned = newGrids.some(g => g && g.device.server_id === dev.server_id && g.device.device_ip === dev.device_ip && g.device.device_name === dev.device_name);
                           if (isAssigned) continue;
 
                           let emptyGridID = -1;
@@ -640,9 +663,9 @@ function Dashboard() {
                             device: {
                               server_serial: dev.server_serial,
                               server_id: dev.server_id,
-                              device_ip: dev.ip,
-                              device_name: dev.name,
-                              device_type: dev.type || 'vms'
+                              device_ip: dev.device_ip,
+                              device_name: dev.device_name,
+                              device_type: dev.device_type
                             }
                           };
                         }
@@ -743,13 +766,13 @@ function Dashboard() {
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex flex-col">
                                 <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-amber-400 transition-colors truncate">{dev.deviceName}</span>
-                                <div className="flex gap-0.5 overflow-hidden">
-                                  <span className="text-[9px] text-on-surface-variant/70 font-mono">
-                                    {dev.devEui}</span>
-                                </div>
                               </div>
                               <div className="flex flex-col items-end gap-1 shrink-0">
-                                {link && <span className="text-[8px] px-1 py-0.5 rounded uppercase font-bold bg-cyan-500/20 text-cyan-500">📷 {link.cameraId.slice(-6)}</span>}
+                                {link && (() => {
+                                  const linkedCam = cameraDevices.find(c => c.id === link.cameraId);
+                                  const camLabel = linkedCam?.name || linkedCam?.cameraIp || link.cameraId.slice(-6);
+                                  return <span className="text-[8px] px-1 py-0.5 rounded uppercase font-bold bg-cyan-500/20 text-cyan-500">📷 {camLabel}</span>;
+                                })()}
                               </div>
                             </div>
                           </div>
