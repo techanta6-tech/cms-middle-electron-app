@@ -11,6 +11,37 @@ const env = {
 
 console.log('[DEBUG_ENV] VITE_MAX_LOGS_LIST:', import.meta.env.VITE_MAX_LOGS_LIST, '->', env.MAX_LOGS_LIST);
 
+const DEFAULT_EVENT_TYPES = [
+  'motion',
+  'a_motion_has_been_detected',
+  'data',
+  'event.info',
+  'eventinfo',
+  'lpr_event',
+  'face_event',
+  'motion_event',
+  'iva_event',
+  'iva_perimeter_intrusion',
+  'iva_double_trip_wire',
+  'iva_trip_wire',
+  'video_loss',
+  'iva_retrograde',
+  'system_event',
+  'phát_hiện_biển_số_(lpr)',
+  'phát_hiện_khuôn_mặt_(face)',
+  'phát_hiện_chuyển_động_(motion)',
+  'phân_tích_ai_(ivs/iva)',
+  'cảnh_báo_hệ_thống_/_an_ninh',
+  // Sunell specific
+  'alarm_event',
+  'tripwire_event',
+  'perimeter_event',
+  'loiter_event',
+  'object_left_event',
+  'object_removed_event',
+  'illegal_parking_event'
+];
+
 export function useSocketManager() {
   const [isConnected, setIsConnected] = useState(socket.connected);
   useEffect(() => {
@@ -19,7 +50,13 @@ export function useSocketManager() {
 
   const [logs, setLogs] = useState<LogData[]>([]);
   const [totalLogCount, setTotalLogCount] = useState(0);
-  const [eventTypes, setEventTypes] = useState<string[]>([]);
+  const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
+
+  // Use a ref to keep the latest selectedEventType available inside the mounting useEffect (no stale closures)
+  const selectedEventTypeRef = useRef<string | null>(null);
+  selectedEventTypeRef.current = selectedEventType;
+
+  const [eventTypes, setEventTypes] = useState<string[]>(DEFAULT_EVENT_TYPES);
   const [mqttLogs, setMqttLogs] = useState<MqttLogEntry[]>([]);
   const [cameraDevices, setCameraDevices] = useState<MqttDeviceConfig[]>([]);
   const [deviceCameraLinks, setDeviceCameraLinks] = useState<DeviceCameraLink[]>([]);
@@ -454,6 +491,11 @@ export function useSocketManager() {
         updateReceiveServer(data, true);
       }
 
+      // EARLY FILTER: If a specific event type is focused, discard others to save resources
+      if (selectedEventTypeRef.current && newLog.log_type !== selectedEventTypeRef.current) {
+        return;
+      }
+
       // Push to buffer instead of direct setState — flushed every 500ms
       logBufferRef.current.push(newLog);
       eventTypeBufferRef.current.add(newLog.log_type);
@@ -477,6 +519,11 @@ export function useSocketManager() {
         cameraIp: raw.camera_id,
         source: 'sunell-camera'
       };
+
+      // EARLY FILTER: If a specific event type is focused, discard others to save resources
+      if (selectedEventTypeRef.current && newLog.log_type !== selectedEventTypeRef.current) {
+        return;
+      }
 
       // Push to buffer
       logBufferRef.current.push(newLog);
@@ -619,6 +666,11 @@ export function useSocketManager() {
         mqttServerId: raw.mqttServerId,
       };
 
+      // EARLY FILTER: If a specific event type is focused, discard others to save resources
+      if (selectedEventTypeRef.current && newLog.log_type !== selectedEventTypeRef.current) {
+        return;
+      }
+
       logBufferRef.current.push(newLog);
       eventTypeBufferRef.current.add(newLog.log_type);
     };
@@ -698,7 +750,7 @@ export function useSocketManager() {
     };
   }, []);
 
-  const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
+  // selectedEventType state and ref are declared at the top of useSocketManager
 
   return {
     socket,
