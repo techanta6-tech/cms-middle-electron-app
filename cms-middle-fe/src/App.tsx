@@ -418,17 +418,14 @@ function Dashboard() {
 
   // Lọc logs theo server, device và event_type đang được chọn
   const filteredLogs = useMemo(() => {
-    if (selectedServers.size === 0 && selectedDevices.size === 0 && !selectedEventType) return logs;
     return logs.filter(log => {
       const logServerId = log.mqttServerId || log.server?.server_id || log.server?.serial || '';
-      const serverMatch = selectedServers.size > 0 && selectedServers.has(logServerId);
       const devKey = `${log.server?.server_id}_${log.device_ip}_${log.device_name}`;
-      const deviceMatch = selectedDevices.size > 0 && selectedDevices.has(devKey);
 
-      const matchOrigin = (selectedServers.size === 0 && selectedDevices.size === 0)
-        ? true
-        : (serverMatch || deviceMatch);
+      const matchServer = selectedServers.size === 0 || selectedServers.has(logServerId);
+      const matchDevice = selectedDevices.size === 0 || selectedDevices.has(devKey);
 
+      const matchOrigin = matchServer && matchDevice;
       const matchEventType = !selectedEventType || log.log_type === selectedEventType;
 
       return matchOrigin && matchEventType;
