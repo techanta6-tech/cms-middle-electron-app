@@ -578,7 +578,7 @@ const resources = {
           'fall': 'Fall',
           'motionless': 'Motionless',
           'dwell': 'Dwell',
-          'out-of-bed': 'Out-of-bed',
+          'out-of-bed': 'Out_of_bed',
           'occupancy': 'Occupancy',
           'occupied': 'Occupied',
           'vacant': 'Vacant',

@@ -9,7 +9,7 @@ interface CameraFormProps {
   initialType?: 'sunell' | 'other';
 }
 
-export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: CameraFormProps) {
+export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, initialType = 'other' }: CameraFormProps) {
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [addDeviceForm, setAddDeviceForm] = useState({
@@ -32,11 +32,8 @@ export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: Camer
     if (!isCustomRtsp) {
       const { type, cameraIp, cameraUser, cameraPass, rtspPort } = addDeviceForm;
       let generatedUrl = '';
-      if (type === 'sunell') {
-        generatedUrl = `rtsp://${cameraUser}:${cameraPass}@${cameraIp}:${rtspPort}/snl/live/1/1`;
-      } else {
-        generatedUrl = `rtsp://${cameraUser}:${cameraPass}@${cameraIp}:${rtspPort}/stream`;
-      }
+      generatedUrl = `rtsp://${cameraUser}:${cameraPass}@${cameraIp}:${rtspPort}/snl/live/1/1`;
+
       setAddDeviceForm(f => ({ ...f, rtspUrl: generatedUrl }));
     }
   }, [isCustomRtsp, addDeviceForm.type, addDeviceForm.cameraIp, addDeviceForm.cameraUser, addDeviceForm.cameraPass, addDeviceForm.rtspPort]);
@@ -219,4 +216,4 @@ export function CameraForm({ onCancel, onSuccess, initialType = 'other' }: Camer
       </div>
     </div>
   );
-}
+});

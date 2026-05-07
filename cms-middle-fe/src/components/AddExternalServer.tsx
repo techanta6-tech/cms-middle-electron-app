@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { AddExternalServerProps, MqttServerConfig } from '../types';
 import { TriangleAlert, Inbox, Send, Cloud, Terminal, Radio, X } from 'lucide-react';
 
-export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '', initialPort = '', initialMode = 'receive', initialConnectionType = 'svms' }: AddExternalServerProps) {
+export const AddExternalServer = React.memo(function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '', initialPort = '', initialMode = 'receive', initialConnectionType = 'svms' }: AddExternalServerProps) {
   const { t } = useTranslation();
   // Connection type: 'svms' or 'mqtt'
   const [connectionType, setConnectionType] = useState<'svms' | 'mqtt'>(initialConnectionType);
@@ -311,4 +311,4 @@ export function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '',
       </div>
     </div>
   );
-}
+});
