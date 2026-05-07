@@ -18,7 +18,7 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
   const isLPREvent = (log.log_type?.toUpperCase() === 'LPR_EVENT') || (log.raw?.body?.log_type?.toUpperCase() === 'LPR_EVENT');
   let plateNum;
   let plateConfidence;
-  
+
   if (isLPREvent) {
     const targetList = log.raw?.body?.TargetDetectList || log.raw?.TargetDetectList;
     if (Array.isArray(targetList) && targetList.length > 0) {

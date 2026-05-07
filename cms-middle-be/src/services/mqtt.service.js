@@ -157,10 +157,10 @@ const connectMqttServer = (serverConfig) => {
           // Valid JSON nhưng không có object.events — vẫn tạo log + yêu cầu snapshot
           console.log(`[MQTT][${id}] Forward raw payload (no object.events)`);
           let snapshot = null;
-          if (resolvedCameraId) {
-            snapshot = await getSnapshotForCamera(resolvedCameraId);
-            console.log(`[MQTT][${id}] Snapshot result:`, snapshot ? `OK (${snapshot.length} chars)` : 'null');
-          }
+          // if (resolvedCameraId) {
+          //   snapshot = await getSnapshotForCamera(resolvedCameraId);
+          //   console.log(`[MQTT][${id}] Snapshot result:`, snapshot ? `OK (${snapshot.length} chars)` : 'null');
+          // }
           const logEntry = {
             time: new Date().toISOString(),
             type: 'raw',

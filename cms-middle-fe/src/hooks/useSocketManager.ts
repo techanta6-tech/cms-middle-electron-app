@@ -12,35 +12,68 @@ const env = {
 console.log('[DEBUG_ENV] VITE_MAX_LOGS_LIST:', import.meta.env.VITE_MAX_LOGS_LIST, '->', env.MAX_LOGS_LIST);
 
 const DEFAULT_EVENT_TYPES = [
-  'motion',
-  'a_motion_has_been_detected',
-  'data',
-  'event.info',
-  'eventinfo',
-  'lpr_event',
-  'face_event',
-  'motion_event',
-  'iva_event',
-  'iva_perimeter_intrusion',
-  'iva_double_trip_wire',
-  'iva_trip_wire',
-  'video_loss',
-  'iva_retrograde',
-  'system_event',
-  'phát_hiện_biển_số_(lpr)',
-  'phát_hiện_khuôn_mặt_(face)',
-  'phát_hiện_chuyển_động_(motion)',
-  'phân_tích_ai_(ivs/iva)',
-  'cảnh_báo_hệ_thống_/_an_ninh',
-  // Sunell specific
-  'alarm_event',
-  'tripwire_event',
-  'perimeter_event',
-  'loiter_event',
-  'object_left_event',
-  'object_removed_event',
-  'illegal_parking_event'
+  // ─── VMS / SVMS ───
+  'crosswire',                       // SVMS: Vượt hàng rào
+  'direction',                        // SVMS: Hướng di chuyển
+
+  // ─── Sunell SDK (receive-sunell-log → cameras.service.js onAlarm callback) ───
+  'lpr_event',                       // Sunell: phát hiện biển số (TargetDetectList Type=3)
+  'face_event',                      // Sunell: phát hiện khuôn mặt (TargetDetectList Type=0)
+  'motion_event',                    // Sunell: phát hiện chuyển động (main_type=1, sub_type=2)
+  // ⚠️ system_event: BE emit `system_event_${mainType}_${subType}` — tự add runtime qua eventTypeBufferRef
+
+  // ─── Sunell SDK — IVA sub_type mapping (main_type=6 hoặc 9, cameras.service.js IVA_SUBTYPE_MAP) ───
+  // ⚠️ IVA sub_type không nằm trong map: BE emit `iva_event_${subType}` — tự add runtime
+  'iva_trip_wire',                   // Sunell IVA: vượt hàng rào ảo (sub_type=21)
+  'iva_perimeter_intrusion',         // Sunell IVA: xâm nhập vùng cấm (sub_type=24)
+  // 'iva_double_trip_wire',            // Sunell IVA: hàng rào ảo kép (sub_type=25)
+  // 'iva_retrograde',                  // Sunell IVA: đi ngược chiều (sub_type=31)
+  // 'iva_smd',                         // Sunell IVA: phát hiện đối tượng di chuyển SMD (sub_type=22)
+  // 'iva_occlusion',                   // Sunell IVA: phân tích che khuất (sub_type=23)
+  // 'iva_loitering',                   // Sunell IVA: lảng vảng (sub_type=26)
+  // 'iva_crowd_loitering',             // Sunell IVA: đám đông lảng vảng (sub_type=27)
+  // 'iva_object_left',                 // Sunell IVA: bỏ quên đồ vật (sub_type=28)
+  // 'iva_object_removed',              // Sunell IVA: mất cắp đồ vật (sub_type=29)
+  // 'iva_abnormal_speed',              // Sunell IVA: đi quá tốc độ (sub_type=30)
+  // 'iva_illegal_parking',             // Sunell IVA: đậu xe trái phép (sub_type=32)
+  // 'iva_camera_shift',                // Sunell IVA: camera bị dời góc (sub_type=33)
+  // 'iva_signal_bad',                  // Sunell IVA: lỗi tín hiệu video AI (sub_type=34)
+
+  // ─── MQTT Radar/Sensor (receive-mqtt-log → mqtt.service.js, log_type = raw.type) ───
+  // 'data',                            // MQTT: dữ liệu cảm biến (có object.events)
+  // 'raw',                             // MQTT: payload thô (không có object.events)
+  'mqtt_fall_alarm',                 // VS373: Té ngã
+  'mqtt_out_bed_alarm',              // VS373: Rời khỏi giường
+  'mqtt_dwell_alarm',                // VS373: Lưu trú quá lâu
+  'mqtt_static_alarm',               // VS373: Bất động bất thường
+  'mqtt_vacant_alarm',               // VS373: Phòng trống
+  'mqtt_occupy_alarm',               // VS373: Có người
 ];
+
+const LOG_TYPE_GROUPS: Record<string, string[]> = {
+  'motion_event': ['motion', 'motion_event', 'a_motion_has_been_detected', 'phát_hiện_chuyển_động_(motion)'],
+  'lpr_event': ['lpr_event', 'phát_hiện_biển_số_(lpr)'],
+  'face_event': ['face_event', 'phát_hiện_khuôn_mặt_(face)'],
+  'iva_event': ['iva_event', 'phân_tích_ai_(ivs/iva)'],
+  'mqtt_fall_alarm': ['Fall Alarm', 'fall_alarm', 'mqtt_fall_alarm'],
+  'mqtt_out_bed_alarm': ['Out Bed Alarm', 'out_bed_alarm', 'mqtt_out_bed_alarm'],
+  'mqtt_dwell_alarm': ['Dwell Alarm', 'dwell_alarm', 'Dwell time Alarm', 'mqtt_dwell_alarm'],
+  'mqtt_static_alarm': ['Abnormal Static Alarm', 'static_alarm', 'mqtt_static_alarm'],
+  'mqtt_vacant_alarm': ['Vacant Alarm', 'vacant_alarm', 'mqtt_vacant_alarm'],
+  'mqtt_occupy_alarm': ['Occupy Alarm', 'occupy_alarm', 'mqtt_occupy_alarm'],
+  'crosswire': ['crosswire', 'ai.alarm.crosswire.all'],
+  'direction': ['direction', 'ai.alarm.direction.all'],
+};
+
+/**
+ * Helper to check if a log's type matches the currently selected filter,
+ * accounting for grouped types.
+ */
+const isTypeMatched = (logType: string, filterType: string | null) => {
+  if (!filterType) return true;
+  if (logType === filterType) return true;
+  return LOG_TYPE_GROUPS[filterType]?.includes(logType) || false;
+};
 
 export function useSocketManager() {
   const [isConnected, setIsConnected] = useState(socket.connected);
@@ -471,6 +504,10 @@ export function useSocketManager() {
 
       const data = raw?.data || raw;
 
+      let parsedLogType = data.body?.log_type || 'event.info';
+      if (parsedLogType === 'ai.alarm.crosswire.all') parsedLogType = 'crosswire';
+      if (parsedLogType === 'ai.alarm.direction.all') parsedLogType = 'direction';
+
       const newLog: LogData = {
         id: crypto.randomUUID(),
         time: Math.floor(timeNumber),
@@ -478,7 +515,7 @@ export function useSocketManager() {
         device_ip: data.body?.device_ip || '127.0.0.1',
         device_type: data.body?.device_type || 'camera',
         device_name: data.body?.device_name || 'Channel',
-        log_type: data.body?.log_type || 'event.info',
+        log_type: parsedLogType,
         description: data.body?.description || 'Event received',
         server: serverData,
         ip: data.ip,
@@ -492,7 +529,7 @@ export function useSocketManager() {
       }
 
       // EARLY FILTER: If a specific event type is focused, discard others to save resources
-      if (selectedEventTypeRef.current && newLog.log_type !== selectedEventTypeRef.current) {
+      if (selectedEventTypeRef.current && !isTypeMatched(newLog.log_type, selectedEventTypeRef.current)) {
         return;
       }
 
@@ -521,7 +558,7 @@ export function useSocketManager() {
       };
 
       // EARLY FILTER: If a specific event type is focused, discard others to save resources
-      if (selectedEventTypeRef.current && newLog.log_type !== selectedEventTypeRef.current) {
+      if (selectedEventTypeRef.current && !isTypeMatched(newLog.log_type, selectedEventTypeRef.current)) {
         return;
       }
 
@@ -648,7 +685,7 @@ export function useSocketManager() {
       const eventDesc = event ? `${event.alarm_type}:${event.alarm_status}` : '';
       const safeRaw = { ...raw };
       if (safeRaw.snapshot) safeRaw.snapshot = '[BASE64_IMAGE_OMITTED_FROM_RAW]';
-      
+
       const newLog: LogData = {
         id: crypto.randomUUID(),
         time: Math.floor(new Date(raw.time || Date.now()).getTime() / 1000),
@@ -656,7 +693,7 @@ export function useSocketManager() {
         device_ip: raw.brokerHost || '',
         device_type: 'mqtt',
         device_name: deviceInfo?.deviceName || 'MQTT Device',
-        log_type: raw.type || 'data',
+        log_type: event?.alarm_type || raw.type || 'data',
         description: eventDesc || `MQTT - ${raw.type || 'data'}`,
         snapshot: raw.snapshot || undefined,
         server: { server_id: `mqtt-${raw.mqttServerId}`, serial: deviceInfo?.devEui || '' },
@@ -667,7 +704,7 @@ export function useSocketManager() {
       };
 
       // EARLY FILTER: If a specific event type is focused, discard others to save resources
-      if (selectedEventTypeRef.current && newLog.log_type !== selectedEventTypeRef.current) {
+      if (selectedEventTypeRef.current && !isTypeMatched(newLog.log_type, selectedEventTypeRef.current)) {
         return;
       }
 
