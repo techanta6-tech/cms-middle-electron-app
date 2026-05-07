@@ -50,6 +50,34 @@ const DEFAULT_EVENT_TYPES = [
   'mqtt_occupy_alarm',               // VS373: Có người
 ];
 
+/**
+ * ─── LOG_TYPE_GROUPS ─────────────────────────────────────────────────────────
+ * Map từ "tên nhóm hiển thị trên Filter UI" → danh sách tất cả các giá trị
+ * log_type thực tế có thể đến từ các nguồn khác nhau (SVMS, MQTT, Sunell...).
+ *
+ * ✅ CÁCH SỬ DỤNG:
+ *
+ * 1. THÊM LOẠI SỰ KIỆN MỚI HOÀN TOÀN:
+ *    - Tạo một key mới trong object bên dưới.
+ *    - Thêm key đó vào mảng DEFAULT_EVENT_TYPES ở trên.
+ *    - Thêm key đó vào `app.logtype` trong file `i18n.ts` (cả vi và en).
+ *    Ví dụ — thêm loại "Phát hiện cháy":
+ *      'fire_alarm': ['fire_alarm', 'fire.alarm.all', 'FireDetected']
+ *
+ * 2. THÊM ALIAS MỚI CHO LOẠI SỰ KIỆN ĐÃ CÓ:
+ *    - Chỉ cần bổ sung chuỗi mới vào mảng của group tương ứng.
+ *    Ví dụ — SVMS version mới gửi 'ai.alarm.crosswire.v2':
+ *      'crosswire': ['crosswire', 'ai.alarm.crosswire.all', 'ai.alarm.crosswire.v2']
+ *
+ * ⚠️ LƯU Ý:
+ *    - log_type thực tế trong LogData KHÔNG bị ghi đè, giữ nguyên giá trị
+ *      gốc từ thiết bị gửi về (ví dụ: 'ai.alarm.crosswire.all').
+ *    - Key của group (ví dụ: 'crosswire') chỉ dùng để:
+ *      a) Hiển thị tên đẹp trên Filter UI (qua i18n).
+ *      b) Kiểm tra log có khớp với filter đang chọn không (qua isTypeMatched).
+ *      c) Làm fallback để lấy tên hiển thị (qua getLogTypeDisplayName).
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 const LOG_TYPE_GROUPS: Record<string, string[]> = {
   'motion_event': ['motion', 'motion_event', 'a_motion_has_been_detected', 'phát_hiện_chuyển_động_(motion)'],
   'lpr_event': ['lpr_event', 'phát_hiện_biển_số_(lpr)'],
@@ -61,18 +89,50 @@ const LOG_TYPE_GROUPS: Record<string, string[]> = {
   'mqtt_static_alarm': ['Abnormal Static Alarm', 'static_alarm', 'mqtt_static_alarm'],
   'mqtt_vacant_alarm': ['Vacant Alarm', 'vacant_alarm', 'mqtt_vacant_alarm'],
   'mqtt_occupy_alarm': ['Occupy Alarm', 'occupy_alarm', 'mqtt_occupy_alarm'],
+  // SVMS AI: giữ giá trị gốc từ thiết bị, alias được map vào đây
   'crosswire': ['crosswire', 'ai.alarm.crosswire.all'],
   'direction': ['direction', 'ai.alarm.direction.all'],
 };
 
 /**
- * Helper to check if a log's type matches the currently selected filter,
- * accounting for grouped types.
+ * Kiểm tra log có thuộc filter đang chọn không (có hỗ trợ group alias).
  */
 const isTypeMatched = (logType: string, filterType: string | null) => {
   if (!filterType) return true;
   if (logType === filterType) return true;
   return LOG_TYPE_GROUPS[filterType]?.includes(logType) || false;
+};
+
+/**
+ * Lấy tên hiển thị (đã dịch) cho một log_type bất kỳ.
+ *
+ * Thứ tự ưu tiên:
+ *  1. Tra trực tiếp key trong i18n (ví dụ: 'crosswire', 'lpr_event').
+ *  2. Tìm group chứa logType, lấy tên của group đó từ i18n
+ *     (ví dụ: 'ai.alarm.crosswire.all' → group 'crosswire' → 'Hàng rào ảo').
+ *  3. Fallback: trả về chính logType đó.
+ *
+ * @param logType - Giá trị log_type thực tế từ LogData (ví dụ: 'ai.alarm.crosswire.all')
+ * @param t       - Hàm dịch từ useTranslation()
+ * @returns Chuỗi tên hiển thị đã được dịch
+ */
+export const getLogTypeDisplayName = (logType: string, t: (key: string) => string): string => {
+  // Bước 1: Thử tra trực tiếp (ví dụ: 'crosswire', 'lpr_event' đã có key i18n riêng)
+  const directKey = `app.logtype.${logType}`;
+  const directResult = t(directKey);
+  if (directResult !== directKey) return directResult;
+
+  // Bước 2: Tìm group chứa logType này, rồi dùng tên group để tra i18n
+  for (const [groupKey, members] of Object.entries(LOG_TYPE_GROUPS)) {
+    if (members.includes(logType)) {
+      const groupI18nKey = `app.logtype.${groupKey}`;
+      const groupResult = t(groupI18nKey);
+      if (groupResult !== groupI18nKey) return groupResult;
+    }
+  }
+
+  // Bước 3: Fallback — trả về chính logType
+  return logType;
 };
 
 export function useSocketManager() {
@@ -504,9 +564,10 @@ export function useSocketManager() {
 
       const data = raw?.data || raw;
 
-      let parsedLogType = data.body?.log_type || 'event.info';
-      if (parsedLogType === 'ai.alarm.crosswire.all') parsedLogType = 'crosswire';
-      if (parsedLogType === 'ai.alarm.direction.all') parsedLogType = 'direction';
+      // Giữ nguyên log_type gốc từ thiết bị gửi về.
+      // Việc dịch sang tên hiển thị được thực hiện tại UI thông qua getLogTypeDisplayName().
+      // Để nhóm alias vào cùng 1 filter, thêm vào LOG_TYPE_GROUPS phía trên.
+      const parsedLogType = data.body?.log_type || 'event.info';
 
       const newLog: LogData = {
         id: crypto.randomUUID(),

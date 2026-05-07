@@ -10,7 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 
 let ffmpegPath = null;
 let edge = null;
@@ -56,7 +56,22 @@ const ALARM_NAMES = {
     '6/32': 'Đậu xe trái phép (Illegal parking)',
     '6/33': 'Camera bị dời góc (Camera shift)',
     '6/34': 'Lỗi tín hiệu video AI (Video signal abnormal)',
-    '6/37': 'Nhận diện biển số (License plate recognition)'
+    '6/37': 'Nhận diện biển số (License plate recognition)',
+
+    // main_type 7: Báo động nhiệt độ (Thermal)
+    '7/0': 'Cảnh báo ngưỡng nhiệt độ (Temperature threshold warning)',
+    '7/1': 'Báo động vượt ngưỡng nhiệt (Temperature threshold alarm)',
+    '7/4': 'Cảnh báo chênh lệch nhiệt (Temperature difference warning)',
+    '7/5': 'Báo động chênh lệch nhiệt (Temperature difference alarm)',
+    '7/16': 'Phát hiện điểm cháy (Fire spot detection)',
+    '7/17': 'Phát hiện hút thuốc (Smoking detection)',
+    '7/18': 'Phát hiện khói và lửa (Smoke & flame detection)',
+
+    // main_type 9: Báo động chuyển động thông minh (SMD)
+    '9/50': 'Phát hiện chuyển động thông minh (Không xác định)',
+    '9/51': 'Phát hiện chuyển động thông minh - Người (SMD Human)',
+    '9/52': 'Phát hiện chuyển động thông minh - Xe (SMD Vehicle)',
+    '9/53': 'Phát hiện chuyển động thông minh - Xe thô sơ (SMD Non-motor)'
 };
 
 function getAlarmName(mainType, subType) {
@@ -147,29 +162,84 @@ class CameraDevice {
             const args = [
                 '-y',
                 '-rtsp_transport', 'tcp',
+                '-probesize', '10000000',
+                '-analyzeduration', '10000000',
                 '-i', url,
                 '-frames:v', '1',
                 '-q:v', '2',
                 outputPath
             ];
 
-            this.log('IN', `[RTSP] Chụp snapshot: ${outputPath}`);
+            this.log('IN', `[RTSP] Bắt đầu quá trình chụp ảnh qua RTSP...`);
+            this.log('IN', `[RTSP] URL đích: ${url.replace(/:[^:@]+@/, ':***@')}`);
             const startTime = Date.now();
 
-            execFile(ffmpegPath, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
+            const proc = spawn(ffmpegPath, args);
+            
+            let isTimeout = false;
+            let rawStderr = '';
+            const timeoutTimer = setTimeout(() => {
+                isTimeout = true;
+                proc.kill('SIGKILL');
+                this.log('IN', `[RTSP] ❌ Quá hạn kết nối (Timeout) sau ${timeoutMs}ms!`);
+                reject(new Error('RTSP Connection Timeout'));
+            }, timeoutMs);
+
+            proc.stderr.on('data', (data) => {
+                const str = data.toString();
+                rawStderr += str;
+                
+                // Phân tích stderr của ffmpeg để thông báo tiến trình thực
+                if (str.includes('Input #0')) {
+                    this.log('IN', `[RTSP] ✅ Mở luồng thành công! Đang đọc thông tin luồng...`);
+                } else if (str.includes('tcp://')) {
+                    // Tránh log quá nhiều dòng tcp
+                    if (str.includes('Connection to tcp://') || str.includes('Opening')) {
+                        this.log('IN', `[RTSP] ⏳ Đang kết nối giao thức TCP...`);
+                    }
+                } else if (str.includes('401 Unauthorized')) {
+                    this.log('IN', `[RTSP] ❌ Từ chối truy cập (401 Unauthorized) - Sai user/pass!`);
+                } else if (str.includes('Connection refused')) {
+                    this.log('IN', `[RTSP] ❌ Bị từ chối kết nối (Connection refused) - Kiểm tra port!`);
+                } else if (str.includes('Server returned 404') || str.includes('Stream not found')) {
+                    this.log('IN', `[RTSP] ❌ Không tìm thấy luồng (404 Not Found) - Sai đường dẫn stream!`);
+                } else if (str.includes('Output #0')) {
+                    this.log('IN', `[RTSP] 📸 Bắt đầu trích xuất frame ảnh (JPEG)...`);
+                }
+            });
+
+            proc.on('close', (code) => {
+                clearTimeout(timeoutTimer);
+                if (isTimeout) return; // Đã xử lý ở setTimeout
+
                 const elapsed = Date.now() - startTime;
-                if (error) {
-                    this.log('IN', `[RTSP] Lỗi ffmpeg (${elapsed}ms)`, error.message);
-                    return reject(error);
+                if (code !== 0) {
+                    this.log('IN', `[RTSP] ❌ Quá trình thất bại (Mã lỗi FFmpeg: ${code}) sau ${elapsed}ms`);
+                    
+                    // Lấy 3 dòng cuối của log FFmpeg để hiển thị chi tiết lý do lỗi
+                    const lines = rawStderr.trim().split('\n');
+                    const lastLines = lines.slice(-3).join(' | ').trim();
+                    if (lastLines) {
+                        this.log('IN', `[RTSP-DETAIL] Chi tiết lỗi FFmpeg: ${lastLines}`);
+                    }
+                    
+                    return reject(new Error(`ffmpeg exited with code ${code}`));
                 }
 
                 if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
                     const sizeKB = parseFloat((fs.statSync(outputPath).size / 1024).toFixed(1));
-                    this.log('IN', `[RTSP] ✅ Snapshot OK!`, `${sizeKB} KB (${elapsed}ms)`);
+                    this.log('IN', `[RTSP] ✅ Chụp xong Snapshot thành công! Kích thước: ${sizeKB} KB (${elapsed}ms)`);
                     resolve({ filePath: outputPath, sizeKB });
                 } else {
+                    this.log('IN', `[RTSP] ❌ File rỗng hoặc ảnh không được tạo ra.`);
                     reject(new Error('File snapshot rỗng hoặc không tồn tại'));
                 }
+            });
+            
+            proc.on('error', (err) => {
+                clearTimeout(timeoutTimer);
+                this.log('IN', `[RTSP] ❌ Lỗi khi khởi chạy tiến trình hệ thống:`, err.message);
+                reject(err);
             });
         });
     }
@@ -178,10 +248,36 @@ class CameraDevice {
      * Chụp snapshot và trả về chuỗi Base64
      */
     async captureSnapshotBase64(rtspUrlOverride, timeoutMs = 8000) {
-        const url = rtspUrlOverride || this.rtspUrl;
+        let url = rtspUrlOverride || this.rtspUrl;
+        // Tự tạo RTSP URL nếu chưa cấu hình nhưng có thông tin IP camera
+        if (!url && this.cameraIp) {
+            const user = this.cameraUser || 'admin';
+            const pass = this.cameraPass || 'admin1234';
+            const rtspPort = 554; // Sunell RTSP port chuẩn
+            url = `rtsp://${user}:${pass}@${this.cameraIp}:${rtspPort}/snl/live/1/1`;
+            this.log('IN', `[RTSP] Auto-generated RTSP URL: rtsp://${user}:***@${this.cameraIp}:${rtspPort}/snl/live/1/1`);
+        }
         if (!url) {
-            this.log('IN', 'captureSnapshotBase64: RTSP URL chưa cấu hình');
+            this.log('IN', 'captureSnapshotBase64: RTSP URL chưa cấu hình và không có IP camera');
             return null;
+        }
+
+        // ⚠️ Phát hiện và sửa port sai: SDK port (30001) không phải RTSP port
+        // Sunell dùng 30001 cho SDK control, RTSP streaming dùng port 554 (chuẩn RTSP)
+        const SDK_PORTS = [30001, 30000];
+        const RTSP_FALLBACK_PORT = 554;
+        try {
+            const parsedUrl = new URL(url);
+            const configuredPort = parseInt(parsedUrl.port, 10);
+            if (SDK_PORTS.includes(configuredPort)) {
+                const fixedUrl = url.replace(`:${configuredPort}/`, `:${RTSP_FALLBACK_PORT}/`);
+                this.log('IN', `[RTSP] ⚠️ Phát hiện SDK port (${configuredPort}) trong RTSP URL — tự động chuyển sang port ${RTSP_FALLBACK_PORT}`);
+                this.log('IN', `[RTSP] URL gốc: ${url.replace(/:[^:@]+@/, ':***@')}`);
+                this.log('IN', `[RTSP] URL sửa: ${fixedUrl.replace(/:[^:@]+@/, ':***@')}`);
+                url = fixedUrl;
+            }
+        } catch (_) {
+            // Nếu URL không hợp lệ thì bỏ qua bước sửa port
         }
 
         if (url.includes('fake') || this.cameraIp === '127.0.0.1') {
@@ -204,7 +300,7 @@ class CameraDevice {
         } catch (err) {
             this.log('IN', '[RTSP→Base64] FAIL', err.message);
             try { fs.unlinkSync(outputPath); } catch (_) {}
-            return null;
+            throw new Error(`Snapshot Error: ${err.message}`);
         }
     }
 
@@ -245,7 +341,32 @@ class CameraDevice {
 
             const onCameraEvent = (payload, callback) => {
                 if (payload.source === 'FACE_DETECT_STREAM') {
-                    if (this.onAlarm) this.onAlarm(payload.rawJson);
+                    let parsedData = payload.rawJson;
+                    try {
+                        let p = JSON.parse(payload.rawJson);
+                        if (payload.snapshotBase64) {
+                            p.snapshotBase64 = payload.snapshotBase64;
+                            parsedData = JSON.stringify(p);
+                            if (this.onAlarm) this.onAlarm(parsedData);
+                        } else {
+                            this.log('IN', '[FALLBACK] Chụp ảnh RTSP do SDK không trả về snapshotBase64 (FACE_DETECT)');
+                            this.captureSnapshotBase64().then(b64 => {
+                                if (b64) {
+                                    p.snapshotBase64 = b64;
+                                    this.log('IN', `[FALLBACK] ✅ RTSP snapshot OK, size=${b64.length}`);
+                                } else {
+                                    this.log('IN', '[FALLBACK] ❌ RTSP snapshot trả về null');
+                                }
+                                if (this.onAlarm) this.onAlarm(JSON.stringify(p));
+                            }).catch((err) => {
+                                this.log('IN', `[FALLBACK] ❌ RTSP snapshot lỗi: ${err.message}`);
+                                if (this.onAlarm) this.onAlarm(JSON.stringify(p));
+                            });
+                        }
+                    } catch(e) {
+                        if (this.onAlarm) this.onAlarm(parsedData);
+                    }
+                    
                     callback(null, true);
                     return;
                 }
@@ -266,11 +387,12 @@ class CameraDevice {
                     const d = parsed.data || {};
                     const alarmFlag = d.alarm_flag;
                     parsed.eventName = getAlarmName(d.main_type, d.sub_type);
-
+                    
                     this.log('IN', `Alarm [${parsed.eventName}]`, { main_type: d.main_type, sub_type: d.sub_type, alarm_flag: alarmFlag, time: d.time });
 
-                    // Nếu muốn trigger tự động chụp ảnh SDK khi có alarm, xử lý ở đây
-                    // Tạm thời truyền ra ngoài
+                    if (payload.snapshotBase64) {
+                        parsed.snapshotBase64 = payload.snapshotBase64;
+                    }
                     if (this.onAlarm) this.onAlarm(JSON.stringify(parsed));
                 } catch (error) {
                     this.log('IN', 'Lỗi xử lý alarm', error.message);
@@ -319,6 +441,35 @@ class CameraDevice {
         });
     }
 
+    async disconnectCamera() {
+        if (!this.cameraConnected || !this.cameraHandle) {
+            return { success: true, message: 'Camera already disconnected' };
+        }
+
+        return new Promise((resolve, reject) => {
+            if (!this.edgeMethod) {
+                return resolve({ success: false, message: 'Edge method not initialized' });
+            }
+
+            const payload = {
+                action: 'disconnect',
+                handle: this.cameraHandle
+            };
+
+            this.edgeMethod(payload, (error, result) => {
+                if (error) {
+                    this.log('IN', 'SDK lỗi ngắt kết nối', String(error));
+                    return reject(error);
+                }
+
+                this.cameraConnected = false;
+                this.cameraHandle = null;
+                this.log('IN', 'SDK đã ngắt kết nối', result);
+                resolve(result);
+            });
+        });
+    }
+
     getStatus() {
         return {
             id: this.id,
@@ -332,6 +483,96 @@ class CameraDevice {
                 rtspUrl: this.rtspUrl ? this.rtspUrl.replace(/:[^:@]+@/, ':***@') : null
             }
         };
+    }
+
+    /**
+     * Kiểm tra kết nối RTSP nhanh (probe) — dùng FFmpeg chỉ để mở stream, không lưu file.
+     * @param {number} timeoutMs - Thời gian tối đa chờ kết nối (mặc định 5000ms)
+     * @returns {Promise<{online: boolean, error?: string}>}
+     */
+    probeRtsp(timeoutMs = 5000) {
+        const url = this.rtspUrl;
+        if (!url) {
+            return Promise.resolve({ online: false, error: 'RTSP URL chưa được cấu hình' });
+        }
+
+        if (!ffmpegPath) {
+            try {
+                if (process.pkg) {
+                    ffmpegPath = require(path.join(path.dirname(process.execPath), 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
+                } else {
+                    try {
+                        ffmpegPath = require(path.join(__dirname, 'cms-middle-be', 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
+                    } catch (err) {
+                        ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+                    }
+                }
+            } catch (e) {
+                return Promise.resolve({ online: false, error: 'FFmpeg không khả dụng' });
+            }
+        }
+
+        return new Promise((resolve) => {
+            const args = [
+                '-rtsp_transport', 'tcp',
+                '-i', url,
+                '-t', '1',         // chỉ đọc 1 giây
+                '-f', 'null',       // không ghi file
+                '-'
+            ];
+
+            let rawStderr = '';
+            let settled = false;
+
+            const proc = spawn(ffmpegPath, args);
+
+            const timer = setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    proc.kill('SIGKILL');
+                    resolve({ online: false, error: 'Timeout kết nối RTSP' });
+                }
+            }, timeoutMs);
+
+            proc.stderr.on('data', (data) => {
+                rawStderr += data.toString();
+
+                // Nếu thấy "Input #0" nghĩa là stream mở thành công → online
+                if (!settled && rawStderr.includes('Input #0')) {
+                    settled = true;
+                    clearTimeout(timer);
+                    proc.kill('SIGKILL');
+                    resolve({ online: true });
+                }
+            });
+
+            proc.on('close', () => {
+                clearTimeout(timer);
+                if (settled) return;
+                settled = true;
+
+                // Phân tích lỗi từ stderr
+                if (rawStderr.includes('401 Unauthorized')) {
+                    resolve({ online: false, error: 'Sai user/password (401)' });
+                } else if (rawStderr.includes('Connection refused')) {
+                    resolve({ online: false, error: 'Bị từ chối kết nối' });
+                } else if (rawStderr.includes('Server returned 404') || rawStderr.includes('Stream not found')) {
+                    resolve({ online: false, error: 'Không tìm thấy luồng (404)' });
+                } else if (rawStderr.includes('No route to host') || rawStderr.includes('Network is unreachable')) {
+                    resolve({ online: false, error: 'Không thể kết nối mạng' });
+                } else {
+                    resolve({ online: false, error: 'Không thể mở luồng RTSP' });
+                }
+            });
+
+            proc.on('error', (err) => {
+                clearTimeout(timer);
+                if (!settled) {
+                    settled = true;
+                    resolve({ online: false, error: err.message });
+                }
+            });
+        });
     }
 }
 
