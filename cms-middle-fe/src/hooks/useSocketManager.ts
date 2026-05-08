@@ -43,16 +43,19 @@ const DEFAULT_EVENT_TYPES = [
   // ─── MQTT Radar/Sensor (receive-mqtt-log → mqtt.service.js, log_type = raw.type) ───
   // 'data',                            // MQTT: dữ liệu cảm biến (có object.events)
   // 'raw',                             // MQTT: payload thô (không có object.events)
-  'mqtt_fall_alarm',                 // VS373: Té ngã
-  'mqtt_out_bed_alarm',              // VS373: Rời khỏi giường
-  'mqtt_dwell_alarm',                // VS373: Lưu trú quá lâu
-  'mqtt_static_alarm',               // VS373: Bất động bất thường
-  'mqtt_vacant_alarm',               // VS373: Phòng trống
-  'mqtt_occupy_alarm',               // VS373: Có người
+  'fall',                 // VS373: Té ngã
+  'out_of_bed',              // VS373: Rời khỏi giường
+  'dwell',                // VS373: Ở lại quá lâu
+  'motionless',               // VS373: Bất động bất thường
+  'vacant',               // VS373: Phòng trống
+  'occupied',               // VS373: Có người
+  'bradynea',               // VS373: Thở chậm bất thường
+  'tachypnea',              // VS373: Thở nhanh bất thường
+  'lying'                 // VS373: Đang nằm
 ];
 
 /**
- * ─── LOG_TYPE_GROUPS ─────────────────────────────────────────────────────────
+ * ─── LOG_TYP  E_GROUPS ─────────────────────────────────────────────────────────
  * Map từ "tên nhóm hiển thị trên Filter UI" → danh sách tất cả các giá trị
  * log_type thực tế có thể đến từ các nguồn khác nhau (SVMS, MQTT, Sunell...).
  *
@@ -84,12 +87,6 @@ const LOG_TYPE_GROUPS: Record<string, string[]> = {
   'lpr_event': ['lpr_event', 'phát_hiện_biển_số_(lpr)'],
   'face_event': ['face_event', 'phát_hiện_khuôn_mặt_(face)'],
   'iva_event': ['iva_event', 'phân_tích_ai_(ivs/iva)'],
-  'mqtt_fall_alarm': ['Fall Alarm', 'fall_alarm', 'mqtt_fall_alarm'],
-  'mqtt_out_bed_alarm': ['Out Bed Alarm', 'out_bed_alarm', 'mqtt_out_bed_alarm'],
-  'mqtt_dwell_alarm': ['Dwell Alarm', 'dwell_alarm', 'Dwell time Alarm', 'mqtt_dwell_alarm'],
-  'mqtt_static_alarm': ['Abnormal Static Alarm', 'static_alarm', 'mqtt_static_alarm'],
-  'mqtt_vacant_alarm': ['Vacant Alarm', 'vacant_alarm', 'mqtt_vacant_alarm'],
-  'mqtt_occupy_alarm': ['Occupy Alarm', 'occupy_alarm', 'mqtt_occupy_alarm'],
   // SVMS AI: giữ giá trị gốc từ thiết bị, alias được map vào đây
   'crosswire': ['crosswire', 'ai.alarm.crosswire.all', 'iva_trip_wire'],
   'direction': ['direction', 'ai.alarm.direction.all'],
@@ -771,6 +768,11 @@ export function useSocketManager() {
         mqttServerId: raw.mqttServerId,
       };
 
+
+      // Nếu là log debug_raw, chúng ta bỏ qua việc thêm vào danh sách hiển thị chính (AlertWall)
+      if (newLog.log_type === 'debug_raw') {
+        return;
+      }
 
       logBufferRef.current.push(newLog);
       eventTypeBufferRef.current.add(resolveToGroupKey(newLog.log_type));
