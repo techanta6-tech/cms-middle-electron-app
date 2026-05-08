@@ -266,6 +266,10 @@ const resources = {
           out_of_bed: 'Rời khỏi giường',
           dwell: 'Ở lại quá lâu',
           motionless: 'Bất động',
+          respiratory_status: 'Trạng thái sinh tồn',
+          bradynea: 'Thở chậm',
+          tachypnea: 'Thở nhanh',
+          lying: 'Đang nằm',
           vacant: 'Phòng trống',
           occupied: 'Có người trong phòng',
         },
@@ -287,7 +291,8 @@ const resources = {
           'vacant': 'Không có người trong phòng',
           'bradynea': 'Thở chậm bất thường',
           'tachypnea': 'Thở nhanh bất thường',
-          'lying': 'Đang nằm'
+          'lying': 'Đang nằm',
+          'respiratory_status': 'Trạng thái sinh tồn',
         },
         mqtt_alarm_status: {
           '1': 'Báo động',
@@ -656,7 +661,7 @@ const resources = {
           '3': 'Out-of-bed',
           '4': 'Occupancy',
           '5': 'Vacant',
-          '6': 'Bradycardia',
+          '6': 'bradynea',
           '7': 'Tachypnea',
           '8': 'Lying',
           'fall': 'Fall',
@@ -667,9 +672,10 @@ const resources = {
           'occupancy': 'Occupancy',
           'occupied': 'Occupied',
           'vacant': 'Vacant',
-          'bradycardia': 'Bradycardia',
+          'bradynea': 'Bradynea',
           'tachypnea': 'Tachypnea',
           'lying': 'Lying',
+          'respiratory_status': 'Respiratory Status',
           'debug_raw': 'Debug Raw',
         },
         mqtt_alarm_status: {
@@ -683,7 +689,7 @@ const resources = {
           'alarm_ignored': 'Ignore',
           'status_report': 'Status report',
           'alarm_triggered': 'Alarm',
-          'alarm_canceled': 'Resolve'
+          'alarm_canceled': 'Resolve',
         },
         // ─── Sunell Camera: Alarm System ───
         sunell_main_type: {
