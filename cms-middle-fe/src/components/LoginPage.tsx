@@ -17,7 +17,7 @@ import {
 import { Lock, Mail, Eye, EyeOff, ShieldCheck, ChevronDown, Server, CheckCircle2, XCircle } from 'lucide-react';
 import { authApi } from '../api/authApi';
 import { updateApiClientBaseUrl } from '../api/apiClient';
-import { socket, updateSocketUrlAsync } from '../socket';
+import { socket, updateSocketUrlAsync, getBeHost, getBePort } from '../socket';
 import { useNavigate } from 'react-router-dom';
 
 const LoginPage: React.FC = () => {
@@ -29,8 +29,8 @@ const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const [beHost, setBeHost] = useState(localStorage.getItem('BE_HOST') || import.meta.env.VITE_BE_HOST || 'localhost');
-  const [bePort, setBePort] = useState(localStorage.getItem('BE_PORT') || import.meta.env.VITE_BE_PORT || '5050');
+  const [beHost, setBeHost] = useState(getBeHost());
+  const [bePort, setBePort] = useState(getBePort());
   const [beStatus, setBeStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
 
   useEffect(() => {

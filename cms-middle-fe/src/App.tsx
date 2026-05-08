@@ -279,6 +279,7 @@ function Dashboard() {
   const {
     isConnected,
     logs,
+    filteredLogs,
     servers,
     devices,
     systemConfig,
@@ -416,21 +417,17 @@ function Dashboard() {
       return s;
     });
 
-  // Lọc logs theo server, device và event_type đang được chọn
-  const filteredLogs = useMemo(() => {
-    return logs.filter(log => {
+  // Lọc logs theo server và device (event_type filter đã được xử lý bởi filteredLogs từ hook)
+  const displayLogs = useMemo(() => {
+    if (selectedServers.size === 0 && selectedDevices.size === 0) return filteredLogs;
+    return filteredLogs.filter(log => {
       const logServerId = log.mqttServerId || log.server?.server_id || log.server?.serial || '';
       const devKey = `${log.server?.server_id}_${log.device_ip}_${log.device_name}`;
-
       const matchServer = selectedServers.size === 0 || selectedServers.has(logServerId);
       const matchDevice = selectedDevices.size === 0 || selectedDevices.has(devKey);
-
-      const matchOrigin = matchServer && matchDevice;
-      const matchEventType = !selectedEventType || log.log_type === selectedEventType;
-
-      return matchOrigin && matchEventType;
+      return matchServer && matchDevice;
     });
-  }, [logs, selectedServers, selectedDevices, selectedEventType]);
+  }, [filteredLogs, selectedServers, selectedDevices]);
 
 
   // ESC key logout removed as requested
@@ -575,14 +572,14 @@ function Dashboard() {
                 </div>
 
                 <div className="app-logs-container flex-1 overflow-y-auto custom-scrollbar p-0 bg-surface-container-low/10">
-                  {filteredLogs.length > 0 ? (
+                  {displayLogs.length > 0 ? (
                     <div className="flex flex-col">
-                      {[...filteredLogs].reverse().slice(0, visibleAlerts).map((log, idx) => (
+                      {[...displayLogs].reverse().slice(0, visibleAlerts).map((log, idx) => (
                         <div key={log.id || idx} className="border-b border-outline-variant/5">
                           <LogEntry log={log} onClick={() => setSelectedLog(log)} />
                         </div>
                       ))}
-                      {visibleAlerts < filteredLogs.length && (
+                      {visibleAlerts < displayLogs.length && (
                         <button
                           onClick={() => setVisibleAlerts(prev => prev + 10)}
                           className='p-2 text-[12px] uppercase font-bold tracking-widest text-on-surface-variant hover:bg-surface-container-low/50 hover:text-white 

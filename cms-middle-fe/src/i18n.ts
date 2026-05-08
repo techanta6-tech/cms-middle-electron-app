@@ -203,7 +203,7 @@ const resources = {
           close: 'Đóng (ESC)',
           event_summary: 'Tóm tắt Sự kiện',
           system_metadata: 'Dữ liệu sự kiện',
-          detailed_metadata: 'Xem chi tiết',
+          other_metadata: 'Xem chi tiết',
           no_media: 'Không có tệp đính kèm',
           raw_data: 'Gói Dữ liệu Thô',
           close_report: 'Đóng Báo cáo'
@@ -211,9 +211,11 @@ const resources = {
         logtype: {
           // SVMS
           crosswire: 'Hàng rào ảo',
+          ai_alarm_crosswire_all: 'Hàng rào ảo',
           direction: 'Hướng di chuyển',
+          ai_alarm_direction_all: 'Hướng di chuyển',
           an_alarm_has_been_detected: 'SVMS phát cảnh báo',
-
+          videoloss: 'Mất tín hiệu camera',
           // Sunell SDK
           lpr_event: 'Sự kiện biển số',
           face_event: 'Sự kiện khuôn mặt',
@@ -576,16 +578,19 @@ const resources = {
           close: 'Close (ESC)',
           event_summary: 'Event Summary',
           system_metadata: 'Event Data',
-          detailed_metadata: 'Detailed Data',
+          other_metadata: 'Other Data',
           no_media: 'No media packet attached',
           raw_data: 'Raw Data Packet',
           close_report: 'Close Report'
         },
         logtype: {
           // SVMS
-          crosswire: 'Tripwire',
+          crosswire: 'Crosswire',
+          ai_alarm_crosswire_all: 'Crosswire',
           direction: 'Direction',
+          ai_alarm_direction_all: 'Direction',
           an_alarm_has_been_detected: 'SVMS Alarm',
+          videoloss: 'Video Signal Loss',
 
           // Sunell SDK
           lpr_event: 'LPR Event',

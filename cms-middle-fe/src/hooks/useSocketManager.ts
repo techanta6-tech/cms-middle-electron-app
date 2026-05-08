@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { socket, updateSocketUrlAsync } from '../socket';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { socket, updateSocketUrlAsync, getBeHost, getBePort } from '../socket';
 import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
 import apiClient from '../api/apiClient';
 import axios from 'axios';
@@ -13,12 +13,13 @@ console.log('[DEBUG_ENV] VITE_MAX_LOGS_LIST:', import.meta.env.VITE_MAX_LOGS_LIS
 
 const DEFAULT_EVENT_TYPES = [
   // ─── VMS / SVMS ───
-  'crosswire',                       // SVMS: Vượt hàng rào
-  'direction',                        // SVMS: Hướng di chuyển
+  // Chỉ dùng GROUP KEY ở đây. Alias (vd: 'ai.alarm.crosswire.all') đã được map trong LOG_TYPE_GROUPS.
+  'crosswire',                       // SVMS: Vượt hàng rào (alias: ai.alarm.crosswire.all)
+  'direction',                        // SVMS: Hướng di chuyển (alias: ai.alarm.direction.all)
 
   // ─── Sunell SDK (receive-sunell-log → cameras.service.js onAlarm callback) ───
   'lpr_event',                       // Sunell: phát hiện biển số (TargetDetectList Type=3)
-  'face_event',                      // Sunell: phát hiện khuôn mặt (TargetDetectList Type=0)
+  // 'face_event',                      // Sunell: phát hiện khuôn mặt (TargetDetectList Type=0)
   'motion_event',                    // Sunell: phát hiện chuyển động (main_type=1, sub_type=2)
   // ⚠️ system_event: BE emit `system_event_${mainType}_${subType}` — tự add runtime qua eventTypeBufferRef
 
@@ -95,12 +96,25 @@ const LOG_TYPE_GROUPS: Record<string, string[]> = {
 };
 
 /**
+ * Resolve raw log_type về group key nếu nó là alias trong LOG_TYPE_GROUPS.
+ * Dùng khi add vào eventTypeBufferRef để tránh tạo mục filter riêng cho alias.
+ * Ví dụ: 'ai.alarm.direction.all' → 'direction'
+ */
+const resolveToGroupKey = (logType: string): string => {
+  for (const [groupKey, members] of Object.entries(LOG_TYPE_GROUPS)) {
+    if (members.includes(logType)) return groupKey;
+  }
+  return logType;
+};
+
+/**
  * Kiểm tra log có thuộc filter đang chọn không (có hỗ trợ group alias).
  */
 const isTypeMatched = (logType: string, filterType: string | null) => {
   if (!filterType) return true;
-  if (logType === filterType) return true;
-  return LOG_TYPE_GROUPS[filterType]?.includes(logType) || false;
+  const matched = logType === filterType || (LOG_TYPE_GROUPS[filterType]?.includes(logType) ?? false);
+  console.log(`[FILTER] "${logType}" vs "${filterType}" → ${matched ? '✅ matched' : '❌ not matched'}`);
+  return matched;
 };
 
 /**
@@ -194,8 +208,8 @@ export function useSocketManager() {
       port: import.meta.env.VITE_PORT
     },
     be: {
-      ip: localStorage.getItem('BE_HOST') || import.meta.env.VITE_BE_HOST || 'localhost',
-      port: localStorage.getItem('BE_PORT') || import.meta.env.VITE_BE_PORT || '5050'
+      ip: getBeHost(),
+      port: getBePort()
     }
   });
 
@@ -589,14 +603,11 @@ export function useSocketManager() {
         updateReceiveServer(data, true);
       }
 
-      // EARLY FILTER: If a specific event type is focused, discard others to save resources
-      if (selectedEventTypeRef.current && !isTypeMatched(newLog.log_type, selectedEventTypeRef.current)) {
-        return;
-      }
 
       // Push to buffer instead of direct setState — flushed every 500ms
       logBufferRef.current.push(newLog);
-      eventTypeBufferRef.current.add(newLog.log_type);
+      // Resolve alias → group key để tránh tạo mục filter trùng (vd: 'ai.alarm.direction.all' → 'direction')
+      eventTypeBufferRef.current.add(resolveToGroupKey(newLog.log_type));
     };
 
     const onReceiveSunellLog = (raw: any) => {
@@ -618,14 +629,10 @@ export function useSocketManager() {
         source: 'sunell-camera'
       };
 
-      // EARLY FILTER: If a specific event type is focused, discard others to save resources
-      if (selectedEventTypeRef.current && !isTypeMatched(newLog.log_type, selectedEventTypeRef.current)) {
-        return;
-      }
 
       // Push to buffer
       logBufferRef.current.push(newLog);
-      eventTypeBufferRef.current.add(newLog.log_type);
+      eventTypeBufferRef.current.add(resolveToGroupKey(newLog.log_type));
     };
 
     // Cập nhật trực tiếp vào, thêm/sửa/xóa đã nằm ở server BE
@@ -764,13 +771,9 @@ export function useSocketManager() {
         mqttServerId: raw.mqttServerId,
       };
 
-      // EARLY FILTER: If a specific event type is focused, discard others to save resources
-      if (selectedEventTypeRef.current && !isTypeMatched(newLog.log_type, selectedEventTypeRef.current)) {
-        return;
-      }
 
       logBufferRef.current.push(newLog);
-      eventTypeBufferRef.current.add(newLog.log_type);
+      eventTypeBufferRef.current.add(resolveToGroupKey(newLog.log_type));
     };
 
     socket.on('external-server-connecting', onConnectingExternalServer);
@@ -850,10 +853,19 @@ export function useSocketManager() {
 
   // selectedEventType state and ref are declared at the top of useSocketManager
 
+  // ─── Display filter: computed từ toàn bộ logs[], không discard log nào ────────
+  // Tất cả log đều được lưu vào logs[]. filteredLogs chỉ là view computed để render.
+  // Khi user bỏ filter (selectedEventType = null), filteredLogs = toàn bộ lịch sử.
+  const filteredLogs = useMemo(() => {
+    if (!selectedEventType) return logs;
+    return logs.filter(log => isTypeMatched(log.log_type, selectedEventType));
+  }, [logs, selectedEventType]);
+
   return {
     socket,
     isConnected,
     logs,
+    filteredLogs,
     servers,
     devices,
     systemConfig,

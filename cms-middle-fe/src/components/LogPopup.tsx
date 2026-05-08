@@ -37,7 +37,7 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
     { label: 'Device Port', value: log.raw?.body?.device_port, isImportant: false },
     { label: 'Device Index', value: log.device_index ?? log.raw?.body?.device_index, isImportant: false },
     { label: 'Device Type', value: log.device_type || log.raw?.body?.device_type, isImportant: true },
-    { label: 'Log Type', value: (log.log_type || log.raw?.body?.log_type) ? t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase()}`, { defaultValue: (log.log_type || log.raw?.body?.log_type) }) : undefined, isImportant: true },
+    { label: 'Log Type', value: (log.log_type || log.raw?.body?.log_type) ? t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: (log.log_type || log.raw?.body?.log_type) }) : undefined, isImportant: true },
     { label: t('app.log_popup.plate_number', { defaultValue: 'Plate Number' }), value: plateNum, isImportant: true },
     { label: t('app.log_popup.confidence', { defaultValue: 'Confidence' }), value: plateConfidence !== undefined ? `${plateConfidence}%` : undefined, isImportant: true },
     { label: 'Description', value: (log.description || log.raw?.body?.description) ? t(`app.logtype.${(log.description || log.raw?.body?.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.description || log.raw?.body?.description) }) : undefined, isImportant: false },
@@ -65,8 +65,10 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
         );
       });
     } else if (log.raw?.body?.log_type || log.log_type) {
-      const typeStr = t(`app.logtype.${(log.raw?.body?.log_type || log.log_type).toLowerCase()}`, { defaultValue: (log.raw?.body?.log_type || log.log_type).toLowerCase() });
-      const descStr = (log.raw?.body?.description || log.description) ? t(`app.logtype.${(log.raw?.body?.description || log.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.raw?.body?.description || log.description).toLowerCase() }) : '';
+      // const typeStr = t(`app.logtype.${(log.raw?.body?.log_type || log.log_type).toLowerCase()}`, { defaultValue: (log.raw?.body?.log_type || log.log_type).toLowerCase() });
+      const typeStr = allMetadata.find(item => item.label === 'Log Type')?.value;
+      // const descStr = (log.raw?.body?.description || log.description) ? t(`app.logtype.${(log.raw?.body?.description || log.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.raw?.body?.description || log.description).toLowerCase() }) : '';
+      const descStr = allMetadata.find(item => item.label === 'Description')?.value;
       return (
         <span className="flex items-center gap-2">
           <span className="text-cyan-400">{typeStr}</span>
@@ -158,7 +160,7 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
                   onClick={() => setIsShowDetailed(!isShowDetailed)}
                 >
                   {isShowDetailed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                  {t('app.log_popup.detailed_metadata', { defaultValue: 'Detailed Data' })}
+                  {t('app.log_popup.other_metadata', { defaultValue: 'Detailed Data' })}
                 </h4>
                 {isShowDetailed && (
                   <div className="space-y-2 p-4 bg-black/40 rounded-sm border border-outline-variant/10 grid grid-cols-1 md:grid-cols-2 gap-x-8">

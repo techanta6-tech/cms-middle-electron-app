@@ -39,7 +39,7 @@ export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }
   if (log.source === 'mqtt' && log.log_type === 'data') {
     displayType = t('app.alert_wall.alert');
   }
-
+  displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`);
   const timeStr = new Date(log.time * 1000).toLocaleTimeString();
 
   return (
@@ -53,11 +53,11 @@ export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }
         <div className={`log-entry-indicator absolute left-0 top-0 bottom-0 w-1 ${bgBorderClass}`}></div>
         <div className="flex items-start mb-1 gap-4">
           <span className={`log-entry-type text-[10px] font-bold ${colorClass} uppercase flex items-center gap-1.5 shrink-0`}>
-            <Icon className="w-3.5 h-3.5" />
+            <Icon className="displayType w-3.5 h-3.5" />
             {displayType}
           </span>
         </div>
-        <p className="text-[11px] text-on-surface mb-1 font-medium leading-relaxed truncate uppercase">{displayDesc}</p>
+        <p className="displayDesc text-[11px] text-on-surface mb-1 font-medium leading-relaxed truncate uppercase">{displayDesc}</p>
         <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{log.server.server_id} // {log.device_name} // {timeStr}</div>
       </div>
       {log.snapshot && (

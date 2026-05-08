@@ -9,34 +9,39 @@ declare global {
   }
 }
 
-const getBeHost = () => {
-  // 1. Ưu tiên: User ghi đè qua localStorage
+export const getBeHost = () => {
+  // 1. Ưu tiên: User ghi đè qua localStorage (Ví dụ kết nối tới Middle Server khác)
   const localHost = localStorage.getItem('BE_HOST');
   if (localHost) return localHost;
 
-  // 2. Chạy trong vỏ Electron Production: Ưu tiên lấy IP thực tế qua IPC, nếu không lấy được mới fallback về 127.0.0.1
-  if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.getLocalIP) {
-    const detectedIP = window.electronAPI.getLocalIP();
-    return detectedIP || '127.0.0.1';
+  // 2. Chạy trong vỏ Electron: Dùng 127.0.0.1 cho local sidecar là ổn định nhất
+  if (typeof window !== 'undefined' && window.electronAPI) {
+    return '127.0.0.1';
   }
 
   // 3. Fallback cho Dev Web: Dùng giá trị build-time VITE_BE_HOST
   return import.meta.env.VITE_BE_HOST || '127.0.0.1';
 };
 
-const getBePort = () => {
+export const getBePort = () => {
+  const localHost = localStorage.getItem('BE_HOST');
   const localPort = localStorage.getItem('BE_PORT');
-  if (localPort) return localPort;
 
-  // Nếu chạy trong Electron vỏ Production, dùng cổng động do hệ điều hành cấp
+  // Nếu user đã chủ động đổi host (kết nối remote), thì dùng luôn port đi kèm trong localStorage
+  if (localHost && localPort) return localPort;
+
+  // Nếu đang chạy trong Electron, ưu tiên dùng cổng động do main process cấp
+  // Điều này giúp tránh dùng nhầm port cũ (5050) từ localStorage khi chạy production
   if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.getBePort) {
     const electronPort = window.electronAPI.getBePort();
     if (electronPort) return electronPort.toString();
   }
 
+  if (localPort) return localPort;
   return import.meta.env.VITE_BE_PORT || '5050';
 };
-const beURL = `http://${getBeHost()}:${getBePort()}`;
+export const getBeUrl = () => `http://${getBeHost()}:${getBePort()}`;
+const beURL = getBeUrl();
 
 export const socket = io(beURL, {
   reconnection: true,             // Bật tính năng tự động kết nối lại
