@@ -25,7 +25,7 @@ const DEFAULT_EVENT_TYPES = [
 
   // ─── Sunell SDK — IVA sub_type mapping (main_type=6 hoặc 9, cameras.service.js IVA_SUBTYPE_MAP) ───
   // ⚠️ IVA sub_type không nằm trong map: BE emit `iva_event_${subType}` — tự add runtime
-  'iva_trip_wire',                   // Sunell IVA: vượt hàng rào ảo (sub_type=21)
+  // 'iva_trip_wire',                   // Sunell IVA: vượt hàng rào ảo (sub_type=21)
   'iva_perimeter_intrusion',         // Sunell IVA: xâm nhập vùng cấm (sub_type=24)
   // 'iva_double_trip_wire',            // Sunell IVA: hàng rào ảo kép (sub_type=25)
   // 'iva_retrograde',                  // Sunell IVA: đi ngược chiều (sub_type=31)
@@ -91,7 +91,7 @@ const LOG_TYPE_GROUPS: Record<string, string[]> = {
   'mqtt_vacant_alarm': ['Vacant Alarm', 'vacant_alarm', 'mqtt_vacant_alarm'],
   'mqtt_occupy_alarm': ['Occupy Alarm', 'occupy_alarm', 'mqtt_occupy_alarm'],
   // SVMS AI: giữ giá trị gốc từ thiết bị, alias được map vào đây
-  'crosswire': ['crosswire', 'ai.alarm.crosswire.all'],
+  'crosswire': ['crosswire', 'ai.alarm.crosswire.all', 'iva_trip_wire'],
   'direction': ['direction', 'ai.alarm.direction.all'],
 };
 
