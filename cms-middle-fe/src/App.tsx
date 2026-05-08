@@ -34,10 +34,10 @@ function LogFilter({
   eventTypes,
   selectedServers,
   selectedDevices,
-  selectedEventTypes,
+  selectedEventType,
   onToggleServer,
   onToggleDevice,
-  onToggleEventType,
+  onSelectEventType,
 }: {
   servers: Record<string, ServerData>;
   devices: Record<string, DeviceData>;
@@ -47,10 +47,10 @@ function LogFilter({
   eventTypes: string[];
   selectedServers: Set<string>;
   selectedDevices: Set<string>;
-  selectedEventTypes: string[];
+  selectedEventType: string | null;
   onToggleServer: (id: string) => void;
   onToggleDevice: (ip: string) => void;
-  onToggleEventType: (type: string | null) => void;
+  onSelectEventType: (type: string | null) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -150,7 +150,7 @@ function LogFilter({
     return groups;
   }, [deviceList]);
 
-  const activeCount = selectedServers.size + selectedDevices.size + (selectedEventTypes ? selectedEventTypes.length : 0);
+  const activeCount = selectedServers.size + selectedDevices.size + (selectedEventType ? 1 : 0);
 
   const handleServerClick = (id: string) => {
     onToggleServer(id);
@@ -285,21 +285,21 @@ function LogFilter({
             ) : (
               <div className="flex flex-col gap-0.5 max-h-32 overflow-y-auto custom-scrollbar">
                 <button
-                  onClick={() => onToggleEventType(null)}
+                  onClick={() => onSelectEventType(null)}
                   className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1 pt-1 first:pt-0.5"
                 >
-                  <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${(!selectedEventTypes || selectedEventTypes.length === 0) ? 'bg-warning border-warning' : 'border-outline-variant'
+                  <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${!selectedEventType ? 'bg-warning border-warning' : 'border-outline-variant'
                     }`}>
-                    {(!selectedEventTypes || selectedEventTypes.length === 0) && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                    {!selectedEventType && <Check className="w-2 h-2 text-white stroke-[3]" />}
                   </div>
                   <span className="text-[10px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
                 </button>
                 {eventTypes.map(type => {
-                  const checked = selectedEventTypes && selectedEventTypes.includes(type);
+                  const checked = selectedEventType === type;
                   return (
                     <button
                       key={type}
-                      onClick={() => onToggleEventType(type)}
+                      onClick={() => onSelectEventType(type)}
                       className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 last:pb-0.5"
                     >
                       <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
@@ -338,8 +338,8 @@ function Dashboard() {
     handleRemoveConnection,
     socket,
     eventTypes,
-    selectedEventTypes,
-    setSelectedEventTypes,
+    selectedEventType,
+    setSelectedEventType,
     totalLogCount,
     KEEP_TOTAL_LOG_COUNT,
     handleAddMqttServer,
@@ -372,19 +372,6 @@ function Dashboard() {
   const [selectedServers, setSelectedServers] = useState<Set<string>>(new Set());
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
   const [rightTab, setRightTab] = useState<'logs' | 'devices'>('logs');
-  const handleToggleEventType = useCallback((type: string | null) => {
-    if (type === null) {
-      setSelectedEventTypes([]);
-    } else {
-      setSelectedEventTypes(prev => {
-        if (prev.includes(type)) {
-          return prev.filter(t => t !== type);
-        } else {
-          return [...prev, type];
-        }
-      });
-    }
-  }, [setSelectedEventTypes]);
   const [mainTab, setMainTab] = useState<'alert' | 'connections' | 'devices'>('alert');
   const [visibleAlerts, setVisibleAlerts] = useState<number>(30);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
@@ -483,16 +470,11 @@ function Dashboard() {
   const displayLogs = useMemo(() => {
     if (selectedServers.size === 0 && selectedDevices.size === 0) return filteredLogs;
     return filteredLogs.filter(log => {
-      const devKey = `${log.server?.server_id}_${log.device_ip}_${log.device_name}`;
-      
-      // Nếu có chọn thiết bị cụ thể, ta ưu tiên lọc theo các thiết bị đã chọn
-      if (selectedDevices.size > 0) {
-        return selectedDevices.has(devKey);
-      }
-      
-      // Nếu chỉ chọn server mà không chọn thiết bị cụ thể nào
       const logServerId = log.mqttServerId || log.server?.server_id || log.server?.serial || '';
-      return selectedServers.has(logServerId);
+      const devKey = `${log.server?.server_id}_${log.device_ip}_${log.device_name}`;
+      const matchServer = selectedServers.size === 0 || selectedServers.has(logServerId);
+      const matchDevice = selectedDevices.size === 0 || selectedDevices.has(devKey);
+      return matchServer && matchDevice;
     });
   }, [filteredLogs, selectedServers, selectedDevices]);
 
@@ -633,10 +615,10 @@ function Dashboard() {
                     eventTypes={eventTypes}
                     selectedServers={selectedServers}
                     selectedDevices={selectedDevices}
-                    selectedEventTypes={selectedEventTypes}
+                    selectedEventType={selectedEventType}
                     onToggleServer={toggleServer}
                     onToggleDevice={toggleDevice}
-                    onToggleEventType={handleToggleEventType}
+                    onSelectEventType={setSelectedEventType}
                   />
                 </div>
 
