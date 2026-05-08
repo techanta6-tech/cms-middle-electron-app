@@ -153,7 +153,7 @@ export function DevicesManager({
           {/* SVMS Servers */}
           <GroupHeader icon={<Cpu className="w-3.5 h-3.5" />} label={t('app.devices.svms_servers')} color="text-secondary" count={svmsServers.length}
             expanded={!!expandedGroups.svms} onToggle={() => toggleGroup('svms')}
-            onAdd={() => setAddingForm('svms')}
+          // onAdd={() => setAddingForm('svms')}
           />
           {expandedGroups.svms && (
             <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-secondary/10 pl-2">
@@ -290,7 +290,7 @@ export function DevicesManager({
 
 function GroupHeader({ icon, label, color, count, expanded, onToggle, onAdd }: {
   icon: React.ReactNode; label: string; color: string; count: number;
-  expanded: boolean; onToggle: () => void; onAdd: () => void;
+  expanded: boolean; onToggle: () => void; onAdd?: () => void;
 }) {
   return (
     <div className="flex items-center gap-2 py-2 mt-1 select-none">
@@ -300,9 +300,11 @@ function GroupHeader({ icon, label, color, count, expanded, onToggle, onAdd }: {
         <span className={`text-[10px] font-black uppercase tracking-widest ${color}`}>{label}</span>
         <span className="text-[9px] font-mono text-on-surface-variant/50 bg-surface-container px-1.5 py-0.5 rounded">{count}</span>
       </button>
-      <button onClick={onAdd} className={`p-1 rounded hover:bg-surface-container-high transition-colors cursor-pointer ${color}`} title={`Add ${label}`}>
-        <Plus className="w-3.5 h-3.5" />
-      </button>
+      {onAdd && (
+        <button onClick={onAdd} className={`p-1 rounded hover:bg-surface-container-high transition-colors cursor-pointer ${color}`} title={`Add ${label}`}>
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      )}
     </div>
   );
 }
