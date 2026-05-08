@@ -42,7 +42,7 @@ router.post('/api/v1/mqtt-servers', (req, res) => {
     brokerPort: String(brokerPort).trim(),
     protocol: protocol || 'mqtt',
     topic: topic ? topic.trim() : '',
-    defaultTopic: defaultTopic || 'application/{appId}/device/{deviceEui}/event/up',
+    defaultTopic: defaultTopic || 'application/32dc910f-33ae-4526-ac0b-6344e378f00f/device/24e124806e515126/event/up',
     status: 'connecting',
     cameraId: cameraId || null,
     logs: [],

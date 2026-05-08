@@ -34,6 +34,7 @@ interface DevicesManagerProps {
   cameraDevices: MqttDeviceConfig[];
   deviceCameraLinks: DeviceCameraLink[];
   onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
+  onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void;
   fetchCameras: () => void;
   handleAddMqttServer: (config: MqttServerConfig) => void;
   handleAddExternalServer: (ip: string, port: string, mode: 'receive' | 'send') => void;
@@ -42,7 +43,7 @@ interface DevicesManagerProps {
 // ── Main Component ───────────────────────────────────────────────────────────
 export function DevicesManager({
   servers, devices, mqttServers, mqttLogs, cameraDevices,
-  deviceCameraLinks, onLinkDeviceCamera,
+  deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera,
   fetchCameras, handleAddMqttServer, handleAddExternalServer
 }: DevicesManagerProps) {
   const { t } = useTranslation();
@@ -277,7 +278,7 @@ export function DevicesManager({
               <span className="text-[11px] uppercase font-bold tracking-widest">{t('app.devices.select_device')}</span>
             </div>
           ) : (
-            <DetailPanel item={selected} onClose={() => setSelected(null)} cameraDevices={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} />
+            <DetailPanel item={selected} onClose={() => setSelected(null)} cameraDevices={cameraDevices} mqttServers={mqttServers} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} onLinkMqttServerCamera={onLinkMqttServerCamera} />
           )}
         </div>
       </div>
@@ -362,7 +363,7 @@ function EmptyHint({ text }: { text: string }) {
 }
 
 // ── Detail Panel ─────────────────────────────────────────────────────────────
-function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDeviceCamera }: { item: SelectedItemType; onClose: () => void; cameraDevices: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; }) {
+function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera }: { item: SelectedItemType; onClose: () => void; cameraDevices: MqttDeviceConfig[]; mqttServers: MqttServerConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void; }) {
   const { t } = useTranslation();
 
   const isSunell = item.kind === 'camera' && item.data.type === 'sunell';
@@ -388,13 +389,21 @@ function DetailPanel({ item, onClose, cameraDevices, deviceCameraLinks, onLinkDe
     ? cameraDevices.find(c => c.id === item.data.id) || item.data
     : null;
 
+  const latestMqttServer = item.kind === 'mqtt-server'
+    ? mqttServers.find(s => s.id === item.data.id) || item.data
+    : null;
+
+  const latestMqttDeviceServer = item.kind === 'mqtt-device'
+    ? mqttServers.find(s => s.id === item.server.id) || item.server
+    : null;
+
   return (
     <div className="animate-in fade-in duration-300">
       {/* Content */}
       {item.kind === 'svms-server' && <SvmsServerDetail srv={item.data} devices={item.devices} />}
       {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} />}
-      {item.kind === 'mqtt-server' && <MqttServerDetail srv={item.data} devices={item.mqttDevices} />}
-      {item.kind === 'mqtt-device' && <MqttDeviceDetail dev={item.data} srv={item.server} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} />}
+      {item.kind === 'mqtt-server' && latestMqttServer && <MqttServerDetail srv={latestMqttServer} devices={item.mqttDevices} allCameras={cameraDevices} onLinkMqttServerCamera={onLinkMqttServerCamera} />}
+      {item.kind === 'mqtt-device' && latestMqttDeviceServer && <MqttDeviceDetail dev={item.data} srv={latestMqttDeviceServer} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} />}
       {item.kind === 'camera' && latestCam && <CameraDetail cam={latestCam} />}
     </div>
   );
@@ -473,7 +482,7 @@ function SvmsDeviceDetail({ dev, srv }: { dev: any; srv: ServerData }) {
   );
 }
 
-function MqttServerDetail({ srv, devices }: { srv: MqttServerConfig; devices: MqttDeviceInfo[] }) {
+function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera }: { srv: MqttServerConfig; devices: MqttDeviceInfo[]; allCameras: MqttDeviceConfig[]; onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void; }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
@@ -485,13 +494,83 @@ function MqttServerDetail({ srv, devices }: { srv: MqttServerConfig; devices: Mq
       <InfoRow label={t('app.monitor.log_count')} value={srv.logCount ?? 0} />
       <InfoRow label={t('app.monitor.camera_id')} value={srv.cameraId || '(none)'} mono />
       <InfoRow label={t('app.monitor.devices_seen')} value={devices.length} />
+      <div className="mt-4 pt-3 border-t border-outline-variant/10 flex items-center gap-3">
+        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest shrink-0">📷 {t('app.monitor.bound_camera') || 'Bound Camera'}</span>
+        <select
+          value={srv.cameraId || ''}
+          onChange={(e) => onLinkMqttServerCamera(srv.id, e.target.value || null)}
+          className="flex-1 text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors"
+        >
+          <option value="">{t('app.monitor.no_camera_disabled')}</option>
+          {allCameras.map(cam => (
+            <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }
 
+const RADAR_CATEGORIES = [
+  {
+    id: 'fall_bed',
+    label: 'Phát hiện Té ngã & Giường ngủ',
+    colorClass: 'text-cyan-400',
+    bgClass: 'bg-cyan-500/5 border-cyan-500/10',
+    indicatorColor: 'bg-cyan-400',
+    subEvents: [
+      { code: 'fall', label: 'Phát hiện té ngã (Fall Alarm)' },
+      { code: 'out_of_bed', label: 'Rời khỏi giường (Out of Bed Alarm)' },
+      { code: 'lying', label: 'Trạng thái đang nằm (Lying State)' },
+    ],
+  },
+  {
+    id: 'presence',
+    label: 'Hiện diện & Lưu trú',
+    colorClass: 'text-cyan-400',
+    bgClass: 'bg-cyan-500/5 border-cyan-500/10',
+    indicatorColor: 'bg-cyan-400',
+    subEvents: [
+      { code: 'occupied', label: 'Phát hiện có người (Occupied)' },
+      { code: 'vacant', label: 'Trạng thái phòng trống (Vacant)' },
+      { code: 'dwell', label: 'Ở lại quá lâu (Dwell / Stay Alarm)' },
+    ],
+  },
+  {
+    id: 'respiration',
+    label: 'Hô hấp & Vận động',
+    colorClass: 'text-cyan-400',
+    bgClass: 'bg-cyan-500/5 border-cyan-500/10',
+    indicatorColor: 'bg-cyan-400',
+    subEvents: [
+      { code: 'bradynea', label: 'Thở chậm bất thường (Bradynea Alarm)' },
+      { code: 'tachypnea', label: 'Thở nhanh bất thường (Tachypnea Alarm)' },
+      { code: 'motionless', label: 'Bất động bất thường (Abnormal Static Alarm)' },
+    ],
+  },
+];
+
 function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDeviceCamera }: { dev: MqttDeviceInfo; srv: MqttServerConfig; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; }) {
   const { t } = useTranslation();
   const link = deviceCameraLinks.find(l => l.devEui === dev.devEui && l.mqttServerId === srv.id);
+
+  const parentCamera = srv.cameraId ? allCameras.find(c => c.id === srv.cameraId) : null;
+  const parentCameraName = parentCamera ? ((parentCamera as any).name || `${parentCamera.type.toUpperCase()} - ${parentCamera.cameraIp}:${parentCamera.cameraPort}`) : '';
+
+  const features = (link as any)?.features || {};
+
+  const handleToggle = (code: string, value: boolean) => {
+    socket.emit('update-device-features', {
+      devEui: dev.devEui,
+      mqttServerId: srv.id,
+      features: { [code]: value }
+    });
+  };
+
+  const totalEnabled = RADAR_CATEGORIES.reduce((acc, cat) => {
+    return acc + cat.subEvents.filter(sub => features[sub.code] ?? true).length;
+  }, 0);
+  const totalEvents = RADAR_CATEGORIES.reduce((acc, cat) => acc + cat.subEvents.length, 0);
 
   return (
     <div className="flex flex-col gap-1">
@@ -511,11 +590,81 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
           onChange={(e) => onLinkDeviceCamera(dev.devEui, srv.id, e.target.value || null)}
           className="flex-1 text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors"
         >
-          <option value="">{t('app.monitor.no_camera_disabled')}</option>
+          <option value="">
+            {parentCameraName
+              ? `-- Kế thừa từ Server (${parentCameraName}) --`
+              : '-- Kế thừa từ Server (Chưa liên kết Camera) --'}
+          </option>
+          <option value="none">-- Không có Camera (Không chụp ảnh) --</option>
           {allCameras.map(cam => (
             <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
           ))}
         </select>
+      </div>
+
+      <div className="mt-5 pt-4 border-t border-outline-variant/10">
+        {/* Section title */}
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
+            🎛 Event Filter — MQTT Radar
+          </span>
+          <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
+            {totalEnabled}/{totalEvents} bật
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          {RADAR_CATEGORIES.map((cat) => (
+            <div key={cat.id} className={`rounded-md border p-3 ${cat.bgClass}`}>
+              {/* Category Header */}
+              <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-outline-variant/5">
+                <span className={`w-1.5 h-1.5 rounded-full ${cat.indicatorColor}`} />
+                <span className={`text-[11px] font-bold uppercase tracking-wider ${cat.colorClass}`}>
+                  {cat.label}
+                </span>
+              </div>
+
+              {/* Individual sub-events list */}
+              <div className="flex flex-col gap-2">
+                {cat.subEvents.map((sub) => {
+                  const enabled = features[sub.code] ?? true;
+
+                  return (
+                    <div
+                      key={sub.code}
+                      className="flex items-center justify-between gap-3 py-1 first:pt-0 last:pb-0"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? cat.indicatorColor : 'bg-on-surface-variant/30'}`} />
+                        <span className={`text-[11px] font-medium leading-tight transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'}`}>
+                          {sub.label}
+                        </span>
+                      </div>
+
+                      {/* Enable toggle */}
+                      <button
+                        onClick={() => handleToggle(sub.code, !enabled)}
+                        className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 p-0
+                          ${enabled ? cat.indicatorColor : 'bg-surface-container-high'}`}
+                        title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
+                      >
+                        <span
+                          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200
+                            ${enabled ? 'left-[22px]' : 'left-0.5'}`}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer hint */}
+        <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
+          💡 Click vào nút gạt bên phải của từng dòng để bật/tắt sự kiện báo động đó một cách độc lập.
+        </p>
       </div>
     </div>
   );
@@ -524,8 +673,8 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 // ── Sunell Sub-event definitions ─────────────────────────────────────────────
 const SUNELL_SUBEVENTS: Record<string, { code: string; label: string }[]> = {
   enableMotion: [
-    { code: '1/2',  label: 'Phát hiện chuyển động (Motion detection)' },
-    { code: '1/9',  label: 'Phát hiện thân nhiệt PIR' },
+    { code: '1/2', label: 'Phát hiện chuyển động (Motion detection)' },
+    { code: '1/9', label: 'Phát hiện thân nhiệt PIR' },
   ],
   enableLPR: [
     { code: '6/37', label: 'Nhận diện biển số xe (LPR)' },
@@ -556,20 +705,20 @@ const SUNELL_SUBEVENTS: Record<string, { code: string; label: string }[]> = {
     { code: '9/53', label: 'CĐ thông minh - Xe thô sơ (SMD Non-motor)' },
   ],
   enableSystem: [
-    { code: '1/1',  label: 'Báo động I/O' },
-    { code: '1/3',  label: 'Camera bị che khuất (Camera Blocking)' },
-    { code: '1/4',  label: 'Mất tín hiệu hình ảnh (Video Loss)' },
-    { code: '1/5',  label: 'Rớt mạng (Network Disconnection)' },
+    { code: '1/1', label: 'Báo động I/O' },
+    { code: '1/3', label: 'Camera bị che khuất (Camera Blocking)' },
+    { code: '1/4', label: 'Mất tín hiệu hình ảnh (Video Loss)' },
+    { code: '1/5', label: 'Rớt mạng (Network Disconnection)' },
     { code: '1/10', label: 'Báo động cổng I/O NVR' },
-    { code: '4/2',  label: 'Lỗi đọc/ghi ổ cứng' },
-    { code: '4/4',  label: 'Ổ cứng đầy' },
-    { code: '4/5',  label: 'Không có ổ cứng' },
-    { code: '5/2',  label: 'Sai user/pass luồng dữ liệu' },
-    { code: '5/4',  label: 'Đạt giới hạn số lượng kết nối luồng' },
-    { code: '7/0',  label: 'Cảnh báo ngưỡng nhiệt độ (Thermal)' },
-    { code: '7/1',  label: 'Báo động vượt ngưỡng nhiệt độ (Thermal)' },
-    { code: '7/4',  label: 'Cảnh báo chênh lệch nhiệt (Thermal)' },
-    { code: '7/5',  label: 'Báo động chênh lệch nhiệt (Thermal)' },
+    { code: '4/2', label: 'Lỗi đọc/ghi ổ cứng' },
+    { code: '4/4', label: 'Ổ cứng đầy' },
+    { code: '4/5', label: 'Không có ổ cứng' },
+    { code: '5/2', label: 'Sai user/pass luồng dữ liệu' },
+    { code: '5/4', label: 'Đạt giới hạn số lượng kết nối luồng' },
+    { code: '7/0', label: 'Cảnh báo ngưỡng nhiệt độ (Thermal)' },
+    { code: '7/1', label: 'Báo động vượt ngưỡng nhiệt độ (Thermal)' },
+    { code: '7/4', label: 'Cảnh báo chênh lệch nhiệt (Thermal)' },
+    { code: '7/5', label: 'Báo động chênh lệch nhiệt (Thermal)' },
     { code: '7/16', label: 'Phát hiện điểm cháy (Thermal)' },
     { code: '7/17', label: 'Phát hiện hút thuốc (Smoking)' },
     { code: '7/18', label: 'Phát hiện khói lửa (Smoke/Flame)' },
@@ -598,12 +747,12 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
     label: string;
     color: string;
   }[] = [
-    { key: 'enableMotion', label: 'Motion / Chuyển động',    color: 'text-amber-400' },
-    { key: 'enableLPR',    label: 'LPR / Biển số xe',        color: 'text-blue-400' },
-    { key: 'enableFace',   label: 'Face / Khuôn mặt',        color: 'text-pink-400' },
-    { key: 'enableIVA',    label: 'IVA / Hành vi thông minh', color: 'text-purple-400' },
-    { key: 'enableSystem', label: 'System / Hệ thống',       color: 'text-red-400' },
-  ];
+      { key: 'enableMotion', label: 'Motion / Chuyển động', color: 'text-amber-400' },
+      { key: 'enableLPR', label: 'LPR / Biển số xe', color: 'text-blue-400' },
+      { key: 'enableFace', label: 'Face / Khuôn mặt', color: 'text-pink-400' },
+      { key: 'enableIVA', label: 'IVA / Hành vi thông minh', color: 'text-purple-400' },
+      { key: 'enableSystem', label: 'System / Hệ thống', color: 'text-red-400' },
+    ];
 
   return (
     <div className="CameraDetail flex flex-col gap-1">
@@ -675,13 +824,13 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
                     {/* Enable toggle */}
                     <button
                       onClick={() => handleToggle(key, !enabled)}
-                      className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0
+                      className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0
                         ${enabled ? 'bg-primary' : 'bg-surface-container-high'}`}
                       title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
                     >
                       <span
                         className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200
-                          ${enabled ? 'left-[18px]' : 'left-0.5'}`}
+                          ${enabled ? 'left-[22px]' : 'left-0.5'}`}
                       />
                     </button>
                   </div>

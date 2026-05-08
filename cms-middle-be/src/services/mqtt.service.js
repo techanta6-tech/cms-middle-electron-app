@@ -33,6 +33,33 @@ const connectMqttServer = (serverConfig) => {
 
   // Update status in mqttServers array
   const entry = mqttServers.find(s => s.id === id);
+
+  if (!topic || !topic.trim()) {
+    console.error(`[MQTT] Server '${id}' has no topic specified.`);
+    if (entry) entry.status = 'error';
+
+    // Register as a disconnected server entry for unified display on FE
+    servers.set(`mqtt-${id}`, {
+      id: `mqtt-${id}`,
+      serial: '',
+      server_ip: brokerHost,
+      server_name: serverConfig.name || `MQTT: ${brokerHost}:${brokerPort}`,
+      version: '',
+      location: '',
+      day: 0, month: 0, year: 0,
+      svms_ipv4_ip: brokerHost,
+      type: 'mqtt',
+      connectionStatus: 'disconnected',
+      lastSeen: new Date().toISOString(),
+      mqttTopic: '',
+    });
+
+    _pushSystemLog(id, `Connection ERROR: No topic specified for subscription`);
+    _emitMqttServersUpdate();
+    _emitServerInfoUpdate();
+    return;
+  }
+
   if (entry) entry.status = 'connecting';
 
   // Register as a server entry for unified display on FE
@@ -120,18 +147,30 @@ const connectMqttServer = (serverConfig) => {
           const events = dataTarget.object.events;
           // Lấy snapshot 1 lần duy nhất cho tất cả events
           let snapshot = null;
-          if (resolvedCameraId) {
+          if (resolvedCameraId && resolvedCameraId !== 'none') {
             snapshot = await getSnapshotForCamera(resolvedCameraId);
           }
 
           // Tạo 1 log entry riêng cho mỗi event trong mảng
           for (const event of events) {
-            // Lọc bỏ các sự kiện có trạng thái deactivated hoặc ignored
-            const status = (event.alarm_status || '').toLowerCase();
-            if (status.includes('deactivated') || status.includes('ignored')) {
-              console.log(`[MQTT][${id}] Skipped event with status: ${event.alarm_status}`);
-              continue;
-            }
+             // Lọc bỏ các sự kiện có trạng thái deactivated hoặc ignored
+             const status = (event.alarm_status || '').toLowerCase();
+             if (status.includes('deactivated') || status.includes('ignored')) {
+               console.log(`[MQTT][${id}] Skipped event with status: ${event.alarm_status}`);
+               continue;
+             }
+
+              // Event Filtering for MQTT Radar (individual toggles)
+              const alarmType = (event.alarm_type || '').toLowerCase();
+              const linkFeatures = deviceLink?.features || {};
+              
+              // Check individual toggle state. Default to true if not defined.
+              const isAllowed = linkFeatures[alarmType] ?? true;
+
+              if (!isAllowed) {
+                console.log(`[MQTT][${id}] Skipped filtered event: ${alarmType} for devEui: ${devEui}`);
+                continue;
+              }
             // Tách riêng payload để mỗi log mới chỉ lưu một event
             const isolatedPayload = {
               ...parsedBody,

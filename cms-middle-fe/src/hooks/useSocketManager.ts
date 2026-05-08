@@ -319,14 +319,41 @@ export function useSocketManager() {
 
   // ─── Link/unlink MQTT device to camera ──────────────────────────────────────
   const handleLinkDeviceCamera = useCallback(async (devEui: string, mqttServerId: string, cameraId: string | null) => {
+    // Optimistic Update: update local state instantly for 0ms lag
+    setDeviceCameraLinks((prev) => {
+      const filtered = prev.filter(l => !(l.devEui === devEui && l.mqttServerId === mqttServerId));
+      if (cameraId) {
+        return [...filtered, { devEui, mqttServerId, cameraId }];
+      }
+      return filtered;
+    });
+
     try {
       const { data } = await apiClient.patch('/api/v1/mqtt-device-camera-link', { devEui, mqttServerId, cameraId });
       setDeviceCameraLinks(data.links || []);
       console.log('[LINK_DEVICE_CAMERA] Updated:', { devEui, mqttServerId, cameraId });
     } catch (err) {
       console.error('[LINK_DEVICE_CAMERA] Failed:', err);
+      fetchDeviceCameraLinks();
     }
-  }, []);
+  }, [fetchDeviceCameraLinks]);
+
+  // ─── Link/unlink MQTT server to camera ──────────────────────────────────────
+  const handleLinkMqttServerCamera = useCallback(async (serverId: string, cameraId: string | null) => {
+    // Optimistic Update: update local state instantly for 0ms lag
+    setMqttServers((prev) =>
+      prev.map(s => s.id === serverId ? { ...s, cameraId: cameraId || undefined } : s)
+    );
+
+    try {
+      await apiClient.patch(`/api/v1/mqtt-servers/${serverId}`, { cameraId });
+      console.log('[LINK_MQTT_SERVER_CAMERA] Updated:', { serverId, cameraId });
+      fetchMqttServers();
+    } catch (err) {
+      console.error('[LINK_MQTT_SERVER_CAMERA] Failed:', err);
+      fetchMqttServers();
+    }
+  }, [fetchMqttServers]);
 
   useEffect(() => {
     fetchCameras();
@@ -890,6 +917,7 @@ export function useSocketManager() {
     fetchCameras,
     deviceCameraLinks,
     handleLinkDeviceCamera,
+    handleLinkMqttServerCamera,
     gridLayout,
     saveGridLayout,
     fetchGridLayout
