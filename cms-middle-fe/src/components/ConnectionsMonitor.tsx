@@ -1127,20 +1127,7 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
       <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
         <div className={`min-h-0 ${isExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
 
-          {/* Camera selection dropdown for the whole MQTT server */}
-          <div className="flex items-center gap-2 px-3 py-2 mb-3 bg-surface-container-lowest/40 rounded border border-outline-variant/5">
-            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest shrink-0">📷 {t('app.monitor.bound_camera') || 'Bound Camera'}</span>
-            <select
-              value={server.cameraId || ''}
-              onChange={(e) => onLinkMqttServerCamera(server.id, e.target.value || null)}
-              className="flex-1 text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors"
-            >
-              <option value="">{t('app.monitor.no_camera_disabled')}</option>
-              {allCameras.map(cam => (
-                <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
-              ))}
-            </select>
-          </div>
+
 
           {devices.length > 0 && (
             <div className="mb-3">
@@ -1161,37 +1148,14 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
                         <InfoTooltip content="Tên thiết bị" side="bottom">
                           <span className="text-[11px] font-bold tracking-wide flex-1 truncate max-w-[200px] block text-on-surface-variant">{device.deviceName}</span>
                         </InfoTooltip>
-                        <div className="flex w-full items-center justify-between gap-4">
-                          <InfoTooltip content="DevEUI (Mã định danh thiết bị)" side="bottom">
-                            <span className="text-[10px] font-mono font-medium text-on-surface-variant/70 min-w-[100px] bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/5">{device.devEui}</span>
-                          </InfoTooltip>
-
-                          {/* Buzzer Control Buttons */}
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => handleControlBuzzer(device.devEui, device.applicationId, true)}
-                              disabled={isControllingBuzzer !== null || !isConnected}
-                              className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${isConnected ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:bg-amber-500 hover:text-white' : 'opacity-20 cursor-not-allowed'}`}
-                            >
-                              <BellRing className={`w-3 h-3 ${isControllingBuzzer === `${device.devEui}-true` ? 'animate-bounce' : ''}`} />
-                              Bật Còi
-                            </button>
-                            <button
-                              onClick={() => handleControlBuzzer(device.devEui, device.applicationId, false)}
-                              disabled={isControllingBuzzer !== null || !isConnected}
-                              className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${isConnected ? 'bg-tertiary/10 text-tertiary border border-tertiary/30 hover:bg-tertiary hover:text-white' : 'opacity-20 cursor-not-allowed'}`}
-                            >
-                              <Bell className={`w-3 h-3 ${isControllingBuzzer === `${device.devEui}-false` ? 'animate-pulse' : ''}`} />
-                              Tắt Còi
-                            </button>
-                          </div>
-
-                          <InfoTooltip content="Tổng alarm events nhận được">
-                            <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${device.alarmCount > 0 ? 'text-tertiary bg-tertiary/15 ring-1 ring-tertiary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
-                              {device.alarmCount} {t('app.monitor.alarms')}
-                            </span>
-                          </InfoTooltip>
-                        </div>
+                        <InfoTooltip content="DevEUI (Mã định danh thiết bị)" side="bottom">
+                          <span className="text-[10px] font-mono font-medium text-on-surface-variant/70 min-w-[100px] bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/5">{device.devEui}</span>
+                        </InfoTooltip>
+                        <InfoTooltip content="Tổng alarm events nhận được">
+                          <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${device.alarmCount > 0 ? 'text-tertiary bg-tertiary/15 ring-1 ring-tertiary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
+                            {device.alarmCount} {t('app.monitor.alarms')}
+                          </span>
+                        </InfoTooltip>
                       </div>
                       {/* Device-level camera linking */}
                       <div className="flex items-center gap-2 pl-1">
@@ -1199,7 +1163,8 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
                         <select
                           value={link?.cameraId || ''}
                           onChange={(e) => onLinkDeviceCamera(device.devEui, server.id, e.target.value || null)}
-                          className="flex-1 text-[10px] font-mono bg-surface-container border border-outline-variant/20 rounded px-1.5 py-1 text-on-surface"
+                          disabled={true}
+                          className="flex-1 text-[10px] font-mono bg-surface-container/50 border border-outline-variant/20 rounded px-1.5 py-1 text-on-surface-variant/60 cursor-not-allowed select-none"
                         >
                           <option value="">
                             {server.cameraId

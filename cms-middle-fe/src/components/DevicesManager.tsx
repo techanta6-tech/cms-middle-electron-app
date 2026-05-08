@@ -591,7 +591,6 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
       <div className="mt-4 pt-3 border-t border-outline-variant/10">
         <InfoRow label={t('app.monitor.parent_mqtt')} value={srv.name || `${srv.brokerHost}:${srv.brokerPort}`} mono />
         <InfoRow label={t('app.monitor.topic')} value={srv.topic || srv.defaultTopic} mono />
-        <InfoRow label="CAMERA LIÊN KẾT" value={activeCameraName + (isInherited ? ' (Kế thừa từ Server)' : '')} />
       </div>
       <div className="mt-4 pt-3 border-t border-outline-variant/10 flex items-center gap-3">
         <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest shrink-0">📷 {t('app.monitor.bound_camera') || 'Bound Camera'}</span>
@@ -602,8 +601,8 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
         >
           <option value="">
             {parentCameraName
-              ? `-- Kế thừa từ Server (${parentCameraName}) --`
-              : '-- Kế thừa từ Server (Chưa liên kết Camera) --'}
+              ? `-- Camera mặc định từ Server (${parentCameraName}) --`
+              : '-- Camera mặc định từ Server (Chưa liên kết Camera) --'}
           </option>
           <option value="none">-- Không có Camera (Không chụp ảnh) --</option>
           {allCameras.map(cam => (
