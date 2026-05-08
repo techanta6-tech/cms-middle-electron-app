@@ -601,71 +601,77 @@ function Dashboard() {
                   <span className="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-70 font-bold">{t('app.alert_wall.drag_to_assign')}</span>
                   <button
                     onClick={() => {
-                      console.log(devices)
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      setGrids((prevGrids: any[]) => {
-                        const newGrids = [...prevGrids];
-                        const maxGrids = Math.pow(gridCols, 2);
-                        const svmsDevices = Object.values(devices).flatMap(server => {
-                          if (!server.server) return [];
-                          return (server.devices || []).map(dev => ({
-                            server_serial: server.server.serial,
-                            server_id: server.server.server_id,
-                            device_ip: dev.ip,
-                            device_name: dev.name,
-                            device_type: dev.type || 'vms'
-                          }));
-                        });
-
-                        const mqttDevices = mqttServers.flatMap(ms => {
-                          const mqttDevs = mqttDevicesByServer[ms.id] || [];
-                          return mqttDevs.map(dev => ({
-                            server_serial: ms.id,
-                            server_id: `mqtt-${ms.id}`,
-                            device_ip: dev.devEui,
-                            device_name: dev.deviceName,
-                            device_type: 'mqtt-sensor'
-                          }));
-                        });
-
-                        const sunellDevices = cameraDevices.filter(cam => cam.type === 'sunell').map(cam => ({
-                          server_serial: 'SUNELL',
-                          server_id: 'SUNELL-LOCAL',
-                          device_ip: cam.id,
-                          device_name: cam.name || cam.cameraIp,
-                          device_type: 'sunell'
+                      console.log(devices);
+                      const svmsDevices = Object.values(devices).flatMap(server => {
+                        if (!server.server) return [];
+                        return (server.devices || []).map(dev => ({
+                          server_serial: server.server.serial,
+                          server_id: server.server.server_id,
+                          device_ip: dev.ip,
+                          device_name: dev.name,
+                          device_type: dev.type || 'vms'
                         }));
-
-                        const allDevices = [...svmsDevices, ...mqttDevices, ...sunellDevices];
-                        console.log('allDevices', allDevices)
-                        for (const dev of allDevices) {
-                          const isAssigned = newGrids.some(g => g && g.device.server_id === dev.server_id && g.device.device_ip === dev.device_ip && g.device.device_name === dev.device_name);
-                          if (isAssigned) continue;
-
-                          let emptyGridID = -1;
-                          for (let i = 0; i < maxGrids; i++) {
-                            if (!newGrids[i]) {
-                              emptyGridID = i;
-                              break;
-                            }
-                          }
-                          console.log('emptyGridID', emptyGridID)
-                          if (emptyGridID === -1) break;
-
-                          newGrids[emptyGridID] = {
-                            gridID: emptyGridID,
-                            device: {
-                              server_serial: dev.server_serial,
-                              server_id: dev.server_id,
-                              device_ip: dev.device_ip,
-                              device_name: dev.device_name,
-                              device_type: dev.device_type
-                            }
-                          };
-                        }
-                        console.log('newGrids', newGrids)
-                        return newGrids;
                       });
+
+                      const mqttDevices = mqttServers.flatMap(ms => {
+                        const mqttDevs = mqttDevicesByServer[ms.id] || [];
+                        return mqttDevs.map(dev => ({
+                          server_serial: ms.id,
+                          server_id: `mqtt-${ms.id}`,
+                          device_ip: dev.devEui,
+                          device_name: dev.deviceName,
+                          device_type: 'mqtt-sensor'
+                        }));
+                      });
+
+                      const sunellDevices = cameraDevices.filter(cam => cam.type === 'sunell').map(cam => ({
+                        server_serial: 'SUNELL',
+                        server_id: 'SUNELL-LOCAL',
+                        device_ip: cam.id,
+                        device_name: cam.name || cam.cameraIp,
+                        device_type: 'sunell'
+                      }));
+
+                      const allDevices = [...svmsDevices, ...mqttDevices, ...sunellDevices];
+                      console.log('allDevices', allDevices);
+
+                      // Calculate required columns to fit all devices
+                      let newGridCols = gridCols;
+                      const requiredCols = Math.ceil(Math.sqrt(allDevices.length));
+                      if (requiredCols > newGridCols) {
+                        newGridCols = requiredCols;
+                      }
+
+                      const maxGrids = Math.pow(newGridCols, 2);
+                      const newGrids = [...grids];
+
+                      for (const dev of allDevices) {
+                        const isAssigned = newGrids.some(g => g && g.device.server_id === dev.server_id && g.device.device_ip === dev.device_ip && g.device.device_name === dev.device_name);
+                        if (isAssigned) continue;
+
+                        let emptyGridID = -1;
+                        for (let i = 0; i < maxGrids; i++) {
+                          if (!newGrids[i]) {
+                            emptyGridID = i;
+                            break;
+                          }
+                        }
+                        console.log('emptyGridID', emptyGridID);
+                        if (emptyGridID === -1) break;
+
+                        newGrids[emptyGridID] = {
+                          gridID: emptyGridID,
+                          device: {
+                            server_serial: dev.server_serial,
+                            server_id: dev.server_id,
+                            device_ip: dev.device_ip,
+                            device_name: dev.device_name,
+                            device_type: dev.device_type
+                          }
+                        };
+                      }
+                      console.log('newGrids', newGrids, 'newGridCols', newGridCols);
+                      saveGridLayout(newGrids, newGridCols);
                     }}
                     className="text-[9px] font-bold uppercase tracking-widest bg-primary/20 hover:bg-primary/30 text-primary px-3 py-1.5 rounded transition-all active:scale-95 cursor-pointer shadow-sm"
                   >
