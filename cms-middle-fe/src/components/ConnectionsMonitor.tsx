@@ -1167,9 +1167,14 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
                           className="flex-1 text-[10px] font-mono bg-surface-container/50 border border-outline-variant/20 rounded px-1.5 py-1 text-on-surface-variant/60 cursor-not-allowed select-none"
                         >
                           <option value="">
-                            {server.cameraId
-                              ? `-- Kế thừa từ Server (${allCameras.find(c => c.id === server.cameraId)?.name || `${allCameras.find(c => c.id === server.cameraId)?.type.toUpperCase()} - ${allCameras.find(c => c.id === server.cameraId)?.cameraIp}:${allCameras.find(c => c.id === server.cameraId)?.cameraPort}`}) --`
-                              : '-- Kế thừa từ Server (Chưa liên kết Camera) --'}
+                            {(() => {
+                              const parentCam = server.cameraId ? allCameras.find(c => c.id === server.cameraId) : null;
+                              if (!parentCam) {
+                                return '-- Camera mặc định từ Server (Chưa liên kết Camera) --';
+                              }
+                              const camName = parentCam.name || `${parentCam.type ? parentCam.type.toUpperCase() : 'CAMERA'} - ${parentCam.cameraIp}:${parentCam.cameraPort}`;
+                              return `-- Camera mặc định từ Server (${camName}) --`;
+                            })()}
                           </option>
                           <option value="none">-- Không có Camera (Không chụp ảnh) --</option>
                           {allCameras.map(cam => (
