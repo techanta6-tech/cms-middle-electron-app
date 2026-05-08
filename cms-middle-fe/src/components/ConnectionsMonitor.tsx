@@ -384,6 +384,7 @@ export function ConnectionsMonitor({
                       deviceCameraLinks={deviceCameraLinks}
                       onLinkDeviceCamera={onLinkDeviceCamera}
                       onLinkMqttServerCamera={onLinkMqttServerCamera}
+                      logs={logs}
                     />
                   ))}
 
@@ -546,8 +547,14 @@ const CameraDevicesCard = memo(function CameraDevicesCard({ cameras, sunellLogs 
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">TỔNG LOGS</span>
+            <div className="flex items-center gap-1">
+              <span className="text-[14px] font-black font-mono text-secondary leading-none">{totalLogs}</span>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
             <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.devices')}</span>
-            <span className="text-[14px] font-black font-mono text-cyan-500 leading-none">{cameras.length}</span>
+            <span className="text-[14px] font-black font-mono text-on-surface leading-none">{cameras.length}</span>
           </div>
           <ChevronDown className={`w-4 h-4 text-on-surface-variant transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
         </div>
@@ -617,12 +624,6 @@ const CameraItemWithLogs = memo(function CameraItemWithLogs({ cam, logCount, isC
               ? 'bg-red-500 ring-red-500/20 animate-pulse'
               : 'bg-tertiary ring-tertiary/20 animate-pulse'
             }`}></div>
-          <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${isConnected
-            ? 'bg-secondary ring-secondary/20'
-            : isError
-              ? 'bg-red-500 ring-red-500/20 animate-pulse'
-              : 'bg-tertiary ring-tertiary/20 animate-pulse'
-            }`}></div>
         </InfoTooltip>
         <InfoTooltip content="Loại camera" side="bottom">
           <span className="text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 uppercase">
@@ -672,7 +673,8 @@ const DeviceItemRow = memo(function DeviceItemRow({
   logCount,
   isOrphan = false,
   connectionStatus,
-  filteredLogs
+  filteredLogs,
+  children
 }: {
   name: string;
   ip: string;
@@ -681,6 +683,7 @@ const DeviceItemRow = memo(function DeviceItemRow({
   isOrphan?: boolean;
   connectionStatus?: 'connected' | 'disconnected';
   filteredLogs?: LogData[];
+  children?: React.ReactNode;
 }) {
   const isConnected = connectionStatus === 'connected';
   const isDisconnected = connectionStatus === 'disconnected';
@@ -688,7 +691,7 @@ const DeviceItemRow = memo(function DeviceItemRow({
   const hasLogs = filteredLogs && filteredLogs.length > 0;
 
   return (
-    <div className="device-item-row-wrapper">
+    <div className="device-item-row-wrapper flex flex-col gap-1.5">
       <div
         className={`device-item-row flex items-center gap-4 px-3 py-2 bg-surface-container-lowest/40 rounded border transition-colors cursor-pointer ${isDisconnected
           ? 'border-tertiary/20 bg-tertiary/5'
@@ -730,6 +733,7 @@ const DeviceItemRow = memo(function DeviceItemRow({
           </div>
         </div>
       </div>
+      {children}
       {/* Expandable Log Panel */}
       <div className={`grid transition-all duration-300 ease-in-out ${isLogExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
         <div className={`min-h-0 ${isLogExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
@@ -743,6 +747,7 @@ const DeviceItemRow = memo(function DeviceItemRow({
   prev.name === next.name &&
   prev.ip === next.ip &&
   prev.connectionStatus === next.connectionStatus &&
+  prev.children === next.children &&
   (prev.filteredLogs?.length || 0) === (next.filteredLogs?.length || 0)
 );
 
@@ -952,6 +957,12 @@ const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, dev
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">TỔNG LOGS</span>
+            <div className="flex items-center gap-1">
+              <span className="text-[14px] font-black font-mono text-secondary leading-none">{serverLogs.length}</span>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
             <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.devices')}</span>
             <div className="flex items-center gap-1">
               <span className="text-[14px] font-black font-mono text-on-surface leading-none">{deviceCount}</span>
@@ -1021,13 +1032,14 @@ const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, dev
   prev.matchedDevices === next.matchedDevices
 );
 
-function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera }: {
+function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera, logs }: {
   server: MqttServerConfig;
   devices: { devEui: string; applicationId: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[];
   allCameras: MqttDeviceConfig[];
   deviceCameraLinks: DeviceCameraLink[];
   onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
   onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void;
+  logs: LogData[];
 }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -1060,13 +1072,14 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
   const isConnecting = status === 'connecting';
 
   const statusConfig = {
-    connected: { dot: 'bg-secondary ring-secondary/20', badge: 'text-secondary bg-secondary/10 border-secondary/20', label: 'CONNECTED', border: 'border-l-secondary/60' },
+    connected: { dot: 'bg-secondary ring-secondary/20', badge: 'text-secondary bg-secondary/10 border-secondary/20', label: 'ONLINE', border: 'border-l-secondary/60' },
     connecting: { dot: 'bg-amber-400 ring-amber-400/20', badge: 'text-amber-400 bg-amber-400/10 border-amber-400/20', label: 'CONNECTING', border: 'border-l-amber-400/60' },
-    disconnected: { dot: 'bg-tertiary ring-tertiary/20', badge: 'text-tertiary bg-tertiary/10 border-tertiary/20', label: 'DISCONNECTED', border: 'border-l-tertiary/60' },
+    disconnected: { dot: 'bg-tertiary ring-tertiary/20', badge: 'text-tertiary bg-tertiary/10 border-tertiary/20', label: 'OFFLINE', border: 'border-l-tertiary/60' },
     error: { dot: 'bg-red-500 ring-red-500/20', badge: 'text-red-500 bg-red-500/10 border-red-500/20', label: 'ERROR', border: 'border-l-red-500/60' },
   } as const;
 
   const cfg = statusConfig[status] || statusConfig.disconnected;
+  const serverLogsCount = useMemo(() => logs.filter(l => l.mqttServerId === server.id).length, [logs, server.id]);
 
   return (
     <div className={`mqtt-server-card bg-surface-container border border-outline-variant/10 px-4 py-3 pb-4 rounded-md border-l-[3px] ${cfg.border} shadow-sm transition-all hover:bg-surface-container-high/40 group`}>
@@ -1101,24 +1114,36 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
                   </InfoTooltip>
                 </div>
               </div>
+              {/* Status Badge */}
+              <InfoTooltip content={`Trạng thái: ${cfg.label}`}>
+                <span className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${cfg.badge}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${isConnecting ? 'animate-pulse' : ''}`}></span>
+                  {cfg.label}
+                </span>
+              </InfoTooltip>
+              {/* Type Badge */}
+              <InfoTooltip content="Kết nối MQTT">
+                <span className="inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border text-cyan-500 bg-cyan-500/10 border-cyan-500/20">
+                  <Radio className="w-2.5 h-2.5" />
+                  MQTT
+                </span>
+              </InfoTooltip>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-4">
-          {/* Status Badge */}
-          <InfoTooltip content={`Trạng thái: ${cfg.label}`}>
-            <span className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${cfg.badge}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${isConnecting ? 'animate-pulse' : ''}`}></span>
-              {cfg.label}
-            </span>
-          </InfoTooltip>
-          {/* Type Badge */}
-          <InfoTooltip content="Kết nối MQTT">
-            <span className="inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border text-cyan-500 bg-cyan-500/10 border-cyan-500/20">
-              <Radio className="w-2.5 h-2.5" />
-              MQTT
-            </span>
-          </InfoTooltip>
+          <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">TỔNG LOGS</span>
+            <div className="flex items-center gap-1">
+              <span className="text-[14px] font-black font-mono text-secondary leading-none">{serverLogsCount}</span>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.devices')}</span>
+            <div className="flex items-center gap-1">
+              <span className="text-[14px] font-black font-mono text-on-surface leading-none">{devices.length}</span>
+            </div>
+          </div>
           <ChevronDown className={`w-4 h-4 text-on-surface-variant transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
         </div>
       </div>
@@ -1136,8 +1161,9 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
               </div>
               <div className="grid gap-1.5 border-l-2 border-outline-variant/10 pl-2 ml-1">
                 {devices.map((device) => {
-                  const link = deviceCameraLinks.find(l => l.devEui === device.devEui && l.mqttServerId === server.id);
+                  const deviceLogs = (logs || []).filter(l => l.mqttServerId === server.id && l.server?.serial === device.devEui);
                   return (
+<<<<<<< HEAD
                     <div key={device.devEui} className="flex flex-col gap-1.5 px-3 py-2 bg-surface-container-lowest/40 rounded border border-outline-variant/5 hover:border-outline-variant/20 transition-colors">
                       <div className="flex items-center gap-4">
                         <InfoTooltip content="Device Profile" side="bottom">
@@ -1183,6 +1209,17 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
                         </select>
                       </div>
                     </div>
+=======
+                    <DeviceItemRow
+                      key={device.devEui}
+                      name={device.deviceName}
+                      ip={device.devEui}
+                      type={device.deviceProfileName}
+                      logCount={device.alarmCount}
+                      connectionStatus="connected"
+                      filteredLogs={deviceLogs}
+                    />
+>>>>>>> 26a9dc05489cb72c4ae3b3adfe5c910bd40919ce
                   );
                 })}
               </div>
