@@ -331,6 +331,17 @@ export function useSocketManager() {
     }
   }, []);
 
+  // ─── Link/unlink MQTT server to camera ──────────────────────────────────────
+  const handleLinkMqttServerCamera = useCallback(async (serverId: string, cameraId: string | null) => {
+    try {
+      await apiClient.patch(`/api/v1/mqtt-servers/${serverId}`, { cameraId });
+      console.log('[LINK_MQTT_SERVER_CAMERA] Updated:', { serverId, cameraId });
+      fetchMqttServers();
+    } catch (err) {
+      console.error('[LINK_MQTT_SERVER_CAMERA] Failed:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchCameras();
     fetchDeviceCameraLinks();
@@ -888,6 +899,7 @@ export function useSocketManager() {
     fetchCameras,
     deviceCameraLinks,
     handleLinkDeviceCamera,
+    handleLinkMqttServerCamera,
     gridLayout,
     saveGridLayout,
     fetchGridLayout

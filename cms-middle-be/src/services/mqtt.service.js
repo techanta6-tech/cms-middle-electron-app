@@ -120,7 +120,7 @@ const connectMqttServer = (serverConfig) => {
           const events = dataTarget.object.events;
           // Lấy snapshot 1 lần duy nhất cho tất cả events
           let snapshot = null;
-          if (resolvedCameraId) {
+          if (resolvedCameraId && resolvedCameraId !== 'none') {
             snapshot = await getSnapshotForCamera(resolvedCameraId);
           }
 

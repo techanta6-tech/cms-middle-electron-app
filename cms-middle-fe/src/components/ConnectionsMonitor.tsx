@@ -179,7 +179,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
 }
 
 export function ConnectionsMonitor({
-  logs, sendServers, servers, devices, mqttServers, mqttLogs, cameraDevices, deviceCameraLinks, onLinkDeviceCamera
+  logs, sendServers, servers, devices, mqttServers, mqttLogs, cameraDevices, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera
 }: {
   socket: any,
   isConnected: boolean,
@@ -194,6 +194,7 @@ export function ConnectionsMonitor({
   cameraDevices: MqttDeviceConfig[];
   deviceCameraLinks: DeviceCameraLink[];
   onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
+  onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void;
   onSave: (ip: string, port: string, mode: 'receive' | 'send') => void,
   onSaveMqtt: (config: MqttServerConfig) => void,
   onSaveSystemConfig: (config: SystemConfig) => void,
@@ -380,6 +381,7 @@ export function ConnectionsMonitor({
                       allCameras={cameraDevices}
                       deviceCameraLinks={deviceCameraLinks}
                       onLinkDeviceCamera={onLinkDeviceCamera}
+                      onLinkMqttServerCamera={onLinkMqttServerCamera}
                     />
                   ))}
 
@@ -1017,12 +1019,13 @@ const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, dev
   prev.matchedDevices === next.matchedDevices
 );
 
-function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLinkDeviceCamera }: {
+function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera }: {
   server: MqttServerConfig;
   devices: { devEui: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[];
   allCameras: MqttDeviceConfig[];
   deviceCameraLinks: DeviceCameraLink[];
   onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
+  onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void;
 }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -1100,6 +1103,21 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
       <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
         <div className={`min-h-0 ${isExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
 
+          {/* Camera selection dropdown for the whole MQTT server */}
+          <div className="flex items-center gap-2 px-3 py-2 mb-3 bg-surface-container-lowest/40 rounded border border-outline-variant/5">
+            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest shrink-0">📷 {t('app.monitor.bound_camera') || 'Bound Camera'}</span>
+            <select
+              value={server.cameraId || ''}
+              onChange={(e) => onLinkMqttServerCamera(server.id, e.target.value || null)}
+              className="flex-1 text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors"
+            >
+              <option value="">{t('app.monitor.no_camera_disabled')}</option>
+              {allCameras.map(cam => (
+                <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
+              ))}
+            </select>
+          </div>
+
           {devices.length > 0 && (
             <div className="mb-3">
               <div className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
@@ -1138,7 +1156,12 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
                           onChange={(e) => onLinkDeviceCamera(device.devEui, server.id, e.target.value || null)}
                           className="flex-1 text-[10px] font-mono bg-surface-container border border-outline-variant/20 rounded px-1.5 py-1 text-on-surface"
                         >
-                          <option value="">{t('app.monitor.no_camera_disabled')}</option>
+                          <option value="">
+                            {server.cameraId
+                              ? `🔄 Kế thừa từ Server (${allCameras.find(c => c.id === server.cameraId)?.name || `${allCameras.find(c => c.id === server.cameraId)?.type.toUpperCase()} - ${allCameras.find(c => c.id === server.cameraId)?.cameraIp}:${allCameras.find(c => c.id === server.cameraId)?.cameraPort}`})`
+                              : t('app.monitor.no_camera_disabled')}
+                          </option>
+                          <option value="none">-- Không có Camera (Không chụp ảnh) --</option>
                           {allCameras.map(cam => (
                             <option key={cam.id} value={cam.id}>{cam.name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
                           ))}

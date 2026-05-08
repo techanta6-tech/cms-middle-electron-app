@@ -349,6 +349,7 @@ function Dashboard() {
     fetchCameras,
     deviceCameraLinks,
     handleLinkDeviceCamera,
+    handleLinkMqttServerCamera,
     gridLayout,
     saveGridLayout
   } = useSocketManager();
@@ -547,6 +548,7 @@ function Dashboard() {
                 cameraDevices={cameraDevices}
                 deviceCameraLinks={deviceCameraLinks}
                 onLinkDeviceCamera={handleLinkDeviceCamera}
+                onLinkMqttServerCamera={handleLinkMqttServerCamera}
               />
             )}
             {mainTab === 'devices' && (
@@ -558,6 +560,7 @@ function Dashboard() {
                 cameraDevices={cameraDevices}
                 deviceCameraLinks={deviceCameraLinks}
                 onLinkDeviceCamera={handleLinkDeviceCamera}
+                onLinkMqttServerCamera={handleLinkMqttServerCamera}
                 fetchCameras={fetchCameras}
                 handleAddMqttServer={handleAddMqttServer}
                 handleAddExternalServer={handleAddExternalServer}
