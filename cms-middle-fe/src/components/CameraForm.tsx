@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../api/apiClient';
-import { Camera, X } from 'lucide-react';
+import { Camera, X, Eye, EyeOff } from 'lucide-react';
 
 interface CameraFormProps {
   onCancel: () => void;
@@ -12,6 +12,7 @@ interface CameraFormProps {
 export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, initialType = 'other' }: CameraFormProps) {
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [addDeviceForm, setAddDeviceForm] = useState({
     name: '',
     type: initialType,
@@ -162,13 +163,22 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">Password (*)</label>
-                <input
-                  value={addDeviceForm.cameraPass}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, cameraPass: e.target.value }))}
-                  className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
-                  placeholder="admin1234"
-                  type="password"
-                />
+                <div className="relative flex items-center">
+                  <input
+                    value={addDeviceForm.cameraPass}
+                    onChange={e => setAddDeviceForm(f => ({ ...f, cameraPass: e.target.value }))}
+                    className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm pl-4 pr-10 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
+                    placeholder="admin1234"
+                    type={showPassword ? "text" : "password"}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 text-on-surface-variant/60 hover:text-cyan-500 transition-colors p-1 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="flex flex-col gap-1.5 col-span-2">

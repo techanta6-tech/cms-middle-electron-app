@@ -601,10 +601,10 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
         >
           <option value="">
             {parentCameraName
-              ? `-- Camera mặc định từ Server (${parentCameraName}) --`
-              : '-- Camera mặc định từ Server (Chưa liên kết Camera) --'}
+              ? t('app.monitor.camera_default_linked', { name: parentCameraName })
+              : t('app.monitor.camera_default_unlinked')}
           </option>
-          <option value="none">-- Không có Camera (Không chụp ảnh) --</option>
+          <option value="none">{t('app.monitor.no_camera_no_snapshot')}</option>
           {allCameras.map(cam => (
             <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
           ))}

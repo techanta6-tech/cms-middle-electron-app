@@ -154,11 +154,7 @@ export function useSocketManager() {
 
   const [logs, setLogs] = useState<LogData[]>([]);
   const [totalLogCount, setTotalLogCount] = useState(0);
-  const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
-
-  // Use a ref to keep the latest selectedEventType available inside the mounting useEffect (no stale closures)
-  const selectedEventTypeRef = useRef<string | null>(null);
-  selectedEventTypeRef.current = selectedEventType;
+  const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
 
   const [eventTypes, setEventTypes] = useState<string[]>(DEFAULT_EVENT_TYPES);
   const [mqttLogs, setMqttLogs] = useState<MqttLogEntry[]>([]);
@@ -886,9 +882,9 @@ export function useSocketManager() {
   // Tất cả log đều được lưu vào logs[]. filteredLogs chỉ là view computed để render.
   // Khi user bỏ filter (selectedEventType = null), filteredLogs = toàn bộ lịch sử.
   const filteredLogs = useMemo(() => {
-    if (!selectedEventType) return logs;
-    return logs.filter(log => isTypeMatched(log.log_type, selectedEventType));
-  }, [logs, selectedEventType]);
+    if (selectedEventTypes.length === 0) return logs;
+    return logs.filter(log => selectedEventTypes.some(type => isTypeMatched(log.log_type, type)));
+  }, [logs, selectedEventTypes]);
 
   return {
     socket,
@@ -904,8 +900,8 @@ export function useSocketManager() {
     handleAddExternalServer,
     handleRemoveConnection,
     eventTypes,
-    selectedEventType,
-    setSelectedEventType,
+    selectedEventTypes,
+    setSelectedEventTypes,
     totalLogCount,
     KEEP_TOTAL_LOG_COUNT: env.KEEP_TOTAL_LOG_COUNT,
     mqttServers,

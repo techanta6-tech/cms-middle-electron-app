@@ -73,6 +73,11 @@ const resources = {
           status: "Trạng Thái",
           remove_conn: "BỎ KẾT NỐI",
           devices: "DANH SÁCH THIẾT BỊ",
+          total_logs: "TỔNG LOGS",
+          disconnected_devices_tooltip: "{{count}} thiết bị mất kết nối",
+          camera_default_unlinked: "-- Camera mặc định từ Server (Chưa liên kết Camera) --",
+          camera_default_linked: "-- Camera mặc định từ Server ({{name}}) --",
+          no_camera_no_snapshot: "-- Không có Camera (Không chụp ảnh) --",
           no_devices_mapped: "Không có thiết bị",
           bound_camera: "Camera mặc định",
           no_camera_disabled: "-- Không có Camera (Không chụp ảnh) --",
@@ -452,6 +457,11 @@ const resources = {
           status: "Status",
           remove_conn: "REMOVE CONNECTION",
           devices: "DEVICES",
+          total_logs: "TOTAL LOGS",
+          disconnected_devices_tooltip: "{{count}} disconnected devices",
+          camera_default_unlinked: "-- Default Camera from Server (Unlinked Camera) --",
+          camera_default_linked: "-- Default Camera from Server ({{name}}) --",
+          no_camera_no_snapshot: "-- No Camera (No Snapshot) --",
           no_devices_mapped: "No devices mapped from this server",
           bound_camera: "Default Camera",
           no_camera_disabled: "-- No Camera (Disabled Snapshot) --",
@@ -623,6 +633,7 @@ const resources = {
           vacant_alarm: 'Vacant',
           'Occupy Alarm': 'Occupied',
           occupy_alarm: 'Occupied',
+          
 
           // Sunell IVA
           iva_trip_wire: 'Tripwire',
@@ -653,6 +664,8 @@ const resources = {
           vacant: 'Vacant',
           debug_raw: 'Debug Raw',
           out_of_bed: 'Out of Bed',
+          bradynea: 'Bradynea',
+          tachypnea: 'Tachypnea',
         },
         mqtt_alarm_type: {
           '0': 'Fall',

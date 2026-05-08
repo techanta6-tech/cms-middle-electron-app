@@ -34,10 +34,11 @@ function LogFilter({
   eventTypes,
   selectedServers,
   selectedDevices,
-  selectedEventType,
+  selectedEventTypes,
   onToggleServer,
   onToggleDevice,
-  onSelectEventType,
+  onToggleEventType,
+  onClearEventTypes,
 }: {
   servers: Record<string, ServerData>;
   devices: Record<string, DeviceData>;
@@ -47,10 +48,11 @@ function LogFilter({
   eventTypes: string[];
   selectedServers: Set<string>;
   selectedDevices: Set<string>;
-  selectedEventType: string | null;
+  selectedEventTypes: string[];
   onToggleServer: (id: string) => void;
   onToggleDevice: (ip: string) => void;
-  onSelectEventType: (type: string | null) => void;
+  onToggleEventType: (type: string) => void;
+  onClearEventTypes: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -150,13 +152,14 @@ function LogFilter({
     return groups;
   }, [deviceList]);
 
-  const activeCount = selectedServers.size + selectedDevices.size + (selectedEventType ? 1 : 0);
+  const activeCount = selectedServers.size + selectedDevices.size + selectedEventTypes.length;
 
   const handleServerClick = (id: string) => {
     onToggleServer(id);
     setTimeout(() => {
       const el = document.getElementById(`device-group-${id}`) || 
-                 document.getElementById(`device-group-mqtt-${id}`);
+                 document.getElementById(`device-group-mqtt-${id}`) ||
+                 document.getElementById(`device-group-mqtt-mqtt-${id}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
@@ -285,21 +288,21 @@ function LogFilter({
             ) : (
               <div className="flex flex-col gap-0.5 max-h-32 overflow-y-auto custom-scrollbar">
                 <button
-                  onClick={() => onSelectEventType(null)}
+                  onClick={() => onClearEventTypes()}
                   className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1 pt-1 first:pt-0.5"
                 >
-                  <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${!selectedEventType ? 'bg-warning border-warning' : 'border-outline-variant'
+                  <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${selectedEventTypes.length === 0 ? 'bg-warning border-warning' : 'border-outline-variant'
                     }`}>
-                    {!selectedEventType && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                    {selectedEventTypes.length === 0 && <Check className="w-2 h-2 text-white stroke-[3]" />}
                   </div>
                   <span className="text-[10px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
                 </button>
                 {eventTypes.map(type => {
-                  const checked = selectedEventType === type;
+                  const checked = selectedEventTypes.includes(type);
                   return (
                     <button
                       key={type}
-                      onClick={() => onSelectEventType(type)}
+                      onClick={() => onToggleEventType(type)}
                       className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 last:pb-0.5"
                     >
                       <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
@@ -338,8 +341,8 @@ function Dashboard() {
     handleRemoveConnection,
     socket,
     eventTypes,
-    selectedEventType,
-    setSelectedEventType,
+    selectedEventTypes,
+    setSelectedEventTypes,
     totalLogCount,
     KEEP_TOTAL_LOG_COUNT,
     handleAddMqttServer,
@@ -470,13 +473,46 @@ function Dashboard() {
   const displayLogs = useMemo(() => {
     if (selectedServers.size === 0 && selectedDevices.size === 0) return filteredLogs;
     return filteredLogs.filter(log => {
-      const logServerId = log.mqttServerId || log.server?.server_id || log.server?.serial || '';
+      const logServerId = log.mqttServerId ? `mqtt-${log.mqttServerId}` : (log.server?.server_id || log.server?.serial || '');
       const devKey = `${log.server?.server_id}_${log.device_ip}_${log.device_name}`;
-      const matchServer = selectedServers.size === 0 || selectedServers.has(logServerId);
-      const matchDevice = selectedDevices.size === 0 || selectedDevices.has(devKey);
+      
+      let matchServer = selectedServers.size === 0 || selectedServers.has(logServerId);
+      let matchDevice = selectedDevices.size === 0 || selectedDevices.has(devKey);
+
+      // Nếu thiết bị được tích chọn đích danh trong bộ lọc, tự động cho qua Server kiểm tra
+      if (selectedDevices.has(devKey)) {
+        matchServer = true;
+      }
+
+      // Nếu là camera log, kiểm tra xem có được liên kết với Radar hay Server đang được chọn hay không
+      if (log.source === 'sunell-camera' || log.device_type === 'sunell') {
+        const isLinkedToSelectedRadar = Array.from(selectedDevices).some(selectedKey => {
+          return deviceCameraLinks.some(link => {
+            if (link.cameraId !== log.cameraIp) return false;
+            const mqttSrv = mqttServers?.find(s => s.id === link.mqttServerId);
+            const brokerHost = mqttSrv?.brokerHost || '';
+            const devs = mqttDevicesByServer[link.mqttServerId] || [];
+            const dev = devs.find(d => d.devEui === link.devEui);
+            if (!dev) return false;
+            const devName = dev.deviceName || 'MQTT Device';
+            const radarKey = `mqtt-${link.mqttServerId}_${brokerHost}_${devName}`;
+            return selectedKey === radarKey;
+          });
+        });
+
+        const isLinkedToSelectedServer = Array.from(selectedServers).some(selectedServerId => {
+          return deviceCameraLinks.some(link => {
+            return link.cameraId === log.cameraIp && `mqtt-${link.mqttServerId}` === selectedServerId;
+          });
+        });
+
+        if (isLinkedToSelectedRadar) matchDevice = true;
+        if (isLinkedToSelectedServer) matchServer = true;
+      }
+
       return matchServer && matchDevice;
     });
-  }, [filteredLogs, selectedServers, selectedDevices]);
+  }, [filteredLogs, selectedServers, selectedDevices, deviceCameraLinks, mqttServers, mqttDevicesByServer]);
 
 
   // ESC key logout removed as requested
@@ -615,10 +651,19 @@ function Dashboard() {
                     eventTypes={eventTypes}
                     selectedServers={selectedServers}
                     selectedDevices={selectedDevices}
-                    selectedEventType={selectedEventType}
+                    selectedEventTypes={selectedEventTypes}
                     onToggleServer={toggleServer}
                     onToggleDevice={toggleDevice}
-                    onSelectEventType={setSelectedEventType}
+                    onToggleEventType={(type) => {
+                      setSelectedEventTypes(prev => {
+                        if (prev.includes(type)) {
+                          return prev.filter(t => t !== type);
+                        } else {
+                          return [...prev, type];
+                        }
+                      });
+                    }}
+                    onClearEventTypes={() => setSelectedEventTypes([])}
                   />
                 </div>
 

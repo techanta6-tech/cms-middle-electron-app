@@ -126,9 +126,12 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
             className="text-[9px] font-mono bg-surface-container border border-outline-variant/15 rounded pl-6 pr-6 py-1 text-on-surface appearance-none cursor-pointer focus:border-secondary/40 focus:outline-none transition-colors"
           >
             <option value="__all__">{t('app.monitor.all_types')}</option>
-            {logTypes.map(lt => (
-              <option key={lt} value={lt}>{lt}</option>
-            ))}
+            {logTypes.map(lt => {
+              const translatedType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
+              return (
+                <option key={lt} value={lt}>{translatedType}</option>
+              );
+            })}
           </select>
         </div>
         <span className="text-[9px] font-mono font-bold text-on-surface-variant/50 shrink-0">
@@ -145,22 +148,52 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
           </div>
         ) : (
           <div className="divide-y divide-outline-variant/5">
-            {displayedLogs.map((log, i) => (
-              <div key={log.id || i} className="flex items-baseline gap-2 px-2 py-1 hover:bg-surface-container/30 transition-colors">
-                <span className="text-[8.5px] font-mono text-on-surface-variant/50 shrink-0 min-w-[50px]">
-                  {new Date(log.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                </span>
-                <span className={`min-w-[150px] text-[7.5px] font-bold uppercase tracking-wider shrink-0 min-w-[45px] text-left ${logTypeBadgeColor(log.log_type)}`}>
-                  {log.log_type || 'LOG'}
-                </span>
-                <span className="text-[9px] text-on-surface-variant leading-tight flex-1 break-words">
-                  {log.description || '—'}
-                </span>
-                <span className="text-[7.5px] font-mono text-on-surface-variant/30 shrink-0">
-                  {log.server?.server_id || ''}
-                </span>
-              </div>
-            ))}
+            {displayedLogs.map((log, i) => {
+              let displayDesc = log.description;
+              if (displayDesc) {
+                const descKey = displayDesc.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+                displayDesc = t(`app.logtype.${descKey}`, {
+                  defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
+                });
+              }
+
+              if (log.source === 'mqtt') {
+                let evt = log.raw?.event;
+                if (!evt && log.raw?.payload?.object?.events?.length > 0) {
+                  evt = log.raw.payload.object.events[0];
+                }
+                if (evt) {
+                  const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
+                  if (typeVal !== undefined) {
+                    const lowerVal = String(typeVal).toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
+                    displayDesc = t(`app.mqtt_alarm_type.${lowerVal}`, {
+                      defaultValue: t(`app.logtype.${lowerVal}`, { defaultValue: String(typeVal) })
+                    });
+                  }
+                }
+              }
+
+              const displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type || 'LOG').toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, {
+                defaultValue: log.log_type || 'LOG'
+              });
+
+              return (
+                <div key={log.id || i} className="flex items-baseline gap-2 px-2 py-1 hover:bg-surface-container/30 transition-colors">
+                  <span className="text-[8.5px] font-mono text-on-surface-variant/50 shrink-0 min-w-[50px]">
+                    {new Date(log.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                  <span className={`min-w-[150px] text-[7.5px] font-bold uppercase tracking-wider shrink-0 min-w-[45px] text-left ${logTypeBadgeColor(log.log_type)}`}>
+                    {displayType}
+                  </span>
+                  <span className="text-[9px] text-on-surface-variant leading-tight flex-1 break-words">
+                    {displayDesc || '—'}
+                  </span>
+                  <span className="text-[7.5px] font-mono text-on-surface-variant/30 shrink-0">
+                    {log.server?.server_id || ''}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -547,7 +580,7 @@ const CameraDevicesCard = memo(function CameraDevicesCard({ cameras, sunellLogs 
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
-            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">TỔNG LOGS</span>
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.total_logs')}</span>
             <div className="flex items-center gap-1">
               <span className="text-[14px] font-black font-mono text-secondary leading-none">{totalLogs}</span>
             </div>
@@ -957,7 +990,7 @@ const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, dev
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
-            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">TỔNG LOGS</span>
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.total_logs')}</span>
             <div className="flex items-center gap-1">
               <span className="text-[14px] font-black font-mono text-secondary leading-none">{serverLogs.length}</span>
             </div>
@@ -967,7 +1000,7 @@ const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, dev
             <div className="flex items-center gap-1">
               <span className="text-[14px] font-black font-mono text-on-surface leading-none">{deviceCount}</span>
               {disconnectedDeviceCount > 0 && (
-                <InfoTooltip content={`${disconnectedDeviceCount} thiết bị mất kết nối`}>
+                <InfoTooltip content={t('app.monitor.disconnected_devices_tooltip', { count: disconnectedDeviceCount })}>
                   <span className="text-[9px] font-black font-mono text-tertiary bg-tertiary/10 px-1 rounded">
                     {disconnectedDeviceCount} offline
                   </span>
@@ -1133,7 +1166,7 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end gap-1 px-3 py-1 bg-surface-container/50 rounded border border-outline-variant/10">
-            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">TỔNG LOGS</span>
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.total_logs')}</span>
             <div className="flex items-center gap-1">
               <span className="text-[14px] font-black font-mono text-secondary leading-none">{serverLogsCount}</span>
             </div>
@@ -1161,65 +1194,48 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
               </div>
               <div className="grid gap-1.5 border-l-2 border-outline-variant/10 pl-2 ml-1">
                 {devices.map((device) => {
-                  const deviceLogs = (logs || []).filter(l => l.mqttServerId === server.id && l.server?.serial === device.devEui);
+                  const link = deviceCameraLinks.find(l => l.devEui === device.devEui && l.mqttServerId === server.id);
+                  const deviceLogs = (logs || []).filter(l => {
+                    const matchRadar = l.mqttServerId === server.id && l.server?.serial === device.devEui;
+                    const matchCamera = link?.cameraId && l.source === 'sunell-camera' && l.cameraIp === link.cameraId;
+                    return !!(matchRadar || matchCamera);
+                  });
                   return (
-<<<<<<< HEAD
-                    <div key={device.devEui} className="flex flex-col gap-1.5 px-3 py-2 bg-surface-container-lowest/40 rounded border border-outline-variant/5 hover:border-outline-variant/20 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <InfoTooltip content="Device Profile" side="bottom">
-                          <span className="text-[9.5px] font-mono font-medium min-w-[70px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20">
-                            {device.deviceProfileName}
-                          </span>
-                        </InfoTooltip>
-                        <InfoTooltip content="Tên thiết bị" side="bottom">
-                          <span className="text-[11px] font-bold tracking-wide flex-1 truncate max-w-[200px] block text-on-surface-variant">{device.deviceName}</span>
-                        </InfoTooltip>
-                        <InfoTooltip content="DevEUI (Mã định danh thiết bị)" side="bottom">
-                          <span className="text-[10px] font-mono font-medium text-on-surface-variant/70 min-w-[100px] bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/5">{device.devEui}</span>
-                        </InfoTooltip>
-                        <InfoTooltip content="Tổng alarm events nhận được">
-                          <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${device.alarmCount > 0 ? 'text-tertiary bg-tertiary/15 ring-1 ring-tertiary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
-                            {device.alarmCount} {t('app.monitor.alarms')}
-                          </span>
-                        </InfoTooltip>
-                      </div>
-                      {/* Device-level camera linking */}
-                      <div className="flex items-center gap-2 pl-1">
-                        <span className="text-[8px] font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">📷 Camera</span>
-                        <select
-                          value={link?.cameraId || ''}
-                          onChange={(e) => onLinkDeviceCamera(device.devEui, server.id, e.target.value || null)}
-                          disabled={true}
-                          className="flex-1 text-[10px] font-mono bg-surface-container/50 border border-outline-variant/20 rounded px-1.5 py-1 text-on-surface-variant/60 cursor-not-allowed select-none"
-                        >
-                          <option value="">
-                            {(() => {
-                              const parentCam = server.cameraId ? allCameras.find(c => c.id === server.cameraId) : null;
-                              if (!parentCam) {
-                                return '-- Camera mặc định từ Server (Chưa liên kết Camera) --';
-                              }
-                              const camName = parentCam.name || `${parentCam.type ? parentCam.type.toUpperCase() : 'CAMERA'} - ${parentCam.cameraIp}:${parentCam.cameraPort}`;
-                              return `-- Camera mặc định từ Server (${camName}) --`;
-                            })()}
-                          </option>
-                          <option value="none">-- Không có Camera (Không chụp ảnh) --</option>
-                          {allCameras.map(cam => (
-                            <option key={cam.id} value={cam.id}>{cam.name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-=======
                     <DeviceItemRow
                       key={device.devEui}
                       name={device.deviceName}
                       ip={device.devEui}
                       type={device.deviceProfileName}
-                      logCount={device.alarmCount}
+                      logCount={deviceLogs.length}
                       connectionStatus="connected"
                       filteredLogs={deviceLogs}
-                    />
->>>>>>> 26a9dc05489cb72c4ae3b3adfe5c910bd40919ce
+                    >
+                      {/* Device-level camera linking */}
+                      <div className="flex items-center gap-2 pl-1 bg-surface-container-low/50 border border-outline-variant/10 rounded px-2.5 py-1.5 mt-0.5">
+                        <span className="text-[8px] font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">📷 Camera</span>
+                        <select
+                          value={link?.cameraId || ''}
+                          onChange={(e) => onLinkDeviceCamera(device.devEui, server.id, e.target.value || null)}
+                          disabled={true}
+                          className="flex-1 text-[10px] font-mono bg-surface-container border border-outline-variant/20 rounded px-1.5 py-1 text-on-surface-variant/60 cursor-not-allowed select-none"
+                        >
+                          <option value="">
+                            {(() => {
+                              const parentCam = server.cameraId ? allCameras.find(c => c.id === server.cameraId) : null;
+                              if (!parentCam) {
+                                return t('app.monitor.camera_default_unlinked');
+                              }
+                              const camName = parentCam.name || `${parentCam.type ? parentCam.type.toUpperCase() : 'CAMERA'} - ${parentCam.cameraIp}:${parentCam.cameraPort}`;
+                              return t('app.monitor.camera_default_linked', { name: camName });
+                            })()}
+                          </option>
+                          <option value="none">{t('app.monitor.no_camera_no_snapshot')}</option>
+                          {allCameras.map(cam => (
+                            <option key={cam.id} value={cam.id}>{cam.name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </DeviceItemRow>
                   );
                 })}
               </div>
