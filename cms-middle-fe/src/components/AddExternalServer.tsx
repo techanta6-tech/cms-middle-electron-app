@@ -22,6 +22,8 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
   const [useDefaultTopic, setUseDefaultTopic] = useState(false);
   const defaultTopicTemplate = 'application/32dc910f-33ae-4526-ac0b-6344e378f00f/device/24e124806e515126/event/up';
 
+  const isSubmitDisabled = connectionType === 'mqtt' && !useDefaultTopic && !mqttTopic.trim();
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (connectionType === 'svms') {
@@ -291,7 +293,8 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
             </button>
             <button
               type="submit"
-              className={`flex-1 px-6 py-3 text-[11px] font-black uppercase tracking-widest rounded-sm transition-all ${connectionType === 'mqtt'
+              disabled={isSubmitDisabled}
+              className={`flex-1 px-6 py-3 text-[11px] font-black uppercase tracking-widest rounded-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none ${connectionType === 'mqtt'
                 ? 'bg-cyan-600 text-white hover:bg-cyan-700 shadow-[0_0_20px_rgba(6,182,212,0.2)]'
                 : 'bg-primary text-primary-container hover:bg-primary/90 shadow-[0_0_20px_rgba(192,132,252,0.2)]'
                 }`}

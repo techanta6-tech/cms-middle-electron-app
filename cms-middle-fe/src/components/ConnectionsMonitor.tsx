@@ -1158,8 +1158,8 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
                         >
                           <option value="">
                             {server.cameraId
-                              ? `🔄 Kế thừa từ Server (${allCameras.find(c => c.id === server.cameraId)?.name || `${allCameras.find(c => c.id === server.cameraId)?.type.toUpperCase()} - ${allCameras.find(c => c.id === server.cameraId)?.cameraIp}:${allCameras.find(c => c.id === server.cameraId)?.cameraPort}`})`
-                              : t('app.monitor.no_camera_disabled')}
+                              ? `-- Kế thừa từ Server (${allCameras.find(c => c.id === server.cameraId)?.name || `${allCameras.find(c => c.id === server.cameraId)?.type.toUpperCase()} - ${allCameras.find(c => c.id === server.cameraId)?.cameraIp}:${allCameras.find(c => c.id === server.cameraId)?.cameraPort}`}) --`
+                              : '-- Kế thừa từ Server (Chưa liên kết Camera) --'}
                           </option>
                           <option value="none">-- Không có Camera (Không chụp ảnh) --</option>
                           {allCameras.map(cam => (
