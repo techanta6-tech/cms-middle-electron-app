@@ -51,13 +51,7 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
     }
   }
 
-  let displayType = typeof log.log_type === 'string' ? t(`app.logtype.${log.log_type.toLowerCase()}`, { defaultValue: log.log_type.toUpperCase() }).toUpperCase() : 'INFO';
-  if (log.source === 'mqtt' && log.log_type === 'data') {
-    displayType = t('app.alert_wall.alert');
-  } else {
-    const rawType = (log.log_type || log.raw?.body?.log_type || 'INFO').toLowerCase().replace(/ /g, '_').replace(/\./g, '_');
-    displayType = t(`app.logtype.${rawType}`, { defaultValue: rawType.toUpperCase() });
-  }
+  let displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`);
   const timeStr = new Date(log.time * 1000).toLocaleTimeString();
 
   return (
@@ -70,7 +64,7 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
       <div className='h-full flex flex-col pl-3 flex-1 min-w-0'>
         <div className={`log-entry-indicator absolute left-0 top-0 bottom-0 w-1 ${bgBorderClass}`}></div>
         <div className="flex items-start mb-1 gap-4">
-          <span className={`log-entry-type text-[10px] font-bold ${colorClass} uppercase flex items-center gap-1.5 shrink-0`}>
+          <span className={`log-entry-type text-[10px] font-bold ${colorClass} uppercase flex items-center gap-1.5  shrink-0`}>
             <Icon className="displayType w-3.5 h-3.5" />
             {displayType}
           </span>

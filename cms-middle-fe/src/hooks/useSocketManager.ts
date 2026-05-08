@@ -18,15 +18,15 @@ const DEFAULT_EVENT_TYPES = [
   'direction',                        // SVMS: Hướng di chuyển (alias: ai.alarm.direction.all)
 
   // ─── Sunell SDK (receive-sunell-log → cameras.service.js onAlarm callback) ───
-  'lpr_event',                       // Sunell: phát hiện biển số (TargetDetectList Type=3)
+  // 'lpr_event',                       // Sunell: phát hiện biển số (TargetDetectList Type=3)
   // 'face_event',                      // Sunell: phát hiện khuôn mặt (TargetDetectList Type=0)
-  'motion_event',                    // Sunell: phát hiện chuyển động (main_type=1, sub_type=2)
+  // 'motion_event',                    // Sunell: phát hiện chuyển động (main_type=1, sub_type=2)
   // ⚠️ system_event: BE emit `system_event_${mainType}_${subType}` — tự add runtime qua eventTypeBufferRef
 
   // ─── Sunell SDK — IVA sub_type mapping (main_type=6 hoặc 9, cameras.service.js IVA_SUBTYPE_MAP) ───
   // ⚠️ IVA sub_type không nằm trong map: BE emit `iva_event_${subType}` — tự add runtime
-  'iva_trip_wire',                   // Sunell IVA: vượt hàng rào ảo (sub_type=21)
-  'iva_perimeter_intrusion',         // Sunell IVA: xâm nhập vùng cấm (sub_type=24)
+  // 'iva_trip_wire',                   // Sunell IVA: vượt hàng rào ảo (sub_type=21)
+  // 'iva_perimeter_intrusion',         // Sunell IVA: xâm nhập vùng cấm (sub_type=24)
   // 'iva_double_trip_wire',            // Sunell IVA: hàng rào ảo kép (sub_type=25)
   // 'iva_retrograde',                  // Sunell IVA: đi ngược chiều (sub_type=31)
   // 'iva_smd',                         // Sunell IVA: phát hiện đối tượng di chuyển SMD (sub_type=22)
@@ -43,16 +43,19 @@ const DEFAULT_EVENT_TYPES = [
   // ─── MQTT Radar/Sensor (receive-mqtt-log → mqtt.service.js, log_type = raw.type) ───
   // 'data',                            // MQTT: dữ liệu cảm biến (có object.events)
   // 'raw',                             // MQTT: payload thô (không có object.events)
-  'mqtt_fall_alarm',                 // VS373: Té ngã
-  'mqtt_out_bed_alarm',              // VS373: Rời khỏi giường
-  'mqtt_dwell_alarm',                // VS373: Lưu trú quá lâu
-  'mqtt_static_alarm',               // VS373: Bất động bất thường
-  'mqtt_vacant_alarm',               // VS373: Phòng trống
-  'mqtt_occupy_alarm',               // VS373: Có người
+  'fall',                 // VS373: Té ngã
+  'out_of_bed',              // VS373: Rời khỏi giường
+  'dwell',                // VS373: Ở lại quá lâu
+  'motionless',               // VS373: Bất động bất thường
+  'vacant',               // VS373: Phòng trống
+  'occupied',               // VS373: Có người
+  'bradynea',               // VS373: Thở chậm bất thường
+  'tachypnea',              // VS373: Thở nhanh bất thường
+  'lying'                 // VS373: Đang nằm
 ];
 
 /**
- * ─── LOG_TYPE_GROUPS ─────────────────────────────────────────────────────────
+ * ─── LOG_TYP  E_GROUPS ─────────────────────────────────────────────────────────
  * Map từ "tên nhóm hiển thị trên Filter UI" → danh sách tất cả các giá trị
  * log_type thực tế có thể đến từ các nguồn khác nhau (SVMS, MQTT, Sunell...).
  *
@@ -84,14 +87,8 @@ const LOG_TYPE_GROUPS: Record<string, string[]> = {
   'lpr_event': ['lpr_event', 'phát_hiện_biển_số_(lpr)'],
   'face_event': ['face_event', 'phát_hiện_khuôn_mặt_(face)'],
   'iva_event': ['iva_event', 'phân_tích_ai_(ivs/iva)'],
-  'mqtt_fall_alarm': ['Fall Alarm', 'fall_alarm', 'mqtt_fall_alarm'],
-  'mqtt_out_bed_alarm': ['Out Bed Alarm', 'out_bed_alarm', 'mqtt_out_bed_alarm'],
-  'mqtt_dwell_alarm': ['Dwell Alarm', 'dwell_alarm', 'Dwell time Alarm', 'mqtt_dwell_alarm'],
-  'mqtt_static_alarm': ['Abnormal Static Alarm', 'static_alarm', 'mqtt_static_alarm'],
-  'mqtt_vacant_alarm': ['Vacant Alarm', 'vacant_alarm', 'mqtt_vacant_alarm'],
-  'mqtt_occupy_alarm': ['Occupy Alarm', 'occupy_alarm', 'mqtt_occupy_alarm'],
   // SVMS AI: giữ giá trị gốc từ thiết bị, alias được map vào đây
-  'crosswire': ['crosswire', 'ai.alarm.crosswire.all'],
+  'crosswire': ['crosswire', 'ai.alarm.crosswire.all', 'iva_trip_wire'],
   'direction': ['direction', 'ai.alarm.direction.all'],
 };
 
@@ -782,6 +779,11 @@ export function useSocketManager() {
         mqttServerId: raw.mqttServerId,
       };
 
+
+      // Nếu là log debug_raw, chúng ta bỏ qua việc thêm vào danh sách hiển thị chính (AlertWall)
+      if (newLog.log_type === 'debug_raw') {
+        return;
+      }
 
       logBufferRef.current.push(newLog);
       eventTypeBufferRef.current.add(resolveToGroupKey(newLog.log_type));

@@ -178,23 +178,23 @@ async function addCameraDevice(deviceConfig) {
         } else if (isMotion && enableMotion) {
           shouldProcess = true;
           logType = 'motion_event';
-          description = (globalMainType != null && globalSubType != null) 
-            ? getAlarmName(globalMainType, globalSubType) 
+          description = (globalMainType != null && globalSubType != null)
+            ? getAlarmName(globalMainType, globalSubType)
             : 'Phát hiện chuyển động (Motion)';
         } else if (isIVA && enableIVA) {
           shouldProcess = true;
           const ivaInfo = IVA_SUBTYPE_MAP[ivaSubType];
           logType = ivaInfo ? ivaInfo.logType : `iva_event_${ivaSubType}`;
-          description = (globalMainType != null && globalSubType != null) 
-            ? getAlarmName(globalMainType, globalSubType) 
+          description = (globalMainType != null && globalSubType != null)
+            ? getAlarmName(globalMainType, globalSubType)
             : 'Phân tích AI (IVS/IVA)';
         } else if (isSystem && enableSystem) {
           shouldProcess = true;
-          logType = (globalMainType != null && globalSubType != null) 
-            ? `system_event_${globalMainType}_${globalSubType}` 
+          logType = (globalMainType != null && globalSubType != null)
+            ? `system_event_${globalMainType}_${globalSubType}`
             : 'system_event';
-          description = (globalMainType != null && globalSubType != null) 
-            ? getAlarmName(globalMainType, globalSubType) 
+          description = (globalMainType != null && globalSubType != null)
+            ? getAlarmName(globalMainType, globalSubType)
             : 'Cảnh báo hệ thống / an ninh';
         }
 
@@ -224,39 +224,39 @@ async function addCameraDevice(deviceConfig) {
         let eventKey = logType;
         let eventNameSafe = '';
         const rawEventName = payload.eventName || (payload.data && payload.data.eventName) || '';
-        
+
         if (rawEventName) {
-           // Tìm chuỗi nằm trong dấu ngoặc đơn (VD: "Perimeter intrusion")
-           const match = rawEventName.match(/\(([^)]+)\)/);
-           const extractedName = match ? match[1] : rawEventName;
-           
-           // Lọc bỏ các ký tự đặc biệt để làm tên file
-           eventNameSafe = extractedName.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').toLowerCase();
-           // Xóa gạch dưới ở 2 đầu nếu có
-           eventNameSafe = eventNameSafe.replace(/^_|_$/g, '');
-           eventKey = `${logType}_${eventNameSafe}`;
+          // Tìm chuỗi nằm trong dấu ngoặc đơn (VD: "Perimeter intrusion")
+          const match = rawEventName.match(/\(([^)]+)\)/);
+          const extractedName = match ? match[1] : rawEventName;
+
+          // Lọc bỏ các ký tự đặc biệt để làm tên file
+          eventNameSafe = extractedName.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').toLowerCase();
+          // Xóa gạch dưới ở 2 đầu nếu có
+          eventNameSafe = eventNameSafe.replace(/^_|_$/g, '');
+          eventKey = `${logType}_${eventNameSafe}`;
         }
 
         if (!loggedEventTypes.has(eventKey)) {
           loggedEventTypes.add(eventKey);
           const fileName = eventNameSafe ? `${logType}_${eventNameSafe}.txt` : `${logType}.txt`;
           const logFilePath = path.join(sampleLogsDir, fileName);
-          
+
           let dataToWrite = `--- SUNELL EVENT: ${logType.toUpperCase()} ${rawEventName ? `(${rawEventName})` : ''} ---\n`;
           dataToWrite += `Time: ${new Date().toISOString()}\n`;
           dataToWrite += `Camera: ${device.name} (${device.id})\n`;
           dataToWrite += `Description: ${description}\n`;
           dataToWrite += `Raw JSON:\n`;
           dataToWrite += (typeof rawJsonStr === 'string' ? rawJsonStr : JSON.stringify(rawJsonStr, null, 2)) + '\n\n';
-          
+
           if (payload.snapshotBase64) {
-             dataToWrite += `[HAS SNAPSHOT BASE64 IMAGE - LENGTH: ${payload.snapshotBase64.length}]\n`;
+            dataToWrite += `[HAS SNAPSHOT BASE64 IMAGE - LENGTH: ${payload.snapshotBase64.length}]\n`;
           }
-          
+
           try {
             fs.writeFileSync(logFilePath, dataToWrite, 'utf8');
             console.log(`[Sunell-Sample] Đã ghi file log mẫu cho sự kiện ${eventKey} tại ${logFilePath}`);
-          } catch(err) {
+          } catch (err) {
             console.error(`[Sunell-Sample] Lỗi ghi file log mẫu:`, err);
           }
         }
