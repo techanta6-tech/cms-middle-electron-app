@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { LogData } from '../types';
 import { TriangleAlert, Cloud, X, ChevronRight, ChevronDown } from 'lucide-react';
 
-export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }) {
+export function LogPopup({ log, onClose, mqttServers }: { log: LogData, onClose: () => void, mqttServers?: any[] }) {
   const { t } = useTranslation();
   const rawSnapshot = log.snapshot || log.raw?.body?.snapshot;
   const snapshot = rawSnapshot
@@ -30,8 +30,19 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
     }
   }
 
+  let serverId = log.server?.server_id || log.raw?.body?.server?.server_id || 'UNKNOWN_SERVER';
+  if (log.source === 'mqtt' || log.mqttServerId || serverId.startsWith('mqtt-')) {
+    const cleanId = (log.mqttServerId || serverId.replace('mqtt-', '')).toLowerCase();
+    const mqttSrv = (mqttServers || []).find(s => s.id?.toLowerCase() === cleanId);
+    if (mqttSrv) {
+      serverId = mqttSrv.name || `${mqttSrv.brokerHost}:${mqttSrv.brokerPort}`;
+    } else if (log.raw?.brokerHost) {
+      serverId = log.raw.brokerPort ? `${log.raw.brokerHost}:${log.raw.brokerPort}` : log.raw.brokerHost;
+    }
+  }
+
   const allMetadata = [
-    { label: 'Server ID', value: log.server?.server_id || log.raw?.body?.server?.server_id, isImportant: true },
+    { label: 'Server ID', value: serverId, isImportant: true },
     { label: 'Device Name', value: log.device_name || log.raw?.body?.device_name, isImportant: true },
     { label: 'Device IP', value: log.cameraIp || log.device_ip || 'Internal', isImportant: false },
     { label: 'Device Port', value: log.raw?.body?.device_port, isImportant: false },
@@ -84,7 +95,6 @@ export function LogPopup({ log, onClose }: { log: LogData, onClose: () => void }
     return null;
   };
 
-  const serverId = log.server?.server_id || log.raw?.body?.server?.server_id || 'UNKNOWN_SERVER';
   const deviceName = log.device_name || log.raw?.body?.device_name || 'UNKNOWN_DEVICE';
   const summaryContent = renderEventSummary();
 

@@ -137,7 +137,31 @@ function LogFilter({
     return [...svmsDevs, ...indepCams, ...mqttDevs];
   }, [devices, cameraDevices, mqttDevicesByServer, mqttServers]);
 
+  const groupedDevices = useMemo(() => {
+    const groups: Record<string, typeof deviceList> = {};
+    deviceList.forEach(dev => {
+      let groupKey = dev.serverId || 'UNKNOWN';
+      if (groupKey === 'SUNELL-LOCAL') {
+        groupKey = `SUNELL-LOCAL_${dev.type || 'sunell'}`;
+      }
+      if (!groups[groupKey]) groups[groupKey] = [];
+      groups[groupKey].push(dev);
+    });
+    return groups;
+  }, [deviceList]);
+
   const activeCount = selectedServers.size + selectedDevices.size + (selectedEventType ? 1 : 0);
+
+  const handleServerClick = (id: string) => {
+    onToggleServer(id);
+    setTimeout(() => {
+      const el = document.getElementById(`device-group-${id}`) || 
+                 document.getElementById(`device-group-mqtt-${id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 100);
+  };
 
   return (
     <div ref={ref} className="app-log-filter flex items-center p-1 cursor-pointer transition-all duration-200 group">
@@ -157,15 +181,15 @@ function LogFilter({
         )}
       </button>
       {open && (
-        <div className="absolute right-3 top-[95%] z-50 bg-surface-container-high border border-outline-variant/90 shadow-2xl rounded-lg w-[90%] max-w-64 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute right-3 top-[95%] z-50 bg-surface-container-high border border-outline-variant/90 shadow-lg rounded-md w-[90%] max-w-[230px] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           {/* Servers */}
-          <div className="px-3 pt-3 pb-1">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Cpu className="w-3 h-3 text-secondary" />
-              <span className="text-[9px] font-black uppercase tracking-widest text-secondary">{t('app.filter.servers')}</span>
+          <div className="px-2 pt-2 pb-0.5">
+            <div className="flex items-center gap-1 mb-1">
+              <Cpu className="w-2.5 h-2.5 text-secondary" />
+              <span className="text-[8px] font-black uppercase tracking-widest text-secondary">{t('app.filter.servers')}</span>
             </div>
             {serverList.length === 0 ? (
-              <p className="text-[10px] text-on-surface-variant/40 py-1 pl-1">{t('app.filter.no_servers')}</p>
+              <p className="text-[9px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_servers')}</p>
             ) : (
               <div className="flex flex-col gap-0.5">
                 {serverList.map(srv => {
@@ -174,15 +198,15 @@ function LogFilter({
                   return (
                     <button
                       key={id}
-                      onClick={() => onToggleServer(id)}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-container transition-colors w-full text-left"
+                      onClick={() => handleServerClick(id)}
+                      className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 first:pt-0.5 last:pb-0.5"
                     >
-                      <div className={`w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-secondary border-secondary' : 'border-outline-variant'
+                      <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-secondary border-secondary' : 'border-outline-variant'
                         }`}>
-                        {checked && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                        {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
                       </div>
-                      <span className="text-[11px] font-semibold text-on-surface shrink-0">{srv.name}</span>
-                      <span className="text-[9px] font-mono text-on-surface-variant/50 ml-auto truncate">{srv.type} - {srv.ip}</span>
+                      <span className="text-[10px] font-semibold text-on-surface shrink-0">{srv.name}</span>
+                      <span className="text-[8px] font-mono text-on-surface-variant/75 ml-auto truncate">{srv.type} - {srv.ip}</span>
                     </button>
                   );
                 })}
@@ -190,61 +214,85 @@ function LogFilter({
             )}
           </div>
 
-          <div className="mx-3 my-1 border-t border-outline-variant/10" />
+          <div className="mx-2 my-1 border-t border-outline-variant/10" />
 
           {/* Devices */}
-          <div className="px-3 pb-3 pt-1">
-            <div className="flex items-center gap-1.5 mb-2">
-              <MonitorSmartphone className="w-3 h-3 text-tertiary" />
-              <span className="text-[9px] font-black uppercase tracking-widest text-tertiary">{t('app.filter.devices')}</span>
+          <div className="px-2 pb-2 pt-0.5">
+            <div className="flex items-center gap-1 mb-1">
+              <MonitorSmartphone className="w-2.5 h-2.5 text-tertiary" />
+              <span className="text-[8px] font-black uppercase tracking-widest text-tertiary">{t('app.filter.devices')}</span>
             </div>
             {deviceList.length === 0 ? (
-              <p className="text-[10px] text-on-surface-variant/40 py-1 pl-1">{t('app.filter.no_devices')}</p>
+              <p className="text-[9px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_devices')}</p>
             ) : (
-              <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto custom-scrollbar">
-                {deviceList.map(dev => {
-                  const uniqueKey = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
-                  const checked = selectedDevices.has(uniqueKey);
+              <div className="flex flex-col gap-1 max-h-36 overflow-y-auto custom-scrollbar pr-1">
+                {Object.entries(groupedDevices).map(([serverKey, devs]) => {
+                  if (!devs || devs.length === 0) return null;
+                  let groupLabel = serverKey;
+                  if (serverKey === 'SUNELL-LOCAL_sunell') {
+                    groupLabel = 'CAMERA SUNELL';
+                  } else if (serverKey.startsWith('SUNELL-LOCAL_')) {
+                    groupLabel = 'CAMERA ĐỘC LẬP';
+                  } else if (serverKey.startsWith('mqtt-')) {
+                    const mqttId = serverKey.replace('mqtt-', '');
+                    const mqttSrv = (mqttServers || []).find(s => s.id === mqttId);
+                    groupLabel = `MQTT RADAR (${mqttSrv?.brokerHost || mqttId})`;
+                  } else {
+                    const srv = Object.values(servers).find(s => s.id === serverKey || s.serial === serverKey);
+                    groupLabel = `SVMS SERVER (${srv?.server_name || serverKey})`;
+                  }
+
                   return (
-                    <button
-                      key={uniqueKey}
-                      onClick={() => onToggleDevice(uniqueKey)}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-container transition-colors w-full text-left"
-                    >
-                      <div className={`w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-tertiary border-tertiary' : 'border-outline-variant'
-                        }`}>
-                        {checked && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                    <div key={serverKey} id={`device-group-${serverKey}`} className="flex flex-col gap-[1px] border-b border-outline-variant/5 pb-1 mb-0.5 last:border-0 last:pb-0 last:mb-0">
+                      <div className="text-[7px] font-black uppercase tracking-widest text-on-surface/90 border-l border-outline-variant/50 pl-1 py-0 mb-0.5 mt-0.5">
+                        {groupLabel}
                       </div>
-                      <span className="text-[11px] font-semibold text-on-surface truncate">{dev.name}</span>
-                      <span className="text-[9px] font-mono text-on-surface-variant/50 ml-auto shrink-0">{dev.type.charAt(0).toUpperCase() + dev.type.slice(1)} - {dev.serverId}</span>
-                    </button>
+                      {devs.map(dev => {
+                        const uniqueKey = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
+                        const checked = selectedDevices.has(uniqueKey);
+                        return (
+                          <button
+                            key={uniqueKey}
+                            onClick={() => onToggleDevice(uniqueKey)}
+                            className="flex items-center gap-1.5 px-1 py-0.5 rounded-sm hover:bg-surface-container transition-colors w-full text-left"
+                          >
+                            <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-tertiary border-tertiary' : 'border-outline-variant'
+                              }`}>
+                              {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                            </div>
+                            <span className="text-[10px] font-semibold text-on-surface truncate">{dev.name}</span>
+                            <span className="text-[8px] font-mono text-on-surface/90 ml-auto shrink-0">{dev.type.charAt(0).toUpperCase() + dev.type.slice(1)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   );
                 })}
               </div>
             )}
           </div>
 
-          <div className="mx-3 my-1 border-t border-outline-variant/10" />
+          <div className="mx-2 my-0.5 border-t border-outline-variant/10" />
 
           {/* Event Types */}
-          <div className="px-3 pb-3 pt-1">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Terminal className="w-3 h-3 text-warning" />
-              <span className="text-[9px] font-black uppercase tracking-widest text-warning">{t('app.filter.event_types')}</span>
+          <div className="px-2 pb-2 pt-0.5">
+            <div className="flex items-center gap-1 mb-1">
+              <Terminal className="w-2.5 h-2.5 text-warning" />
+              <span className="text-[8px] font-black uppercase tracking-widest text-warning">{t('app.filter.event_types')}</span>
             </div>
             {eventTypes.length === 0 ? (
-              <p className="text-[10px] text-on-surface-variant/40 py-1 pl-1">{t('app.filter.no_event_types')}</p>
+              <p className="text-[9px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_event_types')}</p>
             ) : (
-              <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto custom-scrollbar">
+              <div className="flex flex-col gap-0.5 max-h-32 overflow-y-auto custom-scrollbar">
                 <button
                   onClick={() => onSelectEventType(null)}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-container transition-colors w-full text-left"
+                  className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1 pt-1 first:pt-0.5"
                 >
-                  <div className={`w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${!selectedEventType ? 'bg-warning border-warning' : 'border-outline-variant'
+                  <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${!selectedEventType ? 'bg-warning border-warning' : 'border-outline-variant'
                     }`}>
-                    {!selectedEventType && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                    {!selectedEventType && <Check className="w-2 h-2 text-white stroke-[3]" />}
                   </div>
-                  <span className="text-[11px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
+                  <span className="text-[10px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
                 </button>
                 {eventTypes.map(type => {
                   const checked = selectedEventType === type;
@@ -252,13 +300,13 @@ function LogFilter({
                     <button
                       key={type}
                       onClick={() => onSelectEventType(type)}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-container transition-colors w-full text-left"
+                      className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 last:pb-0.5"
                     >
-                      <div className={`w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
+                      <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
                         }`}>
-                        {checked && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                        {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
                       </div>
-                      <span className="text-[11px] font-semibold text-on-surface truncate">{t(`app.logtype.${type.toLowerCase().replace(/\./g, '')}`, { defaultValue: type })}</span>
+                      <span className="text-[10px] font-semibold text-on-surface truncate">{t(`app.logtype.${type.toLowerCase().replace(/\./g, '')}`, { defaultValue: type })}</span>
                     </button>
                   );
                 })}
@@ -576,7 +624,7 @@ function Dashboard() {
                     <div className="flex flex-col">
                       {[...displayLogs].reverse().slice(0, visibleAlerts).map((log, idx) => (
                         <div key={log.id || idx} className="border-b border-outline-variant/5">
-                          <LogEntry log={log} onClick={() => setSelectedLog(log)} />
+                          <LogEntry log={log} onClick={() => setSelectedLog(log)} mqttServers={mqttServers} />
                         </div>
                       ))}
                       {visibleAlerts < displayLogs.length && (
@@ -601,71 +649,77 @@ function Dashboard() {
                   <span className="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-70 font-bold">{t('app.alert_wall.drag_to_assign')}</span>
                   <button
                     onClick={() => {
-                      console.log(devices)
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      setGrids((prevGrids: any[]) => {
-                        const newGrids = [...prevGrids];
-                        const maxGrids = Math.pow(gridCols, 2);
-                        const svmsDevices = Object.values(devices).flatMap(server => {
-                          if (!server.server) return [];
-                          return (server.devices || []).map(dev => ({
-                            server_serial: server.server.serial,
-                            server_id: server.server.server_id,
-                            device_ip: dev.ip,
-                            device_name: dev.name,
-                            device_type: dev.type || 'vms'
-                          }));
-                        });
-
-                        const mqttDevices = mqttServers.flatMap(ms => {
-                          const mqttDevs = mqttDevicesByServer[ms.id] || [];
-                          return mqttDevs.map(dev => ({
-                            server_serial: ms.id,
-                            server_id: `mqtt-${ms.id}`,
-                            device_ip: dev.devEui,
-                            device_name: dev.deviceName,
-                            device_type: 'mqtt-sensor'
-                          }));
-                        });
-
-                        const sunellDevices = cameraDevices.filter(cam => cam.type === 'sunell').map(cam => ({
-                          server_serial: 'SUNELL',
-                          server_id: 'SUNELL-LOCAL',
-                          device_ip: cam.id,
-                          device_name: cam.name || cam.cameraIp,
-                          device_type: 'sunell'
+                      console.log(devices);
+                      const svmsDevices = Object.values(devices).flatMap(server => {
+                        if (!server.server) return [];
+                        return (server.devices || []).map(dev => ({
+                          server_serial: server.server.serial,
+                          server_id: server.server.server_id,
+                          device_ip: dev.ip,
+                          device_name: dev.name,
+                          device_type: dev.type || 'vms'
                         }));
-
-                        const allDevices = [...svmsDevices, ...mqttDevices, ...sunellDevices];
-                        console.log('allDevices', allDevices)
-                        for (const dev of allDevices) {
-                          const isAssigned = newGrids.some(g => g && g.device.server_id === dev.server_id && g.device.device_ip === dev.device_ip && g.device.device_name === dev.device_name);
-                          if (isAssigned) continue;
-
-                          let emptyGridID = -1;
-                          for (let i = 0; i < maxGrids; i++) {
-                            if (!newGrids[i]) {
-                              emptyGridID = i;
-                              break;
-                            }
-                          }
-                          console.log('emptyGridID', emptyGridID)
-                          if (emptyGridID === -1) break;
-
-                          newGrids[emptyGridID] = {
-                            gridID: emptyGridID,
-                            device: {
-                              server_serial: dev.server_serial,
-                              server_id: dev.server_id,
-                              device_ip: dev.device_ip,
-                              device_name: dev.device_name,
-                              device_type: dev.device_type
-                            }
-                          };
-                        }
-                        console.log('newGrids', newGrids)
-                        return newGrids;
                       });
+
+                      const mqttDevices = mqttServers.flatMap(ms => {
+                        const mqttDevs = mqttDevicesByServer[ms.id] || [];
+                        return mqttDevs.map(dev => ({
+                          server_serial: ms.id,
+                          server_id: `mqtt-${ms.id}`,
+                          device_ip: dev.devEui,
+                          device_name: dev.deviceName,
+                          device_type: 'mqtt-sensor'
+                        }));
+                      });
+
+                      const sunellDevices = cameraDevices.filter(cam => cam.type === 'sunell').map(cam => ({
+                        server_serial: 'SUNELL',
+                        server_id: 'SUNELL-LOCAL',
+                        device_ip: cam.id,
+                        device_name: cam.name || cam.cameraIp,
+                        device_type: 'sunell'
+                      }));
+
+                      const allDevices = [...svmsDevices, ...mqttDevices, ...sunellDevices];
+                      console.log('allDevices', allDevices);
+
+                      // Calculate required columns to fit all devices
+                      let newGridCols = gridCols;
+                      const requiredCols = Math.ceil(Math.sqrt(allDevices.length));
+                      if (requiredCols > newGridCols) {
+                        newGridCols = requiredCols;
+                      }
+
+                      const maxGrids = Math.pow(newGridCols, 2);
+                      const newGrids = [...grids];
+
+                      for (const dev of allDevices) {
+                        const isAssigned = newGrids.some(g => g && g.device.server_id === dev.server_id && g.device.device_ip === dev.device_ip && g.device.device_name === dev.device_name);
+                        if (isAssigned) continue;
+
+                        let emptyGridID = -1;
+                        for (let i = 0; i < maxGrids; i++) {
+                          if (!newGrids[i]) {
+                            emptyGridID = i;
+                            break;
+                          }
+                        }
+                        console.log('emptyGridID', emptyGridID);
+                        if (emptyGridID === -1) break;
+
+                        newGrids[emptyGridID] = {
+                          gridID: emptyGridID,
+                          device: {
+                            server_serial: dev.server_serial,
+                            server_id: dev.server_id,
+                            device_ip: dev.device_ip,
+                            device_name: dev.device_name,
+                            device_type: dev.device_type
+                          }
+                        };
+                      }
+                      console.log('newGrids', newGrids, 'newGridCols', newGridCols);
+                      saveGridLayout(newGrids, newGridCols);
                     }}
                     className="text-[9px] font-bold uppercase tracking-widest bg-primary/20 hover:bg-primary/30 text-primary px-3 py-1.5 rounded transition-all active:scale-95 cursor-pointer shadow-sm"
                   >
@@ -996,6 +1050,7 @@ function Dashboard() {
         <LogPopup
           log={selectedLog}
           onClose={() => setSelectedLog(null)}
+          mqttServers={mqttServers}
         />
       )}
     </div>
