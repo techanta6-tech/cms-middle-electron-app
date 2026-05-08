@@ -18,15 +18,15 @@ const DEFAULT_EVENT_TYPES = [
   'direction',                        // SVMS: Hướng di chuyển (alias: ai.alarm.direction.all)
 
   // ─── Sunell SDK (receive-sunell-log → cameras.service.js onAlarm callback) ───
-  'lpr_event',                       // Sunell: phát hiện biển số (TargetDetectList Type=3)
+  // 'lpr_event',                       // Sunell: phát hiện biển số (TargetDetectList Type=3)
   // 'face_event',                      // Sunell: phát hiện khuôn mặt (TargetDetectList Type=0)
-  'motion_event',                    // Sunell: phát hiện chuyển động (main_type=1, sub_type=2)
+  // 'motion_event',                    // Sunell: phát hiện chuyển động (main_type=1, sub_type=2)
   // ⚠️ system_event: BE emit `system_event_${mainType}_${subType}` — tự add runtime qua eventTypeBufferRef
 
   // ─── Sunell SDK — IVA sub_type mapping (main_type=6 hoặc 9, cameras.service.js IVA_SUBTYPE_MAP) ───
   // ⚠️ IVA sub_type không nằm trong map: BE emit `iva_event_${subType}` — tự add runtime
   // 'iva_trip_wire',                   // Sunell IVA: vượt hàng rào ảo (sub_type=21)
-  'iva_perimeter_intrusion',         // Sunell IVA: xâm nhập vùng cấm (sub_type=24)
+  // 'iva_perimeter_intrusion',         // Sunell IVA: xâm nhập vùng cấm (sub_type=24)
   // 'iva_double_trip_wire',            // Sunell IVA: hàng rào ảo kép (sub_type=25)
   // 'iva_retrograde',                  // Sunell IVA: đi ngược chiều (sub_type=31)
   // 'iva_smd',                         // Sunell IVA: phát hiện đối tượng di chuyển SMD (sub_type=22)
