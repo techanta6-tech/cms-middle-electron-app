@@ -2,8 +2,19 @@ import type { LogData } from '../types';
 import { useTranslation } from 'react-i18next';
 import { TriangleAlert, Info, AlertCircle } from 'lucide-react';
 
-export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }) {
+export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick: () => void, mqttServers?: any[] }) {
   const { t } = useTranslation();
+
+  let serverName = log.server.server_id;
+  if (log.source === 'mqtt' || log.mqttServerId || serverName.startsWith('mqtt-')) {
+    const cleanId = (log.mqttServerId || serverName.replace('mqtt-', '')).toLowerCase();
+    const mqttSrv = (mqttServers || []).find(s => s.id?.toLowerCase() === cleanId);
+    if (mqttSrv) {
+      serverName = mqttSrv.name || `${mqttSrv.brokerHost}:${mqttSrv.brokerPort}`;
+    } else if (log.raw?.brokerHost) {
+      serverName = log.raw.brokerPort ? `${log.raw.brokerHost}:${log.raw.brokerPort}` : log.raw.brokerHost;
+    }
+  }
   let Icon = Info;
   const colorClass = 'text-primary';
   const bgBorderClass = 'bg-primary';
@@ -18,8 +29,10 @@ export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }
 
   let displayDesc = log.description;
   if (displayDesc) {
-    const descKey = displayDesc.toLowerCase().replace(/ /g, '_').replace(/\./g, '');
-    displayDesc = t(`app.logtype.${descKey}`, { defaultValue: displayDesc });
+    const descKey = displayDesc.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+    displayDesc = t(`app.logtype.${descKey}`, {
+      defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
+    });
   }
 
   if (log.source === 'mqtt') {
@@ -30,7 +43,10 @@ export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }
     if (evt) {
       const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
       if (typeVal !== undefined) {
-        displayDesc = t(`app.mqtt_alarm_type.${typeVal}`, { defaultValue: String(typeVal) });
+        const lowerVal = String(typeVal).toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
+        displayDesc = t(`app.mqtt_alarm_type.${lowerVal}`, {
+          defaultValue: t(`app.logtype.${lowerVal}`, { defaultValue: String(typeVal) })
+        });
       }
     }
   }
@@ -38,8 +54,10 @@ export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }
   let displayType = typeof log.log_type === 'string' ? t(`app.logtype.${log.log_type.toLowerCase()}`, { defaultValue: log.log_type.toUpperCase() }).toUpperCase() : 'INFO';
   if (log.source === 'mqtt' && log.log_type === 'data') {
     displayType = t('app.alert_wall.alert');
+  } else {
+    const rawType = (log.log_type || log.raw?.body?.log_type || 'INFO').toLowerCase().replace(/ /g, '_').replace(/\./g, '_');
+    displayType = t(`app.logtype.${rawType}`, { defaultValue: rawType.toUpperCase() });
   }
-  displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`);
   const timeStr = new Date(log.time * 1000).toLocaleTimeString();
 
   return (
@@ -58,7 +76,7 @@ export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }
           </span>
         </div>
         <p className="displayDesc text-[11px] text-on-surface mb-1 font-medium leading-relaxed truncate uppercase">{displayDesc}</p>
-        <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{log.server.server_id} // {log.device_name} // {timeStr}</div>
+        <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{serverName} // {log.device_name} // {timeStr}</div>
       </div>
       {log.snapshot && (
         <div className="rounded-sm overflow-hidden border border-outline-variant/20 shrink-0 w-24 mr-2">
