@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
-import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight, Radio, Camera, Search, Filter } from 'lucide-react';
+import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight, Radio, Camera, Search, Filter, Bell, BellRing } from 'lucide-react';
 import { AddExternalServer } from './AddExternalServer';
 import { ConfigSystem } from './ConfigSystem';
 import apiClient from '../api/apiClient';
@@ -287,7 +287,7 @@ export function ConnectionsMonitor({
 
   // Extract unique MQTT devices per server from mqttLogs
   const mqttDevicesByServer = useMemo(() => {
-    const map: Record<string, { devEui: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[]> = {};
+    const map: Record<string, { devEui: string; applicationId: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[]> = {};
     (mqttLogs || []).forEach(log => {
       const serverId = log.mqttServerId;
       const di = log.payload?.deviceInfo;
@@ -298,9 +298,11 @@ export function ConnectionsMonitor({
       if (existing) {
         existing.alarmCount += eventCount;
         existing.lastSeen = log.time;
+        if (!existing.applicationId && di.applicationId) existing.applicationId = di.applicationId;
       } else {
         map[serverId].push({
           devEui: di.devEui,
+          applicationId: di.applicationId || '',
           deviceName: di.deviceName || 'Unknown',
           deviceProfileName: di.deviceProfileName || 'Unknown',
           alarmCount: eventCount,
@@ -608,7 +610,7 @@ const CameraItemWithLogs = memo(function CameraItemWithLogs({ cam, logCount, isC
         onClick={() => { if (hasLogs) setIsLogExpanded(prev => !prev); }}
       >
         {/* Connection status dot */}
-        <InfoTooltip content={isConnected ? 'Đang kết nối' : isError ? 'Lỗi kết nối' : 'Mất kết nối'} side="bottom">
+        <InfoTooltip content={isConnected ? 'Đã kết nối' : isError ? 'Lỗi kết nối' : 'Mất kết nối'} side="bottom">
           <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${isConnected
             ? 'bg-secondary ring-secondary/20'
             : isError
@@ -698,7 +700,7 @@ const DeviceItemRow = memo(function DeviceItemRow({
       >
         {/* Connection status dot */}
         {connectionStatus && (
-          <InfoTooltip content={isConnected ? 'Đang kết nối' : 'Mất kết nối'} side="bottom">
+          <InfoTooltip content={isConnected ? 'Đã kết nối' : 'Mất kết nối'} side="bottom">
             <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${isConnected
               ? 'bg-secondary ring-secondary/20'
               : 'bg-tertiary ring-tertiary/20 animate-pulse'
@@ -1021,7 +1023,7 @@ const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, dev
 
 function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera }: {
   server: MqttServerConfig;
-  devices: { devEui: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[];
+  devices: { devEui: string; applicationId: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[];
   allCameras: MqttDeviceConfig[];
   deviceCameraLinks: DeviceCameraLink[];
   onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
@@ -1029,6 +1031,29 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
 }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isControllingBuzzer, setIsControllingBuzzer] = useState<string | null>(null);
+
+  const handleControlBuzzer = async (devEui: string, applicationId: string, enable: boolean) => {
+    if (!applicationId) {
+      alert("Thiếu Application ID để gửi lệnh. Vui lòng đợi thiết bị gửi dữ liệu để cập nhật ID.");
+      return;
+    }
+    const actionKey = `${devEui}-${enable}`;
+    setIsControllingBuzzer(actionKey);
+    try {
+      await apiClient.post(`/api/v1/mqtt-servers/${server.id}/buzzer`, {
+        applicationId,
+        devEui,
+        enable
+      });
+      console.log(`[Buzzer] ${enable ? 'ON' : 'OFF'} sent for ${devEui}`);
+    } catch (err: any) {
+      console.error('Failed to control buzzer:', err);
+      alert(`Lỗi điều khiển còi: ${err?.response?.data?.message || err.message}`);
+    } finally {
+      setIsControllingBuzzer(null);
+    }
+  };
 
   const status = server.status || 'disconnected';
   const isConnected = status === 'connected';
@@ -1042,7 +1067,6 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
   } as const;
 
   const cfg = statusConfig[status] || statusConfig.disconnected;
-  const totalAlarms = devices.reduce((sum, d) => sum + d.alarmCount, 0);
 
   return (
     <div className={`mqtt-server-card bg-surface-container border border-outline-variant/10 px-4 py-3 pb-4 rounded-md border-l-[3px] ${cfg.border} shadow-sm transition-all hover:bg-surface-container-high/40 group`}>
@@ -1141,6 +1165,27 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
                           <InfoTooltip content="DevEUI (Mã định danh thiết bị)" side="bottom">
                             <span className="text-[10px] font-mono font-medium text-on-surface-variant/70 min-w-[100px] bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/5">{device.devEui}</span>
                           </InfoTooltip>
+
+                          {/* Buzzer Control Buttons */}
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleControlBuzzer(device.devEui, device.applicationId, true)}
+                              disabled={isControllingBuzzer !== null || !isConnected}
+                              className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${isConnected ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:bg-amber-500 hover:text-white' : 'opacity-20 cursor-not-allowed'}`}
+                            >
+                              <BellRing className={`w-3 h-3 ${isControllingBuzzer === `${device.devEui}-true` ? 'animate-bounce' : ''}`} />
+                              Bật Còi
+                            </button>
+                            <button
+                              onClick={() => handleControlBuzzer(device.devEui, device.applicationId, false)}
+                              disabled={isControllingBuzzer !== null || !isConnected}
+                              className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${isConnected ? 'bg-tertiary/10 text-tertiary border border-tertiary/30 hover:bg-tertiary hover:text-white' : 'opacity-20 cursor-not-allowed'}`}
+                            >
+                              <Bell className={`w-3 h-3 ${isControllingBuzzer === `${device.devEui}-false` ? 'animate-pulse' : ''}`} />
+                              Tắt Còi
+                            </button>
+                          </div>
+
                           <InfoTooltip content="Tổng alarm events nhận được">
                             <span className={`text-[10px] font-black font-mono px-2 py-1 rounded min-w-[70px] text-center transition-all ${device.alarmCount > 0 ? 'text-tertiary bg-tertiary/15 ring-1 ring-tertiary/20' : 'text-on-surface-variant/40 bg-surface-container border border-outline-variant/10'}`}>
                               {device.alarmCount} {t('app.monitor.alarms')}

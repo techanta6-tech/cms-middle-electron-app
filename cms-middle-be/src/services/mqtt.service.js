@@ -153,24 +153,24 @@ const connectMqttServer = (serverConfig) => {
 
           // Tạo 1 log entry riêng cho mỗi event trong mảng
           for (const event of events) {
-             // Lọc bỏ các sự kiện có trạng thái deactivated hoặc ignored
-             const status = (event.alarm_status || '').toLowerCase();
-             if (status.includes('deactivated') || status.includes('ignored')) {
-               console.log(`[MQTT][${id}] Skipped event with status: ${event.alarm_status}`);
-               continue;
-             }
+            // Lọc bỏ các sự kiện có trạng thái deactivated hoặc ignored
+            const status = (event.alarm_status || '').toLowerCase();
+            if (status.includes('deactivated') || status.includes('ignored')) {
+              console.log(`[MQTT][${id}] Skipped event with status: ${event.alarm_status}`);
+              continue;
+            }
 
-              // Event Filtering for MQTT Radar (individual toggles)
-              const alarmType = (event.alarm_type || '').toLowerCase();
-              const linkFeatures = deviceLink?.features || {};
-              
-              // Check individual toggle state. Default to true if not defined.
-              const isAllowed = linkFeatures[alarmType] ?? true;
+            // Event Filtering for MQTT Radar (individual toggles)
+            const alarmType = (event.alarm_type || '').toLowerCase();
+            const linkFeatures = deviceLink?.features || {};
 
-              if (!isAllowed) {
-                console.log(`[MQTT][${id}] Skipped filtered event: ${alarmType} for devEui: ${devEui}`);
-                continue;
-              }
+            // Check individual toggle state. Default to true if not defined.
+            const isAllowed = linkFeatures[alarmType] ?? true;
+
+            if (!isAllowed) {
+              console.log(`[MQTT][${id}] Skipped filtered event: ${alarmType} for devEui: ${devEui}`);
+              continue;
+            }
             // Tách riêng payload để mỗi log mới chỉ lưu một event
             const isolatedPayload = {
               ...parsedBody,
@@ -375,9 +375,16 @@ const controlBuzzer = (mqttServerId, { applicationId, devEui, enable, fPort = 85
 
   console.log(`[MQTT][Buzzer] ${enable ? 'ON' : 'OFF'} → devEui=${devEui} data=${dataBase64}`);
 
+  // return publishDownlink(mqttServerId, {
+  //   applicationId,
+  //   devEui,
+  //   fPort,
+  //   dataBase64,
+  //   confirmed: false,
+  // });
   return publishDownlink(mqttServerId, {
     applicationId,
-    devEui,
+    devEui: '24e124806e515126',
     fPort,
     dataBase64,
     confirmed: false,
