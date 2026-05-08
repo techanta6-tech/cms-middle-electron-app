@@ -260,6 +260,91 @@ const getMqttServerLogs = (id) => {
   return entry ? (entry.logs || []) : [];
 };
 
+// ─── Downlink / Command Publishing ──────────────────────────────────────────────
+
+/**
+ * Publish a downlink command to a device via ChirpStack MQTT.
+ *
+ * ChirpStack v4 topic:
+ *   application/{applicationId}/device/{devEui}/command/down
+ *
+ * @param {string} mqttServerId  - ID của MQTT server đã được cấu hình (phải đang `connected`)
+ * @param {object} options
+ * @param {string} options.applicationId - Application ID trên ChirpStack
+ * @param {string} options.devEui        - Device EUI của thiết bị đích
+ * @param {number} options.fPort         - Application port (VS373 dùng 85)
+ * @param {string} options.dataBase64    - Payload dưới dạng Base64
+ * @param {boolean} [options.confirmed]  - Có yêu cầu ACK từ thiết bị không (mặc định false)
+ * @returns {{ success: boolean, topic?: string, error?: string }}
+ */
+const publishDownlink = (mqttServerId, { applicationId, devEui, fPort, dataBase64, confirmed = false }) => {
+  const client = mqttClients.get(mqttServerId);
+  if (!client) {
+    const msg = `[MQTT][Downlink] No active client for server '${mqttServerId}'`;
+    console.error(msg);
+    return { success: false, error: msg };
+  }
+
+  const entry = mqttServers.find(s => s.id === mqttServerId);
+  if (!entry || entry.status !== 'connected') {
+    const msg = `[MQTT][Downlink] Server '${mqttServerId}' is not connected (status: ${entry?.status})`;
+    console.error(msg);
+    return { success: false, error: msg };
+  }
+
+  const topic = `application/${applicationId}/device/${devEui}/command/down`;
+  const payload = JSON.stringify({
+    devEui,
+    confirmed,
+    fPort,
+    data: dataBase64,
+  });
+
+  client.publish(topic, payload, { qos: 0 }, (err) => {
+    if (err) {
+      console.error(`[MQTT][Downlink] Publish error on topic '${topic}':`, err);
+      _pushSystemLog(mqttServerId, `Downlink FAILED for devEui=${devEui} fPort=${fPort}: ${String(err)}`);
+    } else {
+      console.log(`[MQTT][Downlink] Published to '${topic}': ${payload}`);
+      _pushSystemLog(mqttServerId, `Downlink OK → devEui=${devEui} fPort=${fPort} data=${dataBase64}`);
+      _emitMqttServersUpdate();
+    }
+  });
+
+  return { success: true, topic };
+};
+
+/**
+ * Bật hoặc tắt còi báo động (Buzzer) trên thiết bị VS373.
+ *
+ * Lệnh theo tài liệu VS373:
+ *   - Bật Buzzer  : Hex ff3e01 → Base64 /z4B
+ *   - Tắt Buzzer  : Hex ff3e00 → Base64 /z4A
+ *
+ * @param {string} mqttServerId  - ID của MQTT server
+ * @param {object} options
+ * @param {string} options.applicationId - Application ID trên ChirpStack
+ * @param {string} options.devEui        - Device EUI của thiết bị VS373
+ * @param {boolean} options.enable       - true = bật còi, false = tắt còi
+ * @param {number}  [options.fPort]      - Application port (mặc định 85 theo spec VS373)
+ * @returns {{ success: boolean, topic?: string, error?: string }}
+ */
+const controlBuzzer = (mqttServerId, { applicationId, devEui, enable, fPort = 85 }) => {
+  // Hex ff3e01 (enable) / ff3e00 (disable) → Buffer → Base64
+  const hexBytes = enable ? [0xff, 0x3e, 0x01] : [0xff, 0x3e, 0x00];
+  const dataBase64 = Buffer.from(hexBytes).toString('base64');
+
+  console.log(`[MQTT][Buzzer] ${enable ? 'ON' : 'OFF'} → devEui=${devEui} data=${dataBase64}`);
+
+  return publishDownlink(mqttServerId, {
+    applicationId,
+    devEui,
+    fPort,
+    dataBase64,
+    confirmed: false,
+  });
+};
+
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
 
 function _pushSystemLog(serverId, message) {
@@ -312,5 +397,7 @@ module.exports = {
   disconnectMqttServer,
   getMqttServersList,
   getMqttServerLogs,
+  publishDownlink,
+  controlBuzzer,
 };
 

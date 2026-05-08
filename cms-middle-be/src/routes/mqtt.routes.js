@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { mqttServers } = require('../socketState');
-const { connectMqttServer, disconnectMqttServer, getMqttServersList, getMqttServerLogs } = require('../services/mqtt.service');
+const { connectMqttServer, disconnectMqttServer, getMqttServersList, getMqttServerLogs, publishDownlink, controlBuzzer } = require('../services/mqtt.service');
 const authMiddleware = require('../middleware/auth.middleware');
 
 const router = express.Router();
@@ -131,6 +131,57 @@ router.delete('/api/v1/mqtt-servers/:id', (req, res) => {
   }
 
   res.json({ success: true, message: `MQTT server '${id}' removed` });
+});
+
+// ─── POST /api/v1/mqtt-servers/:id/downlink — Publish generic downlink ────────
+// Body: { applicationId, devEui, fPort, dataBase64, confirmed? }
+router.post('/api/v1/mqtt-servers/:id/downlink', (req, res) => {
+  const { id } = req.params;
+  const { applicationId, devEui, fPort, dataBase64, confirmed } = req.body;
+
+  if (!applicationId || !devEui || !fPort || !dataBase64) {
+    return res.status(400).json({ success: false, message: 'Missing required fields: applicationId, devEui, fPort, dataBase64' });
+  }
+
+  const result = publishDownlink(id, { applicationId, devEui, fPort: Number(fPort), dataBase64, confirmed });
+
+  if (!result.success) {
+    return res.status(503).json({ success: false, message: result.error });
+  }
+
+  res.json({ success: true, message: 'Downlink published', topic: result.topic });
+});
+
+// ─── POST /api/v1/mqtt-servers/:id/buzzer — Control VS373 Buzzer ─────────────
+// Body: { applicationId, devEui, enable: boolean, fPort? }
+// enable=true  → Bật còi (ff3e01 → /z4B)
+// enable=false → Tắt còi (ff3e00 → /z4A)
+router.post('/api/v1/mqtt-servers/:id/buzzer', (req, res) => {
+  const { id } = req.params;
+  const { applicationId, devEui, enable, fPort } = req.body;
+
+  if (!applicationId || !devEui || enable === undefined) {
+    return res.status(400).json({ success: false, message: 'Missing required fields: applicationId, devEui, enable' });
+  }
+
+  const result = controlBuzzer(id, {
+    applicationId,
+    devEui,
+    enable: Boolean(enable),
+    fPort: fPort ? Number(fPort) : 85,
+  });
+
+  if (!result.success) {
+    return res.status(503).json({ success: false, message: result.error });
+  }
+
+  res.json({
+    success: true,
+    message: `Buzzer ${Boolean(enable) ? 'ON' : 'OFF'} command sent`,
+    topic: result.topic,
+    devEui,
+    command: Boolean(enable) ? 'ff3e01' : 'ff3e00',
+  });
 });
 
 module.exports = router;
