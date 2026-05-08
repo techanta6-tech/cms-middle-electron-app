@@ -334,7 +334,7 @@ export function ConnectionsMonitor({
               )}
             </div>
           </button>
-          <button
+          {/* <button
             onClick={() => setActiveTab('output')}
             className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'output' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
           >
@@ -345,7 +345,7 @@ export function ConnectionsMonitor({
                 <span className="text-[9px] text-primary/70 tracking-normal font-mono leading-none">{sendServers.length} {t('app.monitor.endpoints_receiving')}</span>
               )}
             </div>
-          </button>
+          </button> */}
         </div>
 
         {/* Tab Content */}
