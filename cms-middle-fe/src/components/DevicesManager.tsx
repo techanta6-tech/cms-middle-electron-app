@@ -572,6 +572,13 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
   }, 0);
   const totalEvents = RADAR_CATEGORIES.reduce((acc, cat) => acc + cat.subEvents.length, 0);
 
+  const activeCameraId = link?.cameraId === 'none' ? null : (link?.cameraId || srv.cameraId);
+  const activeCamera = activeCameraId ? allCameras.find(c => c.id === activeCameraId) : null;
+  const activeCameraName = activeCamera 
+    ? ((activeCamera as any).name || `${activeCamera.type.toUpperCase()} - ${activeCamera.cameraIp}:${activeCamera.cameraPort}`) 
+    : 'Chưa gán (Không chụp ảnh)';
+  const isInherited = activeCameraId && activeCameraId === srv.cameraId && (!link || !link.cameraId);
+
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">{dev.deviceName}</h3>
@@ -582,6 +589,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
       <div className="mt-4 pt-3 border-t border-outline-variant/10">
         <InfoRow label={t('app.monitor.parent_mqtt')} value={srv.name || `${srv.brokerHost}:${srv.brokerPort}`} mono />
         <InfoRow label={t('app.monitor.topic')} value={srv.topic || srv.defaultTopic} mono />
+        <InfoRow label="CAMERA LIÊN KẾT" value={activeCameraName + (isInherited ? ' (Kế thừa từ Server)' : '')} />
       </div>
 
       <div className="mt-5 pt-4 border-t border-outline-variant/10">
