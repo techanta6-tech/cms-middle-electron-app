@@ -618,13 +618,6 @@ const CameraItemWithLogs = memo(function CameraItemWithLogs({ cam, logCount, isC
       >
         {/* Connection status dot */}
         <InfoTooltip content={isConnected ? 'Đã kết nối' : isError ? 'Lỗi kết nối' : 'Mất kết nối'} side="bottom">
-        <InfoTooltip content={isConnected ? 'Đã kết nối' : isError ? 'Lỗi kết nối' : 'Mất kết nối'} side="bottom">
-          <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${isConnected
-            ? 'bg-secondary ring-secondary/20'
-            : isError
-              ? 'bg-red-500 ring-red-500/20 animate-pulse'
-              : 'bg-tertiary ring-tertiary/20 animate-pulse'
-            }`}></div>
           <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${isConnected
             ? 'bg-secondary ring-secondary/20'
             : isError
@@ -710,7 +703,6 @@ const DeviceItemRow = memo(function DeviceItemRow({
       >
         {/* Connection status dot */}
         {connectionStatus && (
-          <InfoTooltip content={isConnected ? 'Đã kết nối' : 'Mất kết nối'} side="bottom">
           <InfoTooltip content={isConnected ? 'Đã kết nối' : 'Mất kết nối'} side="bottom">
             <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${isConnected
               ? 'bg-secondary ring-secondary/20'
