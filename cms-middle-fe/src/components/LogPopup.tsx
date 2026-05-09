@@ -42,18 +42,18 @@ export function LogPopup({ log, onClose, mqttServers }: { log: LogData, onClose:
   }
 
   const allMetadata = [
-    { label: 'Server ID', value: serverId, isImportant: true },
-    { label: 'Device Name', value: log.device_name || log.raw?.body?.device_name, isImportant: true },
-    { label: 'Device IP', value: log.cameraIp || log.device_ip || 'Internal', isImportant: false },
-    { label: 'Device Port', value: log.raw?.body?.device_port, isImportant: false },
-    { label: 'Device Index', value: log.device_index ?? log.raw?.body?.device_index, isImportant: false },
-    { label: 'Device Type', value: log.device_type || log.raw?.body?.device_type, isImportant: true },
-    { label: 'Log Type', value: (log.log_type || log.raw?.body?.log_type) ? t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: (log.log_type || log.raw?.body?.log_type) }) : undefined, isImportant: true },
+    { label: t('app.log_popup.server_id'), value: serverId, isImportant: true },
+    { label: t('app.log_popup.device_name'), value: log.device_name || log.raw?.body?.device_name, isImportant: true },
+    { label: t('app.log_popup.device_ip'), value: log.cameraIp || log.device_ip || 'Internal', isImportant: false },
+    { label: t('app.log_popup.device_port'), value: log.raw?.body?.device_port, isImportant: false },
+    { label: t('app.log_popup.device_index'), value: log.device_index ?? log.raw?.body?.device_index, isImportant: false },
+    { label: t('app.log_popup.device_type'), value: log.device_type || log.raw?.body?.device_type, isImportant: true },
+    { label: t('app.log_popup.log_type'), value: (log.log_type || log.raw?.body?.log_type) ? t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: (log.log_type || log.raw?.body?.log_type) }) : undefined, isImportant: true },
     { label: t('app.log_popup.plate_number', { defaultValue: 'Plate Number' }), value: plateNum, isImportant: true },
     { label: t('app.log_popup.confidence', { defaultValue: 'Confidence' }), value: plateConfidence !== undefined ? `${plateConfidence}%` : undefined, isImportant: true },
-    { label: 'Description', value: (log.description || log.raw?.body?.description) ? t(`app.logtype.${(log.description || log.raw?.body?.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.description || log.raw?.body?.description) }) : undefined, isImportant: false },
-    { label: 'Source IP', value: log.ip || log.raw?.ip, isImportant: false },
-    { label: 'Timestamp', value: log.time ? new Date(log.time * 1000).toLocaleString() : '—', isImportant: true },
+    { label: t('app.log_popup.description'), value: (log.description || log.raw?.body?.description) ? t(`app.logtype.${(log.description || log.raw?.body?.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.description || log.raw?.body?.description) }) : undefined, isImportant: false },
+    { label: t('app.log_popup.source_ip'), value: log.ip || log.raw?.ip, isImportant: false },
+    { label: t('app.log_popup.timestamp'), value: log.time ? new Date(log.time * 1000).toLocaleString() : '—', isImportant: true },
   ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 
   const importantMetadata = allMetadata.filter(item => item.isImportant);
@@ -64,8 +64,8 @@ export function LogPopup({ log, onClose, mqttServers }: { log: LogData, onClose:
       return log.raw.payload.object.events.map((evt: any, idx: number) => {
         const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
         const statusVal = evt.status !== undefined ? evt.status : evt.alarm_status;
-        const typeStr = typeVal !== undefined ? t(`app.mqtt_alarm_type.${typeVal}`, { defaultValue: String(typeVal) }) : 'Unknown Type';
-        const statusStr = statusVal !== undefined ? t(`app.mqtt_alarm_status.${statusVal}`, { defaultValue: String(statusVal) }) : 'Unknown Status';
+        const typeStr = typeVal !== undefined ? t(`app.mqtt_alarm_type.${typeVal}`, { defaultValue: String(typeVal) }) : t('app.log_popup.unknown_type');
+        const statusStr = statusVal !== undefined ? t(`app.mqtt_alarm_status.${statusVal}`, { defaultValue: String(statusVal) }) : t('app.log_popup.unknown_status');
         return (
           <span key={idx} className="flex items-center gap-2">
             {idx > 0 && <span className="text-on-surface-variant/50">•</span>}
@@ -77,9 +77,9 @@ export function LogPopup({ log, onClose, mqttServers }: { log: LogData, onClose:
       });
     } else if (log.raw?.body?.log_type || log.log_type) {
       // const typeStr = t(`app.logtype.${(log.raw?.body?.log_type || log.log_type).toLowerCase()}`, { defaultValue: (log.raw?.body?.log_type || log.log_type).toLowerCase() });
-      const typeStr = allMetadata.find(item => item.label === 'Log Type')?.value;
+      const typeStr = allMetadata.find(item => item.label === t('app.log_popup.log_type'))?.value;
       // const descStr = (log.raw?.body?.description || log.description) ? t(`app.logtype.${(log.raw?.body?.description || log.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.raw?.body?.description || log.description).toLowerCase() }) : '';
-      const descStr = allMetadata.find(item => item.label === 'Description')?.value;
+      const descStr = allMetadata.find(item => item.label === t('app.log_popup.description'))?.value;
       return (
         <span className="flex items-center gap-2">
           <span className="text-cyan-400">{typeStr}</span>

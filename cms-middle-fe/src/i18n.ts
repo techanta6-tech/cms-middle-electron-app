@@ -127,7 +127,14 @@ const resources = {
           no_logs_found: "Không tìm thấy bản ghi nào",
           log_details: "Chi tiết bản ghi",
           show_more: "Xem thêm",
-          recent_logs: "logs gần nhất"
+          recent_logs: "logs gần nhất",
+          unmapped_tooltip: "Các logs không có cấu hình Server/Device tương ứng",
+          camera_devices_tooltip: "Các camera kết nối độc lập như Sunell và RTSP",
+          device_type_tooltip: "Phân loại thiết bị",
+          camera_log_total_tooltip: "Tổng logs nhận được từ cameras",
+          active_camera_count: "{{count}} camera đang hoạt động",
+          error_camera_count: "{{count}} camera lỗi",
+          add_new_camera: "Thêm Camera Mới"
         },
         devices: {
           svms_servers: "SVMS Servers",
@@ -143,7 +150,26 @@ const resources = {
           svms_device: "SVMS Device",
           mqtt_server: "MQTT Server",
           mqtt_device: "MQTT Device",
-          camera_device: "Camera độc lập"
+          camera_device: "Camera độc lập",
+          confirm_delete_camera: 'Bạn có chắc chắn muốn xóa camera này?',
+          confirm_delete_mqtt: 'Bạn có chắc chắn muốn xóa MQTT server này?',
+          radar_categories: {
+            fall_bed: 'Phát hiện Té ngã & Giường ngủ',
+            presence: 'Hiện diện & Lưu trú',
+            respiration: 'Hô hấp & Vận động',
+            enabled_count: 'bật',
+            hint: 'Click vào nút gạt bên phải của từng dòng để bật/tắt sự kiện báo động đó một cách độc lập.',
+            unassigned: 'Chưa gán (Không chụp ảnh)'
+          },
+          sunell_categories: {
+            motion: 'Motion / Chuyển động',
+            lpr: 'LPR / Biển số xe',
+            face: 'Face / Khuôn mặt',
+            iva: 'IVA / Hành vi thông minh',
+            system: 'System / Hệ thống',
+            subevent_count: 'sub-events',
+            hint: 'Tắt category sẽ bỏ qua toàn bộ sub-events thuộc nhóm đó. Click ▶ để xem danh sách sub-event.'
+          }
         },
         camera_form: {
           add_camera: "Thêm Camera",
@@ -153,13 +179,17 @@ const resources = {
           name_optional: "Tên (Tùy chọn)",
           name_placeholder: "Tên gợi nhớ",
           camera_ip: "Camera IP (*)",
-          camera_port: "Camera Port (*)",
+          control_port: "Control Port (*)",
+          rtsp_port: "RTSP Port (*)",
           username: "Username (*)",
           password: "Password (*)",
           rtsp_optional: "RTSP URL",
           cancel: "Hủy",
           saving: "Đang lưu...",
-          save: "Lưu Camera"
+          save: "Lưu Camera",
+          error_fill_all: 'Vui lòng điền đầy đủ các trường bắt buộc (*)',
+          error_save_failed: 'Lưu camera thất bại. Vui lòng thử lại.',
+          success_save: 'Lưu camera thành công'
         },
         config_system: {
           title: 'Cấu hình kết nối hệ thống',
@@ -192,26 +222,49 @@ const resources = {
           mqtt_note: 'Client MQTT sẽ kết nối tới broker và đăng ký nhận thông tin từ topic được chỉ định.',
           svms_note: 'Lưu ý: Thay đổi sẽ khởi tạo lại giao thức socket handshake.',
           mqtt_name: 'Tên Server (Tuỳ chọn)',
-          mqtt_name_placeholder: 'Tên gợi nhớ'
+          mqtt_name_placeholder: 'Tên gợi nhớ',
+          tooltip_receive: 'Lắng nghe dữ liệu đẩy về từ một nguồn khác (SVMS/Middle App khác)',
+          tooltip_send: 'Đẩy dữ liệu sang một hệ thống CMS hoặc Middle App đích khác',
+          error_fill_all: 'Vui lòng nhập đầy đủ thông tin địa chỉ và cổng',
+          error_invalid_ip: 'Địa chỉ IP không hợp lệ'
         },
         login: {
-          title: 'CMS Middle Server',
+          title: 'ANTA 6 CMS DEMO',
           username: 'Tài khoản',
           password: 'Mật khẩu',
           login_btn: 'ĐĂNG NHẬP',
           authenticating: 'ĐANG XÁC THỰC...',
           connection_settings: 'Cài đặt kết nối',
+          authorized_personnel: 'Chỉ dành cho nhân viên được ủy quyền',
+          host_ip: 'Địa chỉ IP Host',
+          port: 'Cổng',
+          save_apply: 'Lưu & Áp dụng',
+          checking: 'Đang kiểm tra...',
           error: 'Thông tin đăng nhập không hợp lệ hoặc không thể kết nối tới máy chủ'
         },
         log_popup: {
           title: 'Chi tiết Log',
           close: 'Đóng (ESC)',
           event_summary: 'Tóm tắt Sự kiện',
-          system_metadata: 'Dữ liệu sự kiện',
-          other_metadata: 'Xem chi tiết',
-          no_media: 'Không có tệp đính kèm',
-          raw_data: 'Gói Dữ liệu Thô',
-          close_report: 'Đóng Báo cáo'
+          server_id: "ID Máy chủ",
+          device_name: "Tên Thiết bị",
+          device_ip: "IP Thiết bị",
+          device_port: "Cổng Thiết bị",
+          device_index: "Chỉ mục Thiết bị",
+          device_type: "Loại Thiết bị",
+          log_type: "Loại Bản ghi",
+          description: "Mô tả",
+          source_ip: "IP Nguồn",
+          timestamp: "Thời gian",
+          unknown_type: "Không rõ loại",
+          unknown_status: "Không rõ trạng thái",
+          no_media: "KHÔNG CÓ HÌNH ẢNH/VIDEO",
+          system_metadata: "THÔNG TIN HỆ THỐNG",
+          other_metadata: "THÔNG TIN CHI TIẾT",
+          raw_data: "DỮ LIỆU GỐC",
+          close_report: "Đóng báo cáo",
+          plate_number: "Biển số xe",
+          confidence: "Độ tin cậy"
         },
         logtype: {
           // SVMS
@@ -511,7 +564,14 @@ const resources = {
           no_logs_found: "No logs found",
           log_details: "Log details",
           show_more: "Show more",
-          recent_logs: "recent logs"
+          recent_logs: "recent logs",
+          unmapped_tooltip: "Logs without corresponding Server/Device configuration",
+          camera_devices_tooltip: "Independently connected cameras like Sunell and RTSP",
+          device_type_tooltip: "Device classification",
+          camera_log_total_tooltip: "Total logs received from cameras",
+          active_camera_count: "{{count}} active cameras",
+          error_camera_count: "{{count}} error cameras",
+          add_new_camera: "Add New Camera"
         },
         devices: {
           svms_servers: "SVMS Servers",
@@ -527,7 +587,26 @@ const resources = {
           svms_device: "SVMS Device",
           mqtt_server: "MQTT Server",
           mqtt_device: "MQTT Device",
-          camera_device: "Camera Device"
+          camera_device: "Camera Device",
+          confirm_delete_camera: 'Are you sure you want to delete this camera?',
+          confirm_delete_mqtt: 'Are you sure you want to delete this MQTT server?',
+          radar_categories: {
+            fall_bed: 'Fall Detection & Bed Monitoring',
+            presence: 'Presence & Stay',
+            respiration: 'Respiration & Motion',
+            enabled_count: 'enabled',
+            hint: 'Click the toggle on the right of each row to enable/disable that specific alarm event.',
+            unassigned: 'Unassigned (No snapshot)'
+          },
+          sunell_categories: {
+            motion: 'Motion Detection',
+            lpr: 'License Plate Recognition',
+            face: 'Face Detection',
+            iva: 'Intelligent Behavior (IVA)',
+            system: 'System Events',
+            subevent_count: 'sub-events',
+            hint: 'Disabling a category will ignore all its sub-events. Click ▶ to view sub-events.'
+          }
         },
         camera_form: {
           add_camera: "Add Camera",
@@ -537,13 +616,17 @@ const resources = {
           name_optional: "Name (Optional)",
           name_placeholder: "Friendly name",
           camera_ip: "Camera IP (*)",
-          camera_port: "Camera Port (*)",
+          control_port: "Control Port (*)",
+          rtsp_port: "RTSP Port (*)",
           username: "Username (*)",
           password: "Password (*)",
           rtsp_optional: "RTSP URL (Optional)",
           cancel: "Cancel",
           saving: "Saving...",
-          save: "Save Camera"
+          save: "Save Camera",
+          error_fill_all: 'Please fill in all required fields (*)',
+          error_save_failed: 'Failed to save camera. Please try again.',
+          success_save: 'Camera saved successfully'
         },
         // Settings & Modals
         config_system: {
@@ -577,26 +660,49 @@ const resources = {
           mqtt_note: 'MQTT client will connect to the broker and subscribe to the specified topic.',
           svms_note: 'Note: Changes will re-initialize the socket handshake protocol.',
           mqtt_name: 'Server Name (Optional)',
-          mqtt_name_placeholder: 'Friendly name'
+          mqtt_name_placeholder: 'Friendly name',
+          tooltip_receive: 'Listen for incoming data pushed from another source (SVMS/Other Middle App)',
+          tooltip_send: 'Push data to another CMS or destination Middle App system',
+          error_fill_all: 'Please fill in both IP address and port',
+          error_invalid_ip: 'Invalid IP address'
         },
         login: {
-          title: 'CMS Middle Server',
+          title: 'ANTA 6 CMS DEMO',
           username: 'Username',
           password: 'Password',
           login_btn: 'LOGIN',
           authenticating: 'AUTHENTICATING...',
           connection_settings: 'Connection Settings',
+          authorized_personnel: 'Authorized Personnel Only',
+          host_ip: 'Host IP',
+          port: 'Port',
+          save_apply: 'Save & Apply',
+          checking: 'Checking...',
           error: 'Invalid credentials or server unreachable'
         },
         log_popup: {
           title: 'Log Detail',
           close: 'Close (ESC)',
           event_summary: 'Event Summary',
-          system_metadata: 'Event Data',
-          other_metadata: 'Other Data',
-          no_media: 'No media packet attached',
-          raw_data: 'Raw Data Packet',
-          close_report: 'Close Report'
+          server_id: "Server ID",
+          device_name: "Device Name",
+          device_ip: "Device IP",
+          device_port: "Device Port",
+          device_index: "Device Index",
+          device_type: "Device Type",
+          log_type: "Log Type",
+          description: "Description",
+          source_ip: "Source IP",
+          timestamp: "Timestamp",
+          unknown_type: "Unknown Type",
+          unknown_status: "Unknown Status",
+          no_media: "NO MEDIA AVAILABLE",
+          system_metadata: "SYSTEM METADATA",
+          other_metadata: "DETAILED METADATA",
+          raw_data: "RAW DATA",
+          close_report: "Close Report",
+          plate_number: "Plate Number",
+          confidence: "Confidence"
         },
         logtype: {
           // SVMS
@@ -633,7 +739,7 @@ const resources = {
           vacant_alarm: 'Vacant',
           'Occupy Alarm': 'Occupied',
           occupy_alarm: 'Occupied',
-          
+
 
           // Sunell IVA
           iva_trip_wire: 'Tripwire',

@@ -27,15 +27,17 @@ export const getBePort = () => {
   const localHost = localStorage.getItem('BE_HOST');
   const localPort = localStorage.getItem('BE_PORT');
 
+  // Nếu đang chạy trong Electron, ưu tiên dùng cổng động do main process cấp nếu đang trỏ về local
+  // Điều này giúp tránh dùng nhầm port cũ từ localStorage khi chạy production
+  if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.getBePort) {
+    if (!localHost || localHost === '127.0.0.1' || localHost === 'localhost') {
+      const electronPort = window.electronAPI.getBePort();
+      if (electronPort) return electronPort.toString();
+    }
+  }
+
   // Nếu user đã chủ động đổi host (kết nối remote), thì dùng luôn port đi kèm trong localStorage
   if (localHost && localPort) return localPort;
-
-  // Nếu đang chạy trong Electron, ưu tiên dùng cổng động do main process cấp
-  // Điều này giúp tránh dùng nhầm port cũ (5050) từ localStorage khi chạy production
-  if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.getBePort) {
-    const electronPort = window.electronAPI.getBePort();
-    if (electronPort) return electronPort.toString();
-  }
 
   if (localPort) return localPort;
   return import.meta.env.VITE_BE_PORT || '5050';

@@ -20,6 +20,8 @@ import { updateApiClientBaseUrl } from '../api/apiClient';
 import { socket, updateSocketUrlAsync, getBeHost, getBePort } from '../socket';
 import { useNavigate } from 'react-router-dom';
 
+declare const __APP_VERSION__: string;
+
 const LoginPage: React.FC = () => {
   const { t } = useTranslation();
   const [email, setEmail] = useState(import.meta.env.VITE_DEV_ACCOUNT || '');
@@ -129,11 +131,11 @@ const LoginPage: React.FC = () => {
             <ShieldCheck size={32} color="#38bdf8" />
           </Box>
 
-          <Typography component="h1" variant="h4" sx={{ mb: 1, fontWeight: 800, color: '#f8fafc', letterSpacing: -0.5 }}>
+          <Typography component="h1" variant="h4" sx={{ textAlign: 'center', mb: 1, fontWeight: 800, color: '#f8fafc', letterSpacing: -0.5 }}>
             {t('app.login.title')}
           </Typography>
-          <Typography variant="body2" sx={{ mb: 4, color: '#94a3b8', textAlign: 'center' }}>
-            Authorized Personnel Only
+          <Typography variant="body2" sx={{ textAlign: 'center', mb: 4, color: '#94a3b8', }}>
+            {t('app.login.authorized_personnel')}
           </Typography>
 
           {error && (
@@ -254,7 +256,7 @@ const LoginPage: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
                 <Server size={18} />
                 <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>{t('app.login.connection_settings')}</Typography>
-                {beStatus === 'checking' && <Typography variant="caption" sx={{ color: '#cbd5e1' }}>Checking...</Typography>}
+                {beStatus === 'checking' && <Typography variant="caption" sx={{ color: '#cbd5e1' }}>{t('app.login.checking')}</Typography>}
                 {beStatus === 'connected' && <CheckCircle2 size={16} color="#22c55e" />}
                 {beStatus === 'disconnected' && <XCircle size={16} color="#ef4444" />}
               </Box>
@@ -263,7 +265,7 @@ const LoginPage: React.FC = () => {
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <TextField
                   size="small"
-                  label="Host IP"
+                  label={t('app.login.host_ip')}
                   value={beHost}
                   onChange={(e) => setBeHost(e.target.value)}
                   sx={{
@@ -274,7 +276,7 @@ const LoginPage: React.FC = () => {
                 />
                 <TextField
                   size="small"
-                  label="Port"
+                  label={t('app.login.port')}
                   value={bePort}
                   onChange={(e) => setBePort(e.target.value)}
                   sx={{
@@ -288,21 +290,23 @@ const LoginPage: React.FC = () => {
                 variant="outlined"
                 size="small"
                 onClick={handleSaveConnection}
+                disabled={beStatus === 'checking'}
                 sx={{
                   color: '#38bdf8',
                   borderColor: 'rgba(56, 189, 248, 0.3)',
                   '&:hover': { borderColor: '#38bdf8', background: 'rgba(56, 189, 248, 0.1)' }
                 }}
               >
-                Save & Apply
+                {t('app.login.save_apply')}
               </Button>
             </AccordionDetails>
           </Accordion>
         </Paper>
         <Typography variant="body2" sx={{ mt: 4, color: '#475569', textAlign: 'center' }}>
-          &copy; {new Date().getFullYear()} CMS Middle VMS. Secure Node.
+          &copy; {new Date().getFullYear()} CMS DEMO V.{__APP_VERSION__}
         </Typography>
       </Container>
+
     </Box>
   );
 };

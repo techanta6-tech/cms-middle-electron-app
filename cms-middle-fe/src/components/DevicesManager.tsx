@@ -513,47 +513,48 @@ function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera }: 
   );
 }
 
-const RADAR_CATEGORIES = [
-  {
-    id: 'fall_bed',
-    label: 'Phát hiện Té ngã & Giường ngủ',
-    colorClass: 'text-cyan-400',
-    bgClass: 'bg-cyan-500/5 border-cyan-500/10',
-    indicatorColor: 'bg-cyan-400',
-    subEvents: [
-      { code: 'fall', label: 'Phát hiện té ngã (Fall Alarm)' },
-      { code: 'out_of_bed', label: 'Rời khỏi giường (Out of Bed Alarm)' },
-      { code: 'lying', label: 'Trạng thái đang nằm (Lying State)' },
-    ],
-  },
-  {
-    id: 'presence',
-    label: 'Hiện diện & Lưu trú',
-    colorClass: 'text-cyan-400',
-    bgClass: 'bg-cyan-500/5 border-cyan-500/10',
-    indicatorColor: 'bg-cyan-400',
-    subEvents: [
-      { code: 'occupied', label: 'Phát hiện có người (Occupied)' },
-      { code: 'vacant', label: 'Trạng thái phòng trống (Vacant)' },
-      { code: 'dwell', label: 'Ở lại quá lâu (Dwell / Stay Alarm)' },
-    ],
-  },
-  {
-    id: 'respiration',
-    label: 'Hô hấp & Vận động',
-    colorClass: 'text-cyan-400',
-    bgClass: 'bg-cyan-500/5 border-cyan-500/10',
-    indicatorColor: 'bg-cyan-400',
-    subEvents: [
-      { code: 'bradynea', label: 'Thở chậm bất thường (Bradynea Alarm)' },
-      { code: 'tachypnea', label: 'Thở nhanh bất thường (Tachypnea Alarm)' },
-      { code: 'motionless', label: 'Bất động bất thường (Abnormal Static Alarm)' },
-    ],
-  },
-];
-
 function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDeviceCamera }: { dev: MqttDeviceInfo; srv: MqttServerConfig; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; }) {
   const { t } = useTranslation();
+
+  const RADAR_CATEGORIES = [
+    {
+      id: 'fall_bed',
+      label: t('app.devices.radar_categories.fall_bed'),
+      colorClass: 'text-cyan-400',
+      bgClass: 'bg-cyan-500/5 border-cyan-500/10',
+      indicatorColor: 'bg-cyan-400',
+      subEvents: [
+        { code: 'fall', label: 'Fall Alarm' },
+        { code: 'out_of_bed', label: 'Out of Bed Alarm' },
+        { code: 'lying', label: 'Lying State' },
+      ],
+    },
+    {
+      id: 'presence',
+      label: t('app.devices.radar_categories.presence'),
+      colorClass: 'text-cyan-400',
+      bgClass: 'bg-cyan-500/5 border-cyan-500/10',
+      indicatorColor: 'bg-cyan-400',
+      subEvents: [
+        { code: 'occupied', label: 'Occupied' },
+        { code: 'vacant', label: 'Vacant' },
+        { code: 'dwell', label: 'Dwell / Stay Alarm' },
+      ],
+    },
+    {
+      id: 'respiration',
+      label: t('app.devices.radar_categories.respiration'),
+      colorClass: 'text-cyan-400',
+      bgClass: 'bg-cyan-500/5 border-cyan-500/10',
+      indicatorColor: 'bg-cyan-400',
+      subEvents: [
+        { code: 'bradynea', label: 'Bradynea Alarm' },
+        { code: 'tachypnea', label: 'Tachypnea Alarm' },
+        { code: 'motionless', label: 'Abnormal Static Alarm' },
+      ],
+    },
+  ];
+
   const link = deviceCameraLinks.find(l => l.devEui === dev.devEui && l.mqttServerId === srv.id);
 
   const parentCamera = srv.cameraId ? allCameras.find(c => c.id === srv.cameraId) : null;
@@ -576,9 +577,9 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
   const activeCameraId = link?.cameraId === 'none' ? null : (link?.cameraId || srv.cameraId);
   const activeCamera = activeCameraId ? allCameras.find(c => c.id === activeCameraId) : null;
-  const activeCameraName = activeCamera 
+      const activeCameraName = activeCamera 
     ? ((activeCamera as any).name || `${activeCamera.type.toUpperCase()} - ${activeCamera.cameraIp}:${activeCamera.cameraPort}`) 
-    : 'Chưa gán (Không chụp ảnh)';
+    : t('app.devices.radar_categories.unassigned');
   const isInherited = activeCameraId && activeCameraId === srv.cameraId && (!link || !link.cameraId);
 
   return (
@@ -618,7 +619,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
             🎛 Event Filter — MQTT Radar
           </span>
           <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
-            {totalEnabled}/{totalEvents} bật
+            {totalEnabled}/{totalEvents} {t('app.devices.radar_categories.enabled_count')}
           </span>
         </div>
 
@@ -672,70 +673,71 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
         {/* Footer hint */}
         <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
-          💡 Click vào nút gạt bên phải của từng dòng để bật/tắt sự kiện báo động đó một cách độc lập.
+          {t('app.devices.radar_categories.hint')}
         </p>
       </div>
     </div>
   );
 }
 
-// ── Sunell Sub-event definitions ─────────────────────────────────────────────
-const SUNELL_SUBEVENTS: Record<string, { code: string; label: string }[]> = {
-  enableMotion: [
-    { code: '1/2', label: 'Phát hiện chuyển động (Motion detection)' },
-    { code: '1/9', label: 'Phát hiện thân nhiệt PIR' },
-  ],
-  enableLPR: [
-    { code: '6/37', label: 'Nhận diện biển số xe (LPR)' },
-    { code: 'detect/lpr', label: 'Luồng AI nhận diện biển số (Stream)' },
-  ],
-  enableFace: [
-    { code: 'detect/face', label: 'Phát hiện khuôn mặt qua luồng AI (Stream)' },
-    { code: 'detect/person', label: 'Phát hiện người (Person detection)' },
-  ],
-  enableIVA: [
-    { code: '6/21', label: 'Vượt hàng rào ảo (Trip Wire)' },
-    { code: '6/22', label: 'Phát hiện đối tượng di chuyển (SMD)' },
-    { code: '6/23', label: 'Camera bị che khuất (Occlusion)' },
-    { code: '6/24', label: 'Xâm nhập vùng cấm (Perimeter Intrusion)' },
-    { code: '6/25', label: 'Hàng rào ảo kép (Double Trip Wire)' },
-    { code: '6/26', label: 'Lảng vảng (Loitering)' },
-    { code: '6/27', label: 'Đám đông lảng vảng (Multi-person Loitering)' },
-    { code: '6/28', label: 'Bỏ quên đồ vật (Object Left)' },
-    { code: '6/29', label: 'Mất cắp đồ vật (Object Removed)' },
-    { code: '6/30', label: 'Quá tốc độ (Abnormal Speed)' },
-    { code: '6/31', label: 'Đi ngược chiều (Retrograde)' },
-    { code: '6/32', label: 'Đậu xe trái phép (Illegal Parking)' },
-    { code: '6/33', label: 'Camera bị dời góc (Camera Shift)' },
-    { code: '6/34', label: 'Tín hiệu video bất thường (Video Signal Bad)' },
-    { code: '9/50', label: 'CĐ thông minh - Không xác định (SMD Unknown)' },
-    { code: '9/51', label: 'CĐ thông minh - Người (SMD Human)' },
-    { code: '9/52', label: 'CĐ thông minh - Xe (SMD Vehicle)' },
-    { code: '9/53', label: 'CĐ thông minh - Xe thô sơ (SMD Non-motor)' },
-  ],
-  enableSystem: [
-    { code: '1/1', label: 'Báo động I/O' },
-    { code: '1/3', label: 'Camera bị che khuất (Camera Blocking)' },
-    { code: '1/4', label: 'Mất tín hiệu hình ảnh (Video Loss)' },
-    { code: '1/5', label: 'Rớt mạng (Network Disconnection)' },
-    { code: '1/10', label: 'Báo động cổng I/O NVR' },
-    { code: '4/2', label: 'Lỗi đọc/ghi ổ cứng' },
-    { code: '4/4', label: 'Ổ cứng đầy' },
-    { code: '4/5', label: 'Không có ổ cứng' },
-    { code: '5/2', label: 'Sai user/pass luồng dữ liệu' },
-    { code: '5/4', label: 'Đạt giới hạn số lượng kết nối luồng' },
-    { code: '7/0', label: 'Cảnh báo ngưỡng nhiệt độ (Thermal)' },
-    { code: '7/1', label: 'Báo động vượt ngưỡng nhiệt độ (Thermal)' },
-    { code: '7/4', label: 'Cảnh báo chênh lệch nhiệt (Thermal)' },
-    { code: '7/5', label: 'Báo động chênh lệch nhiệt (Thermal)' },
-    { code: '7/16', label: 'Phát hiện điểm cháy (Thermal)' },
-    { code: '7/17', label: 'Phát hiện hút thuốc (Smoking)' },
-    { code: '7/18', label: 'Phát hiện khói lửa (Smoke/Flame)' },
-  ],
-};
 
 function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
   const { t } = useTranslation();
+
+  const SUNELL_SUBEVENTS: Record<string, { code: string; label: string }[]> = {
+    enableMotion: [
+      { code: '1/2', label: 'Motion detection' },
+      { code: '1/9', label: 'PIR detection' },
+    ],
+    enableLPR: [
+      { code: '6/37', label: 'LPR' },
+      { code: 'detect/lpr', label: 'AI LPR Stream' },
+    ],
+    enableFace: [
+      { code: 'detect/face', label: 'AI Face Stream' },
+      { code: 'detect/person', label: 'Person detection' },
+    ],
+    enableIVA: [
+      { code: '6/21', label: 'Trip Wire' },
+      { code: '6/22', label: 'SMD' },
+      { code: '6/23', label: 'Occlusion' },
+      { code: '6/24', label: 'Perimeter Intrusion' },
+      { code: '6/25', label: 'Double Trip Wire' },
+      { code: '6/26', label: 'Loitering' },
+      { code: '6/27', label: 'Multi-person Loitering' },
+      { code: '6/28', label: 'Object Left' },
+      { code: '6/29', label: 'Object Removed' },
+      { code: '6/30', label: 'Abnormal Speed' },
+      { code: '6/31', label: 'Retrograde' },
+      { code: '6/32', label: 'Illegal Parking' },
+      { code: '6/33', label: 'Camera Shift' },
+      { code: '6/34', label: 'Video Signal Bad' },
+      { code: '9/50', label: 'SMD Unknown' },
+      { code: '9/51', label: 'SMD Human' },
+      { code: '9/52', label: 'SMD Vehicle' },
+      { code: '9/53', label: 'SMD Non-motor' },
+    ],
+    enableSystem: [
+      { code: '1/1', label: 'I/O Alarm' },
+      { code: '1/3', label: 'Camera Blocking' },
+      { code: '1/4', label: 'Video Loss' },
+      { code: '1/5', label: 'Network Disconnection' },
+      { code: '1/10', label: 'NVR I/O Alarm' },
+      { code: '4/2', label: 'HDD Error' },
+      { code: '4/4', label: 'HDD Full' },
+      { code: '4/5', label: 'No HDD' },
+      { code: '5/2', label: 'Data Auth Error' },
+      { code: '5/4', label: 'Connection Limit' },
+      { code: '7/0', label: 'Thermal Warning' },
+      { code: '7/1', label: 'Thermal Alarm' },
+      { code: '7/4', label: 'Thermal Diff Warning' },
+      { code: '7/5', label: 'Thermal Diff Alarm' },
+      { code: '7/16', label: 'Fire Point' },
+      { code: '7/17', label: 'Smoking' },
+      { code: '7/18', label: 'Smoke/Flame' },
+    ],
+  };
+
   const features = (cam as any).features || {};
   const [expandedSub, setExpandedSub] = useState<Record<string, boolean>>({});
 
@@ -756,11 +758,11 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
     label: string;
     color: string;
   }[] = [
-      { key: 'enableMotion', label: 'Motion / Chuyển động', color: 'text-amber-400' },
-      { key: 'enableLPR', label: 'LPR / Biển số xe', color: 'text-blue-400' },
-      { key: 'enableFace', label: 'Face / Khuôn mặt', color: 'text-pink-400' },
-      { key: 'enableIVA', label: 'IVA / Hành vi thông minh', color: 'text-purple-400' },
-      { key: 'enableSystem', label: 'System / Hệ thống', color: 'text-red-400' },
+      { key: 'enableMotion', label: t('app.devices.sunell_categories.motion'), color: 'text-amber-400' },
+      { key: 'enableLPR', label: t('app.devices.sunell_categories.lpr'), color: 'text-blue-400' },
+      { key: 'enableFace', label: t('app.devices.sunell_categories.face'), color: 'text-pink-400' },
+      { key: 'enableIVA', label: t('app.devices.sunell_categories.iva'), color: 'text-purple-400' },
+      { key: 'enableSystem', label: t('app.devices.sunell_categories.system'), color: 'text-red-400' },
     ];
 
   return (
@@ -785,7 +787,7 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
               🎛 Event Filter — Sunell SDK
             </span>
             <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
-              {featureList.filter(f => features[f.key] ?? true).length}/{featureList.length} bật
+              {featureList.filter(f => features[f.key] ?? true).length}/{featureList.length} {t('app.devices.radar_categories.enabled_count')}
             </span>
           </div>
 
@@ -826,7 +828,7 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
                         {label}
                       </span>
                       <span className="ml-2 text-[9px] font-mono text-on-surface-variant/40">
-                        {subEvents.length} sub-events
+                        {subEvents.length} {t('app.devices.sunell_categories.subevent_count')}
                       </span>
                     </button>
 
@@ -867,7 +869,7 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
 
           {/* Footer hint */}
           <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
-            💡 Tắt category sẽ bỏ qua toàn bộ sub-events thuộc nhóm đó. Click ▶ để xem danh sách sub-event.
+            {t('app.devices.sunell_categories.hint')}
           </p>
         </div>
       )}

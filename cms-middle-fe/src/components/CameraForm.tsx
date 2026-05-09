@@ -43,7 +43,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
     e.preventDefault();
     // Validate
     if (!addDeviceForm.cameraIp || (addDeviceForm.type === 'sunell' && !addDeviceForm.controlPort) || !addDeviceForm.cameraUser || !addDeviceForm.cameraPass) {
-      alert("Vui lòng điền đầy đủ: Camera IP, Port, Username, Password!");
+      alert(t('app.camera_form.error_fill_all'));
       return;
     }
 
@@ -60,8 +60,8 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
       });
       onSuccess();
     } catch (err: any) {
-      console.error('Lỗi khi lưu Camera:', err);
-      alert('Không thể lưu Camera: ' + (err.response?.data?.error || err.message));
+      console.error('Error saving camera:', err);
+      alert(t('app.camera_form.error_save_failed') + ': ' + (err.response?.data?.error || err.message));
     } finally {
       setIsSubmitting(false);
     }
@@ -120,7 +120,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">Camera IP (*)</label>
+                <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.camera_ip')}</label>
                 <input
                   value={addDeviceForm.cameraIp}
                   onChange={e => setAddDeviceForm(f => ({ ...f, cameraIp: e.target.value }))}
@@ -131,7 +131,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
 
               {addDeviceForm.type === 'sunell' && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">Control Port (*)</label>
+                  <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.control_port')}</label>
                   <input
                     value={addDeviceForm.controlPort}
                     onChange={e => setAddDeviceForm(f => ({ ...f, controlPort: e.target.value }))}
@@ -142,7 +142,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
               )}
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">RTSP Port (*)</label>
+                <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.rtsp_port')}</label>
                 <input
                   value={addDeviceForm.rtspPort}
                   onChange={e => setAddDeviceForm(f => ({ ...f, rtspPort: e.target.value }))}
@@ -152,7 +152,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">Username (*)</label>
+                <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.username')}</label>
                 <input
                   value={addDeviceForm.cameraUser}
                   onChange={e => setAddDeviceForm(f => ({ ...f, cameraUser: e.target.value }))}
@@ -162,7 +162,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">Password (*)</label>
+                <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.password')}</label>
                 <div className="relative flex items-center">
                   <input
                     value={addDeviceForm.cameraPass}

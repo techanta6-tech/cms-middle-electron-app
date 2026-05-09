@@ -157,9 +157,9 @@ function LogFilter({
   const handleServerClick = (id: string) => {
     onToggleServer(id);
     setTimeout(() => {
-      const el = document.getElementById(`device-group-${id}`) || 
-                 document.getElementById(`device-group-mqtt-${id}`) ||
-                 document.getElementById(`device-group-mqtt-mqtt-${id}`);
+      const el = document.getElementById(`device-group-${id}`) ||
+        document.getElementById(`device-group-mqtt-${id}`) ||
+        document.getElementById(`device-group-mqtt-mqtt-${id}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
@@ -233,9 +233,9 @@ function LogFilter({
                   if (!devs || devs.length === 0) return null;
                   let groupLabel = serverKey;
                   if (serverKey === 'SUNELL-LOCAL_sunell') {
-                    groupLabel = 'CAMERA SUNELL';
+                    groupLabel = t('app.devices.sunell_cameras');
                   } else if (serverKey.startsWith('SUNELL-LOCAL_')) {
-                    groupLabel = 'CAMERA ĐỘC LẬP';
+                    groupLabel = t('app.devices.cameras');
                   } else if (serverKey.startsWith('mqtt-')) {
                     const mqttId = serverKey.replace('mqtt-', '');
                     const mqttSrv = (mqttServers || []).find(s => s.id === mqttId);
@@ -475,7 +475,7 @@ function Dashboard() {
     return filteredLogs.filter(log => {
       const logServerId = log.mqttServerId ? `mqtt-${log.mqttServerId}` : (log.server?.server_id || log.server?.serial || '');
       const devKey = `${log.server?.server_id}_${log.device_ip}_${log.device_name}`;
-      
+
       let matchServer = selectedServers.size === 0 || selectedServers.has(logServerId);
       let matchDevice = selectedDevices.size === 0 || selectedDevices.has(devKey);
 
@@ -1068,7 +1068,7 @@ function Dashboard() {
           {langOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setLangOpen(false)} />
-              <div className="absolute bottom-full right-0 mb-1 z-50 bg-surface-container-high border border-outline-variant/20 rounded shadow-lg min-w-[100px] animate-in fade-in slide-in-from-bottom-2 duration-150">
+              <div className="absolute bottom-full right-0 mb-1 z-50 bg-surface-container-high border border-outline-variant/20 rounded shadow-lg min-w-[150px] animate-in fade-in slide-in-from-bottom-2 duration-150">
                 {['en', 'vi'].map(lang => (
                   <button
                     key={lang}

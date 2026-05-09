@@ -471,7 +471,7 @@ function UnknownDevicesCard({ orphanDevices }: { orphanDevices: { name: string; 
             <Globe className="w-4 h-4 text-tertiary" />
           </div>
           <div className="flex flex-col gap-0.5">
-            <InfoTooltip content="Các logs không có cấu hình Server/Device tương ứng">
+            <InfoTooltip content={t('app.monitor.unmapped_tooltip')}>
               <span className="text-[14px] font-black text-on-surface tracking-wide leading-none group-hover:text-primary transition-colors">Unmapped / External Devices</span>
             </InfoTooltip>
             <div className="flex items-center gap-3 pt-1">
@@ -544,21 +544,21 @@ const CameraDevicesCard = memo(function CameraDevicesCard({ cameras, sunellLogs 
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-2">
               <div className="flex flex-col gap-1">
-                <InfoTooltip content="Các camera kết nối độc lập như Sunell và RTSP">
+                <InfoTooltip content={t('app.monitor.camera_devices_tooltip')}>
                   <span className="text-[14px] font-black text-on-surface tracking-wide leading-none group-hover:text-cyan-500 transition-colors">Camera Devices</span>
                 </InfoTooltip>
                 <div className='flex gap-1 items-center'>
-                  <InfoTooltip content="Phân loại thiết bị">
+                  <InfoTooltip content={t('app.monitor.device_type_tooltip')}>
                     <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Sunell & Other Cameras</span>
                   </InfoTooltip>
                   <span className="w-1 h-1 rounded-full bg-outline-variant/30"></span>
-                  <InfoTooltip content="Tổng logs nhận được từ cameras">
+                  <InfoTooltip content={t('app.monitor.camera_log_total_tooltip')}>
                     <span className="text-[10px] font-mono font-medium text-on-surface-variant">{totalLogs} logs</span>
                   </InfoTooltip>
                 </div>
               </div>
               {/* Status Badge */}
-              <InfoTooltip content={`${connectedCount} camera đang hoạt động`}>
+              <InfoTooltip content={t('app.monitor.active_camera_count', { count: connectedCount })}>
                 <span className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${connectedCount > 0
                   ? 'text-secondary bg-secondary/10 border-secondary/20'
                   : 'text-tertiary bg-tertiary/10 border-tertiary/20'
@@ -568,7 +568,7 @@ const CameraDevicesCard = memo(function CameraDevicesCard({ cameras, sunellLogs 
                 </span>
               </InfoTooltip>
               {errorCount > 0 && (
-                <InfoTooltip content={`${errorCount} camera lỗi`}>
+                <InfoTooltip content={t('app.monitor.error_camera_count', { count: errorCount })}>
                   <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm border text-red-500 bg-red-500/10 border-red-500/20">
                     <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
                     {errorCount} ERROR
@@ -1315,7 +1315,7 @@ function CameraDevicesList({ cameras }: { cameras: MqttDeviceConfig[] }) {
             <button
               onClick={() => handleDeleteDevice(cam.id)}
               className="p-1 text-on-surface-variant/40 hover:text-tertiary transition-colors"
-              title="Xóa thiết bị"
+              title={t('app.devices.confirm_delete_camera')}
             >
               <Trash2 className="w-3 h-3" />
             </button>
@@ -1427,7 +1427,7 @@ function CameraDevicesList({ cameras }: { cameras: MqttDeviceConfig[] }) {
           onClick={(e) => { e.stopPropagation(); setIsAddingDevice(true); }}
           className="mt-2 w-full py-2.5 border border-dashed border-cyan-500/30 text-cyan-500 hover:bg-cyan-500/10 bg-cyan-500/5 rounded-md flex justify-center items-center gap-2 text-[9px] uppercase font-bold tracking-widest transition-colors cursor-pointer"
         >
-          <Plus className="w-3.5 h-3.5" /> Thêm Camera Mới
+          <Plus className="w-3.5 h-3.5" /> {t('app.monitor.add_new_camera')}
         </button>
       )}
     </div>
