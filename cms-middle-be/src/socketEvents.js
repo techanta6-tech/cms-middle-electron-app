@@ -50,7 +50,30 @@ const setupSocketEvents = () => {
       if (!link.features) {
         link.features = {};
       }
-      Object.assign(link.features, features);
+
+      // Per-key merge: hỗ trợ cả boolean cũ và object { enabled, cameraId } mới
+      for (const [code, value] of Object.entries(features)) {
+        const existing = link.features[code];
+        // Migrate format cũ boolean → object
+        if (typeof existing === 'boolean') {
+          link.features[code] = { enabled: existing, cameraId: null };
+        }
+
+        if (typeof value === 'boolean') {
+          // FE gửi boolean (toggle enabled) → chỉ cập nhật enabled, giữ cameraId
+          link.features[code] = {
+            ...(link.features[code] || { enabled: true, cameraId: null }),
+            enabled: value,
+          };
+        } else if (typeof value === 'object' && value !== null) {
+          // FE gửi object → merge (enabled, cameraId)
+          link.features[code] = {
+            ...(link.features[code] || { enabled: true, cameraId: null }),
+            ...value,
+          };
+        }
+      }
+
       console.log(`[SOCKET] Updated features for device ${devEui}:`, link.features);
       clientSockets.emit('update-device-camera-links', [...deviceCameraLinks]);
     });

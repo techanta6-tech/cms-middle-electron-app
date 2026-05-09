@@ -201,7 +201,7 @@ export function DevicesManager({
                 const expanded = !!expandedServers[`mqtt-${ms.id}`];
                 const mqttDevs = mqttDevicesByServer[ms.id] || [];
                 return (
-                  <div key={ms.id}>
+                  <div className='flex flex-col gap-1' key={ms.id}>
                     <TreeItem
                       label={ms.name || `${ms.brokerHost}:${ms.brokerPort}`}
                       sublabel={ms.name ? `${ms.protocol}://${ms.brokerHost}:${ms.brokerPort}` : (ms.topic || ms.defaultTopic || '')}
@@ -322,7 +322,12 @@ function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onCl
         ${isSelected
           ? 'bg-primary/10 border border-primary/20 text-primary'
           : 'hover:bg-surface-container-high border border-transparent text-on-surface'}`}
-      onClick={onClick}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (onToggle) {
+          onToggle();
+        } onClick();
+      }}
     >
       {hasChildren && onToggle ? (
         <button onClick={(e) => { e.stopPropagation(); onToggle(); }} className="shrink-0 cursor-pointer p-0.5">
@@ -341,7 +346,7 @@ function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onCl
                 'bg-tertiary animate-pulse'
           }`} />
       )}
-      <div className="flex flex-col min-w-0 flex-1">
+      <div className="flex flex-col min-w-0 flex-1 gap-0.5">
         <span className="font-bold truncate leading-tight">{label}</span>
         {sublabel && <span className="text-[9px] font-mono text-on-surface-variant/50 truncate leading-tight">{sublabel}</span>}
       </div>
@@ -562,23 +567,39 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
   const features = (link as any)?.features || {};
 
+  // Normalize feature: hỗ trợ cả boolean cũ và object { enabled, cameraId } mới
+  const getFeature = (code: string): { enabled: boolean; cameraId: string | null } => {
+    const raw = features[code];
+    if (raw === undefined || raw === null) return { enabled: true, cameraId: null };
+    if (typeof raw === 'boolean') return { enabled: raw, cameraId: null };
+    return { enabled: (raw as any).enabled ?? true, cameraId: (raw as any).cameraId || null };
+  };
+
   const handleToggle = (code: string, value: boolean) => {
     socket.emit('update-device-features', {
       devEui: dev.devEui,
       mqttServerId: srv.id,
-      features: { [code]: value }
+      features: { [code]: { enabled: value } }
+    });
+  };
+
+  const handleEventCamera = (code: string, cameraId: string | null) => {
+    socket.emit('update-device-features', {
+      devEui: dev.devEui,
+      mqttServerId: srv.id,
+      features: { [code]: { cameraId } }
     });
   };
 
   const totalEnabled = RADAR_CATEGORIES.reduce((acc, cat) => {
-    return acc + cat.subEvents.filter(sub => features[sub.code] ?? true).length;
+    return acc + cat.subEvents.filter(sub => getFeature(sub.code).enabled).length;
   }, 0);
   const totalEvents = RADAR_CATEGORIES.reduce((acc, cat) => acc + cat.subEvents.length, 0);
 
   const activeCameraId = link?.cameraId === 'none' ? null : (link?.cameraId || srv.cameraId);
   const activeCamera = activeCameraId ? allCameras.find(c => c.id === activeCameraId) : null;
-      const activeCameraName = activeCamera 
-    ? ((activeCamera as any).name || `${activeCamera.type.toUpperCase()} - ${activeCamera.cameraIp}:${activeCamera.cameraPort}`) 
+  const activeCameraName = activeCamera
+    ? ((activeCamera as any).name || `${activeCamera.type.toUpperCase()} - ${activeCamera.cameraIp}:${activeCamera.cameraPort}`)
     : t('app.devices.radar_categories.unassigned');
   const isInherited = activeCameraId && activeCameraId === srv.cameraId && (!link || !link.cameraId);
 
@@ -627,42 +648,96 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
           {RADAR_CATEGORIES.map((cat) => (
             <div key={cat.id} className={`rounded-md border p-3 ${cat.bgClass}`}>
               {/* Category Header */}
-              <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-outline-variant/5">
-                <span className={`w-1.5 h-1.5 rounded-full ${cat.indicatorColor}`} />
-                <span className={`text-[11px] font-bold uppercase tracking-wider ${cat.colorClass}`}>
-                  {cat.label}
-                </span>
-              </div>
+              {(() => {
+                const allEnabled = cat.subEvents.every(sub => getFeature(sub.code).enabled);
+                const handleGroupToggle = () => {
+                  const newValue = !allEnabled;
+                  const batchFeatures: Record<string, { enabled: boolean }> = {};
+                  for (const sub of cat.subEvents) {
+                    batchFeatures[sub.code] = { enabled: newValue };
+                  }
+                  socket.emit('update-device-features', {
+                    devEui: dev.devEui,
+                    mqttServerId: srv.id,
+                    features: batchFeatures,
+                  });
+                };
+                return (
+                  <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-outline-variant/5">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-1.5 h-1.5 rounded-full ${cat.indicatorColor}`} />
+                      <span className={`text-[11px] font-bold uppercase tracking-wider ${cat.colorClass}`}>
+                        {cat.label}
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleGroupToggle}
+                      className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 p-0
+                        ${allEnabled ? cat.indicatorColor : 'bg-surface-container-high'}`}
+                      title={allEnabled ? 'Tất cả đang bật — Click để tắt hết' : 'Có event đang tắt — Click để bật tất cả'}
+                    >
+                      <span
+                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200
+                          ${allEnabled ? 'left-[22px]' : 'left-0.5'}`}
+                      />
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Individual sub-events list */}
               <div className="flex flex-col gap-2">
                 {cat.subEvents.map((sub) => {
-                  const enabled = features[sub.code] ?? true;
+                  const feat = getFeature(sub.code);
+                  const enabled = feat.enabled;
+                  const eventCam = feat.cameraId ? allCameras.find(c => c.id === feat.cameraId) : null;
+                  const eventCamLabel = eventCam
+                    ? ((eventCam as any).name || `${eventCam.type.toUpperCase()} - ${eventCam.cameraIp}:${eventCam.cameraPort}`)
+                    : null;
 
                   return (
                     <div
                       key={sub.code}
-                      className="flex items-center justify-between gap-3 py-1 first:pt-0 last:pb-0"
+                      className="flex flex-col gap-1.5 py-1.5 first:pt-0 last:pb-0"
                     >
-                      <div className="flex items-center gap-2">
-                        <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? cat.indicatorColor : 'bg-on-surface-variant/30'}`} />
-                        <span className={`text-[11px] font-medium leading-tight transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'}`}>
-                          {sub.label}
-                        </span>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? cat.indicatorColor : 'bg-on-surface-variant/30'}`} />
+                          <span className={`text-[11px] font-medium leading-tight transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'}`}>
+                            {sub.label}
+                          </span>
+                        </div>
+
+                        {/* Enable toggle */}
+                        <button
+                          onClick={() => handleToggle(sub.code, !enabled)}
+                          className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 p-0
+                            ${enabled ? cat.indicatorColor : 'bg-surface-container-high'}`}
+                          title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
+                        >
+                          <span
+                            className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200
+                              ${enabled ? 'left-[22px]' : 'left-0.5'}`}
+                          />
+                        </button>
                       </div>
 
-                      {/* Enable toggle */}
-                      <button
-                        onClick={() => handleToggle(sub.code, !enabled)}
-                        className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 p-0
-                          ${enabled ? cat.indicatorColor : 'bg-surface-container-high'}`}
-                        title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
-                      >
-                        <span
-                          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200
-                            ${enabled ? 'left-[22px]' : 'left-0.5'}`}
-                        />
-                      </button>
+                      {/* Per-event camera selector — chỉ hiện khi event đang bật */}
+                      {enabled && (
+                        <div className="ml-3 flex items-center gap-2">
+                          <span className="text-[8px] font-bold text-on-surface-variant/50 uppercase tracking-widest shrink-0">📷</span>
+                          <select
+                            value={feat.cameraId || ''}
+                            onChange={(e) => handleEventCamera(sub.code, e.target.value || null)}
+                            className="flex-1 text-[10px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors"
+                          >
+                            <option value="">{t('app.monitor.camera_default')}</option>
+                            {allCameras.map(cam => (
+                              <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

@@ -13,6 +13,7 @@ try {
 }
 
 const { getSnapshotForCamera } = require('./cameras.service');
+const { normalizeFeature } = require('../helpers/featureNormalizer');
 
 /** Map of active MQTT client instances, keyed by server config id */
 const mqttClients = new Map();
@@ -145,11 +146,16 @@ const connectMqttServer = (serverConfig) => {
 
         if (dataTarget && dataTarget.object && dataTarget.object.events) {
           const events = dataTarget.object.events;
-          // Lấy snapshot 1 lần duy nhất cho tất cả events
-          let snapshot = null;
-          if (resolvedCameraId && resolvedCameraId !== 'none') {
-            snapshot = await getSnapshotForCamera(resolvedCameraId);
-          }
+
+          // Snapshot cache per-message: tránh chụp trùng cùng 1 camera trong cùng 1 message
+          const snapshotCache = new Map();
+          const getSnapshotCached = async (camId) => {
+            if (!camId || camId === 'none') return null;
+            if (snapshotCache.has(camId)) return snapshotCache.get(camId);
+            const snap = await getSnapshotForCamera(camId);
+            snapshotCache.set(camId, snap);
+            return snap;
+          };
 
           // Tạo 1 log entry riêng cho mỗi event trong mảng
           for (const event of events) {
@@ -160,17 +166,26 @@ const connectMqttServer = (serverConfig) => {
               continue;
             }
 
-            // Event Filtering for MQTT Radar (individual toggles)
+            // Event Filtering + Per-event Camera Resolution
             const alarmType = (event.alarm_type || '').toLowerCase();
             const linkFeatures = deviceLink?.features || {};
+            const feat = normalizeFeature(linkFeatures[alarmType]);
 
-            // Check individual toggle state. Default to true if not defined.
-            const isAllowed = linkFeatures[alarmType] ?? true;
-
-            if (!isAllowed) {
-              console.log(`[MQTT][${id}] Skipped filtered event: ${alarmType} for devEui: ${devEui}`);
+            if (!feat.enabled) {
+              console.log(`[MQTT][${id}] Skipped disabled event: ${alarmType} for devEui: ${devEui}`);
               continue;
             }
+
+            // Resolve camera cho event này: event-specific → device default → server default
+            const eventCameraId = feat.cameraId || resolvedCameraId;
+            let snapshot = await getSnapshotCached(eventCameraId);
+
+            // Fallback: camera riêng fail → thử camera mặc định
+            if (!snapshot && feat.cameraId && resolvedCameraId && feat.cameraId !== resolvedCameraId) {
+              console.log(`[MQTT][${id}] Event camera ${feat.cameraId} failed, fallback to default ${resolvedCameraId}`);
+              snapshot = await getSnapshotCached(resolvedCameraId);
+            }
+
             // Tách riêng payload để mỗi log mới chỉ lưu một event
             const isolatedPayload = {
               ...parsedBody,

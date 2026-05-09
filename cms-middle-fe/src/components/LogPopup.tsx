@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { LogData } from '../types';
+import type { LogData, ServerData } from '../types';
 import { TriangleAlert, Cloud, X, ChevronRight, ChevronDown } from 'lucide-react';
 
-export function LogPopup({ log, onClose, mqttServers }: { log: LogData, onClose: () => void, mqttServers?: any[] }) {
+export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData, onClose: () => void, mqttServers?: any[], servers?: Record<string, ServerData> }) {
   const { t } = useTranslation();
   const rawSnapshot = log.snapshot || log.raw?.body?.snapshot;
   const snapshot = rawSnapshot
@@ -31,6 +31,32 @@ export function LogPopup({ log, onClose, mqttServers }: { log: LogData, onClose:
   }
 
   let serverId = log.server?.server_id || log.raw?.body?.server?.server_id || 'UNKNOWN_SERVER';
+  // Tra server_name từ servers map: tìm theo cả serial + server_id, fallback server_id → serial
+  const logSerial = log.server?.serial || log.raw?.body?.server?.serial || '';
+  const logServerId = log.server?.server_id || log.raw?.body?.server?.server_id || '';
+  let serverName = '';
+  if (servers) {
+    // Ưu tiên 1: tìm server khớp cả serial lẫn server_id (id trong map = serverId)
+    const matched = Object.values(servers).find(s =>
+      (s.serial && s.serial === logSerial) && (s.id && s.id === logServerId)
+    );
+    if (matched?.server_name) {
+      serverName = matched.server_name;
+    } else {
+      // Ưu tiên 2: tìm theo server_id (id)
+      const byId = Object.values(servers).find(s => s.id && s.id === logServerId);
+      if (byId?.server_name) {
+        serverName = byId.server_name;
+      } else {
+        // Ưu tiên 3: tìm theo serial
+        const bySerial = Object.values(servers).find(s => s.serial && s.serial === logSerial);
+        if (bySerial?.server_name) {
+          serverName = bySerial.server_name;
+        }
+      }
+    }
+  }
+
   if (log.source === 'mqtt' || log.mqttServerId || serverId.startsWith('mqtt-')) {
     const cleanId = (log.mqttServerId || serverId.replace('mqtt-', '')).toLowerCase();
     const mqttSrv = (mqttServers || []).find(s => s.id?.toLowerCase() === cleanId);
@@ -42,6 +68,7 @@ export function LogPopup({ log, onClose, mqttServers }: { log: LogData, onClose:
   }
 
   const allMetadata = [
+    { label: t('app.log_popup.server_name'), value: serverName || undefined, isImportant: true },
     { label: t('app.log_popup.server_id'), value: serverId, isImportant: true },
     { label: t('app.log_popup.device_name'), value: log.device_name || log.raw?.body?.device_name, isImportant: true },
     { label: t('app.log_popup.device_ip'), value: log.cameraIp || log.device_ip || 'Internal', isImportant: false },
@@ -106,7 +133,7 @@ export function LogPopup({ log, onClose, mqttServers }: { log: LogData, onClose:
           <div className="flex items-center gap-3">
             <div>
               <h3 className="text-sm font-black tracking-widest uppercase text-on-surface flex flex-wrap items-center gap-2">
-                <span>{serverId} / {deviceName}</span>
+                <span>{serverName} / {deviceName}</span>
                 {summaryContent && (
                   <>
                     <span className="text-on-surface-variant/50">/</span>

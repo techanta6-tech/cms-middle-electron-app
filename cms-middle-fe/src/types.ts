@@ -79,7 +79,7 @@ export interface DeviceItem {
 }
 
 export interface DeviceData {
-  server: { serial: string; server_id: string };
+  server: { serial: string; server_id: string, server_name?: string };
   devices: DeviceItem[];
   sender_ip?: string;
   lastSeen?: string;
@@ -128,6 +128,7 @@ export interface DeviceCameraLink {
   devEui: string;
   mqttServerId: string;
   cameraId: string;
+  features?: Record<string, boolean | { enabled: boolean; cameraId?: string | null }>;
 }
 
 // ─── MQTT Log Types ──────────────────────────────────────────────────────────

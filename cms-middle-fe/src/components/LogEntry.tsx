@@ -70,7 +70,8 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
           </span>
         </div>
         <p className="displayDesc text-[11px] text-on-surface mb-1 font-medium leading-relaxed truncate uppercase">{displayDesc}</p>
-        <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{serverName} // {log.device_name} // {timeStr}</div>
+        {/* <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{serverName} // {log.device_name} // {timeStr}</div> */}
+        <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{log.device_name} / {timeStr}</div>
       </div>
       {log.snapshot && (
         <div className="rounded-sm overflow-hidden border border-outline-variant/20 shrink-0 w-24 mr-2">

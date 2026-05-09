@@ -1099,6 +1099,7 @@ function Dashboard() {
           log={selectedLog}
           onClose={() => setSelectedLog(null)}
           mqttServers={mqttServers}
+          servers={servers}
         />
       )}
     </div>
