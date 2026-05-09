@@ -18,3 +18,4 @@ scripts/update-map.js
 .env.generated
 /snapshots
 /docs
+/build-be

@@ -97,17 +97,17 @@ export function AlertWall({
               mqttCameraLog = latestLog;
             }
 
-            if (!hasCamera) {
-              // Chưa liên kết camera → background đen
+            if (latestLog && latestLog.snapshot) {
+              // ƯU TIÊN 1: Có log + có snapshot → show ảnh (kể cả khi frontend chưa kịp đồng bộ link camera)
+              mqttRenderState = 'snapshot';
+            } else if (!hasCamera) {
+              // TRƯỜNG HỢP 2: Chưa liên kết camera → background đen
               mqttRenderState = 'black';
             } else if (hasCamera && !latestLog) {
-              // Đã liên kết nhưng chưa có log → "Đang chờ Log"
+              // TRƯỜNG HỢP 3: Đã liên kết nhưng chưa có log → "Đang chờ Log"
               mqttRenderState = 'waiting';
-            } else if (latestLog && latestLog.snapshot) {
-              // Có log + có snapshot → show ảnh
-              mqttRenderState = 'snapshot';
             } else {
-              // Đã liên kết + có log nhưng log không có snapshot → background đen
+              // TRƯỜNG HỢP 4: Đã liên kết + có log nhưng log không có snapshot → background đen
               mqttRenderState = 'black';
             }
           }
