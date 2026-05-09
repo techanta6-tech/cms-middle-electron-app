@@ -57,6 +57,8 @@ const resources = {
           no_mqtt_devices: "Chưa có thiết bị cảm biến nào",
           sunell_cameras: "Camera Sunell",
           no_sunell_cameras: "Chưa có Camera Sunell nào",
+          lora_devices: "LoRa Devices",
+          no_lora_devices: "No LoRa Devices"
         },
         monitor: {
           input_connections: "Nhận dữ liệu từ...",
@@ -79,7 +81,8 @@ const resources = {
           camera_default_linked: "-- Camera mặc định từ Server ({{name}}) --",
           no_camera_no_snapshot: "-- Không có Camera (Không chụp ảnh) --",
           no_devices_mapped: "Không có thiết bị",
-          bound_camera: "Camera mặc định",
+          bound_camera: "Camera đã liên kết",
+          default_camera: "Camera mặc định",
           no_camera_disabled: "-- Không có Camera (Không chụp ảnh) --",
           bound_camera_desc: "Sau khi liên kết, khi có cảnh báo từ cảm biến, ứng dụng sẽ chụp ảnh từ camera và đính kèm vào thông báo.",
           camera_default: "-- Mặc định --",
@@ -504,8 +507,8 @@ const resources = {
           inc_grid: "Zoom Out (Increase Columns)",
           dec_grid: "Zoom In (Decrease Columns)",
           close_settings: "Close Settings",
-          lora_network: "MQTT Sensor Devices",
-          no_mqtt_devices: "No MQTT devices detected"
+          lora_devices: "LoRa Devices",
+          no_lora_devices: "No LoRa Devices"
         },
         monitor: {
           input_connections: "Input Connections",
@@ -528,7 +531,8 @@ const resources = {
           camera_default_linked: "-- Default Camera from Server ({{name}}) --",
           no_camera_no_snapshot: "-- No Camera (No Snapshot) --",
           no_devices_mapped: "No devices mapped from this server",
-          bound_camera: "Default Camera",
+          bound_camera: "Bound Camera",
+          default_camera: "Default Camera",
           no_camera_disabled: "-- No Camera (Disabled Snapshot) --",
           bound_camera_desc: "If bound, when an MQTT alarm triggers, the server will try to extract a snapshot from this camera.",
           camera_default: "-- Default --",
@@ -601,6 +605,7 @@ const resources = {
           mqtt_server: "MQTT Server",
           mqtt_device: "MQTT Device",
           camera_device: "Camera Device",
+          edit: "Edit",
           confirm_delete_camera: 'Are you sure you want to delete this camera?',
           confirm_delete_mqtt: 'Are you sure you want to delete this MQTT server?',
           radar_categories: {

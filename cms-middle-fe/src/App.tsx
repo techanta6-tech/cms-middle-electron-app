@@ -828,7 +828,7 @@ function Dashboard() {
                 {/* MQTT Sensor Devices Section */}
                 <div className="flex items-center gap-2 mt-4 mb-1 px-1">
                   <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/80">
-                    {t('app.alert_wall.mqtt_sensor_devices')}
+                    {t('app.alert_wall.lora_devices')}
                   </span>
                 </div>
 
@@ -867,7 +867,7 @@ function Dashboard() {
                               <div className="flex flex-col items-end gap-1 shrink-0">
                                 {link && (() => {
                                   const linkedCam = cameraDevices.find(c => c.id === link.cameraId);
-                                  const camLabel = linkedCam?.name || linkedCam?.cameraIp || link.cameraId.slice(-6);
+                                  const camLabel = linkedCam?.name || linkedCam?.cameraIp || (link.cameraId ? link.cameraId.slice(-6) : 'Default');
                                   return <span className="text-[8px] px-1 py-0.5 rounded uppercase font-bold bg-cyan-500/20 text-cyan-500">📷 {camLabel}</span>;
                                 })()}
                               </div>

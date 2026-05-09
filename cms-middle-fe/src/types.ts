@@ -128,7 +128,7 @@ export type MqttDeviceConfig = ManualAddedCamera;
 export interface DeviceCameraLink {
   devEui: string;
   mqttServerId: string;
-  cameraId: string;
+  cameraId: string | null;
   features?: Record<string, boolean | { enabled: boolean; cameraId?: string | null }>;
 }
 

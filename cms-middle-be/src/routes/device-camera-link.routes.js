@@ -27,58 +27,15 @@ router.patch('/api/v1/mqtt-device-camera-link', (req, res) => {
     l => l.devEui === devEui && l.mqttServerId === mqttServerId
   );
 
-  if (cameraId) {
-    // Create or update link
-    const linkEntry = { devEui, mqttServerId, cameraId };
-    if (existingIdx !== -1) {
-      deviceCameraLinks[existingIdx] = linkEntry;
-      console.log(`[Device-Camera-Link] Updated: ${devEui} → ${cameraId}`);
-    } else {
-      deviceCameraLinks.push(linkEntry);
-      console.log(`[Device-Camera-Link] Created: ${devEui} → ${cameraId}`);
-    }
-
-    // Gửi log test để kiểm tra snapshot
-    // const { getSnapshotForCamera } = require('../services/cameras.service');
-    // setTimeout(async () => {
-    //   try {
-    //     console.log(`[Device-Camera-Link] 📸 Triggering test snapshot for camera ${cameraId}...`);
-    //     const snapshot = await getSnapshotForCamera(cameraId);
-    //     const clientSockets = getClientSockets();
-    //     if (clientSockets) {
-    //       const fakeEvent = { alarm_type: '0', alarm_status: '1', alarm_id: 9999 };
-    //       clientSockets.emit('receive-mqtt-log', {
-    //         time: new Date().toISOString(),
-    //         type: 'data',
-    //         topic: 'system/test_snapshot',
-    //         payload: {
-    //           deviceInfo: {
-    //             deviceName: 'Snapshot Test',
-    //             devEui: devEui
-    //           },
-    //           object: {
-    //             events: [fakeEvent]
-    //           }
-    //         },
-    //         event: fakeEvent,
-    //         snapshot: snapshot || null,
-    //         mqttServerId: mqttServerId,
-    //         brokerHost: 'SYSTEM',
-    //         brokerPort: 'TEST'
-    //       });
-    //       console.log(`[Device-Camera-Link] ✅ Test log emitted with snapshot (${snapshot ? 'OK' : 'FAILED'})`);
-    //     }
-    //   } catch (err) {
-    //     console.error(`[Device-Camera-Link] ❌ Test log/snapshot failed:`, err);
-    //   }
-    // }, 1000);    
-
-  } else {
-    // Remove link (cameraId is null/undefined)
-    if (existingIdx !== -1) {
-      deviceCameraLinks.splice(existingIdx, 1);
-      console.log(`[Device-Camera-Link] Removed link for: ${devEui}`);
-    }
+  if (existingIdx !== -1) {
+    // Update existing link
+    deviceCameraLinks[existingIdx].cameraId = cameraId || null;
+    console.log(`[Device-Camera-Link] Updated: ${devEui} → ${cameraId || 'DEFAULT'}`);
+  } else if (cameraId) {
+    // Create new link only if cameraId is provided
+    const linkEntry = { devEui, mqttServerId, cameraId, features: {} };
+    deviceCameraLinks.push(linkEntry);
+    console.log(`[Device-Camera-Link] Created: ${devEui} → ${cameraId}`);
   }
 
   _emitLinksUpdate();

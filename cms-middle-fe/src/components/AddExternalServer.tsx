@@ -72,12 +72,12 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="add-external-server-form p-8 space-y-6">
           {/* Connection Type Switcher */}
-          {!mqttToEdit && (
+          {false && !mqttToEdit && (
             <div className="space-y-3">
               <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1">
                 {t('app.add_server.conn_type')}
               </label>
-              <div className="flex bg-black/40 p-1 rounded-sm border border-outline-variant/30">
+              {/* <div className="flex bg-black/40 p-1 rounded-sm border border-outline-variant/30">
                 <button
                   type="button"
                   onClick={() => setConnectionType('svms')}
@@ -100,7 +100,7 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
                   <Radio className={`w-3.5 h-3.5 ${connectionType === 'mqtt' ? 'animate-pulse' : ''}`} />
                   MQTT
                 </button>
-              </div>
+              </div> */}
             </div>
           )}
 
@@ -210,24 +210,24 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
                 </div>
               </div>
 
-            {/* MQTT Name */}
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-bold text-on-surface-variant/70 uppercase tracking-widest flex items-center gap-1.5">
-                {t('app.add_server.mqtt_name')}
-              </span>
-              <div className="relative group">
-                <input
-                  type="text"
-                  value={mqttName}
-                  onChange={(e) => setMqttName(e.target.value)}
-                  placeholder={t('app.add_server.mqtt_name_placeholder')}
-                  className="w-full bg-surface-container-highest border border-outline-variant/30 rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-secondary focus:ring-1 focus:ring-secondary/50 transition-all font-mono"
-                />
+              {/* MQTT Name */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-on-surface-variant/70 uppercase tracking-widest flex items-center gap-1.5">
+                  {t('app.add_server.mqtt_name')}
+                </span>
+                <div className="relative group">
+                  <input
+                    type="text"
+                    value={mqttName}
+                    onChange={(e) => setMqttName(e.target.value)}
+                    placeholder={t('app.add_server.mqtt_name_placeholder')}
+                    className="w-full bg-surface-container-highest border border-outline-variant/30 rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-secondary focus:ring-1 focus:ring-secondary/50 transition-all font-mono"
+                  />
+                </div>
               </div>
-            </div>
 
-            {/* MQTT Server Config */}
-            <div className="flex gap-3">
+              {/* MQTT Server Config */}
+              <div className="flex gap-3">
                 <div className="space-y-1.5 flex-[2]">
                   <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">
                     {t('app.add_server.broker_host')}

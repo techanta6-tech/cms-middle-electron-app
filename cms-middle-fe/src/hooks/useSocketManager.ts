@@ -317,9 +317,17 @@ export function useSocketManager() {
   const handleLinkDeviceCamera = useCallback(async (devEui: string, mqttServerId: string, cameraId: string | null) => {
     // Optimistic Update: update local state instantly for 0ms lag
     setDeviceCameraLinks((prev) => {
+      const existing = prev.find(l => l.devEui === devEui && l.mqttServerId === mqttServerId);
       const filtered = prev.filter(l => !(l.devEui === devEui && l.mqttServerId === mqttServerId));
-      if (cameraId) {
-        return [...filtered, { devEui, mqttServerId, cameraId }];
+
+      // Always keep the link entry if it has features or a cameraId
+      if (cameraId || (existing && Object.keys(existing.features || {}).length > 0)) {
+        return [...filtered, {
+          devEui,
+          mqttServerId,
+          cameraId: cameraId || null,
+          features: existing?.features || {}
+        }];
       }
       return filtered;
     });
