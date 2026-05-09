@@ -1,0 +1,7 @@
+--- SUNELL EVENT: SYSTEM_EVENT_7_1 (Báo động vượt ngưỡng nhiệt (Temperature threshold alarm)) ---
+Time: 2026-05-05T09:51:43.117Z
+Camera: Cam 192.168.1.207 (cam-1777974691734-sd6bb)
+Description: Báo động vượt ngưỡng nhiệt (Temperature threshold alarm)
+Raw JSON:
+{"data":{"dev_ip":"192.168.1.207","src_type":31,"src_id":0,"src_name":"(CameraId=2)(GroupId=00)(AreaId=00)(AreaName=Area0)(MaxTemperatureCoordinateX=28.91)(MaxTemperatureCoordinateY=12.50)(MaxTemperature=31.5)(MinTemperature=20.9)(WarningValue=10.0)(TemperatureThreshold=20.0)(AlarmMaxValue=60.0)","dev_id":"1BC712","dev_descript":"(Max=31.5,Min=20.9,Ave=23.9)","io_port_id":0,"targer_type":0,"upleft_x":0,"upleft_y":0,"lowright_x":0,"lowright_y":0,"alarm_pic_len":0,"alarm_pic":"","dev_type":0,"main_type":7,"sub_type":1,"alarm_flag":1,"time":"2000-01-14 11:47:46"},"SNPointList":[],"AlarmAreaList":[],"eventName":"Báo động vượt ngưỡng nhiệt (Temperature threshold alarm)"}
+

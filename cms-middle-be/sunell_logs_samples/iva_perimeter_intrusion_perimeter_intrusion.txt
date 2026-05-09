@@ -1,0 +1,8 @@
+--- SUNELL EVENT: IVA_PERIMETER_INTRUSION (Xâm nhập vùng cấm (Perimeter intrusion)) ---
+Time: 2026-05-08T08:34:46.661Z
+Camera: Cam 192.168.1.208 (cam-1778229279105-vyqpe)
+Description: Xâm nhập vùng cấm (Perimeter intrusion)
+Raw JSON:
+{"data":{"dev_ip":"192.168.1.208","src_type":8,"src_id":1,"src_name":"","dev_id":"21F286","dev_descript":"","io_port_id":0,"targer_type":4,"upleft_x":199,"upleft_y":150,"lowright_x":321,"lowright_y":363,"alarm_pic_len":0,"alarm_pic":"","dev_type":0,"main_type":6,"sub_type":24,"alarm_flag":1,"time":"2024-02-21 01:12:43"},"SNPointList":[],"AlarmAreaList":[],"eventName":"Xâm nhập vùng cấm (Perimeter intrusion)"}
+
+[HAS SNAPSHOT BASE64 IMAGE - LENGTH: 440687]

@@ -1,0 +1,8 @@
+--- SUNELL EVENT: IVA_DOUBLE_TRIP_WIRE (Vượt hàng rào kép (Double trip wire)) ---
+Time: 2026-05-08T08:34:57.263Z
+Camera: Cam 192.168.1.208 (cam-1778229279105-vyqpe)
+Description: Vượt hàng rào kép (Double trip wire)
+Raw JSON:
+{"data":{"dev_ip":"192.168.1.208","src_type":10,"src_id":1,"src_name":"","dev_id":"21F286","dev_descript":"","io_port_id":0,"targer_type":-1,"upleft_x":0,"upleft_y":0,"lowright_x":0,"lowright_y":0,"alarm_pic_len":0,"alarm_pic":"","dev_type":0,"main_type":6,"sub_type":25,"alarm_flag":2,"time":"2024-02-21 01:12:47"},"SNPointList":[],"AlarmAreaList":[],"eventName":"Vượt hàng rào kép (Double trip wire)"}
+
+[HAS SNAPSHOT BASE64 IMAGE - LENGTH: 354231]

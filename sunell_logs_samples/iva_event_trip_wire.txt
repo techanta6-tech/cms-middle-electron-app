@@ -1,0 +1,7 @@
+--- SUNELL EVENT: IVA_EVENT (Vượt hàng rào ảo (Trip wire)) ---
+Time: 2026-05-05T07:27:57.450Z
+Camera: Cam 192.168.1.208 (cam-1777966065284-o8u3g)
+Description: Phân tích AI (IVS/IVA)
+Raw JSON:
+{"data":{"dev_ip":"192.168.1.208","src_type":9,"src_id":1,"src_name":"","dev_id":"21F286","dev_descript":"","io_port_id":0,"targer_type":4,"upleft_x":454,"upleft_y":0,"lowright_x":539,"lowright_y":85,"alarm_pic_len":0,"alarm_pic":"","dev_type":0,"main_type":6,"sub_type":21,"alarm_flag":1,"time":"2024-02-18 00:06:09"},"SNPointList":[],"AlarmAreaList":[],"eventName":"Vượt hàng rào ảo (Trip wire)"}
+

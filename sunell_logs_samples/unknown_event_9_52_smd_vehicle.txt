@@ -1,0 +1,7 @@
+--- SUNELL EVENT: UNKNOWN_EVENT_9_52 (Phát hiện chuyển động thông minh - Xe (SMD Vehicle)) ---
+Time: 2026-05-06T02:17:59.426Z
+Camera: Cam 192.168.1.208 (cam-1778033875141-9v1w5)
+Description: Phát hiện chuyển động thông minh - Xe (SMD Vehicle)
+Raw JSON:
+{"data":{"dev_ip":"192.168.1.208","src_type":30,"src_id":1,"src_name":"","dev_id":"21F286","dev_descript":"","io_port_id":0,"targer_type":4,"upleft_x":357,"upleft_y":8,"lowright_x":447,"lowright_y":108,"alarm_pic_len":0,"alarm_pic":"","dev_type":0,"main_type":9,"sub_type":52,"alarm_flag":1,"time":"2024-02-18 18:56:07"},"SNPointList":[],"AlarmAreaList":[],"eventName":"Phát hiện chuyển động thông minh - Xe (SMD Vehicle)"}
+

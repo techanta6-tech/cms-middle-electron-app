@@ -1,0 +1,7 @@
+--- SUNELL EVENT: SYSTEM_EVENT_7_16 (Sự kiện chưa bóc tách (7/16)) ---
+Time: 2026-05-05T09:30:29.614Z
+Camera: Cam 192.168.1.207 (cam-1777973409372-o37kq)
+Description: Sự kiện chưa bóc tách (7/16)
+Raw JSON:
+{"data":{"dev_ip":"192.168.1.207","src_type":56,"src_id":2,"src_name":"","dev_id":"1BC712","dev_descript":"","io_port_id":0,"targer_type":0,"upleft_x":0,"upleft_y":0,"lowright_x":0,"lowright_y":0,"alarm_pic_len":0,"alarm_pic":"","dev_type":0,"main_type":7,"sub_type":16,"alarm_flag":2,"time":"2000-01-14 11:26:32"},"SNPointList":[],"AlarmAreaList":[],"eventName":"Sự kiện chưa bóc tách (7/16)"}
+

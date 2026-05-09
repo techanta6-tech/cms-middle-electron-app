@@ -7,3 +7,6 @@ dist/
 /cms-middle-be/request_logs
 vs373-api-documentation-en.pdf
 /cms-middle-be/snapshots
+/snapshots
+/build-be
+/.understand-anything

@@ -1,0 +1,8 @@
+--- SUNELL EVENT: IVA_EVENT_52 (Phát hiện chuyển động thông minh - Xe (SMD Vehicle)) ---
+Time: 2026-05-08T08:34:54.326Z
+Camera: Cam 192.168.1.208 (cam-1778229279105-vyqpe)
+Description: Phát hiện chuyển động thông minh - Xe (SMD Vehicle)
+Raw JSON:
+{"data":{"dev_ip":"192.168.1.208","src_type":30,"src_id":1,"src_name":"","dev_id":"21F286","dev_descript":"","io_port_id":0,"targer_type":4,"upleft_x":460,"upleft_y":317,"lowright_x":620,"lowright_y":415,"alarm_pic_len":0,"alarm_pic":"","dev_type":0,"main_type":9,"sub_type":52,"alarm_flag":1,"time":"2024-02-21 01:12:47"},"SNPointList":[],"AlarmAreaList":[],"eventName":"Phát hiện chuyển động thông minh - Xe (SMD Vehicle)"}
+
+[HAS SNAPSHOT BASE64 IMAGE - LENGTH: 532871]

@@ -1,0 +1,7 @@
+--- SUNELL EVENT: MOTION_EVENT (Phát hiện chuyển động (Motion detection)) ---
+Time: 2026-05-06T01:57:27.048Z
+Camera: cam dưới nhà (cam-1778032495927-rf3z6)
+Description: Phát hiện chuyển động (Motion detection)
+Raw JSON:
+{"data":{"dev_ip":"192.168.1.207","src_type":2,"src_id":1,"src_name":"","dev_id":"1BC712","dev_descript":"","io_port_id":0,"targer_type":0,"upleft_x":0,"upleft_y":0,"lowright_x":0,"lowright_y":0,"alarm_pic_len":0,"alarm_pic":"","dev_type":0,"main_type":1,"sub_type":2,"alarm_flag":1,"time":"1977-08-10 11:52:26"},"SNPointList":[],"AlarmAreaList":[],"eventName":"Phát hiện chuyển động (Motion detection)"}
+

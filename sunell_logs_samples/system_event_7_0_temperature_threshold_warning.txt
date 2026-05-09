@@ -1,0 +1,7 @@
+--- SUNELL EVENT: SYSTEM_EVENT_7_0 (Cảnh báo ngưỡng nhiệt độ (Temperature threshold warning)) ---
+Time: 2026-05-05T09:37:20.602Z
+Camera: Cam 192.168.1.207 (cam-1777973409372-o37kq)
+Description: Cảnh báo ngưỡng nhiệt độ (Temperature threshold warning)
+Raw JSON:
+{"data":{"dev_ip":"192.168.1.207","src_type":32,"src_id":2,"src_name":"(CameraId=2)(GroupId=00)(AreaId=02)(AreaName=Area2)(MaxTemperatureCoordinateX=25.39)(MaxTemperatureCoordinateY=21.88)(MaxTemperature=82.1)(MinTemperature=19.1)(WarningValue=80.0)(TemperatureThreshold=90.0)(AlarmMaxValue=60.0)","dev_id":"1BC712","dev_descript":"(Max=82.1,Min=19.1,Ave=22.7)","io_port_id":0,"targer_type":0,"upleft_x":0,"upleft_y":0,"lowright_x":0,"lowright_y":0,"alarm_pic_len":0,"alarm_pic":"","dev_type":0,"main_type":7,"sub_type":0,"alarm_flag":2,"time":"2000-01-14 11:33:05"},"SNPointList":[],"AlarmAreaList":[],"eventName":"Cảnh báo ngưỡng nhiệt độ (Temperature threshold warning)"}
+
