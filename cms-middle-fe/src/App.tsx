@@ -827,8 +827,9 @@ function Dashboard() {
 
                 {/* MQTT Sensor Devices Section */}
                 <div className="flex items-center gap-2 mt-4 mb-1 px-1">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/80">{t('app.alert_wall.mqtt_sensor_devices')}</span>
-                  <div className="flex-1 h-px bg-amber-400/10"></div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/80">
+                    {t('app.alert_wall.mqtt_sensor_devices')}
+                  </span>
                 </div>
 
                 {mqttServers.map(ms => {

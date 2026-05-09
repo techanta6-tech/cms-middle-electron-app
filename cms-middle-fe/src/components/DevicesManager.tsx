@@ -190,13 +190,13 @@ export function DevicesManager({
           )}
 
           {/* MQTT Servers */}
-          <GroupHeader icon={<Radio className="w-3.5 h-3.5" />} label={t('app.devices.mqtt_servers')} color="text-amber-400" count={mqttServers.length}
+          <GroupHeader icon={<Radio className="w-3.5 h-3.5" />} label={t('app.devices.lora_server')} color="text-amber-400" count={mqttServers.length}
             expanded={!!expandedGroups.mqtt} onToggle={() => toggleGroup('mqtt')}
             onAdd={() => setAddingForm('mqtt')}
           />
           {expandedGroups.mqtt && (
             <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-amber-400/10 pl-2">
-              {mqttServers.length === 0 && <EmptyHint text={t('app.devices.no_mqtt')} />}
+              {mqttServers.length === 0 && <EmptyHint text={t('app.devices.no_lora')} />}
               {mqttServers.map(ms => {
                 const expanded = !!expandedServers[`mqtt-${ms.id}`];
                 const mqttDevs = mqttDevicesByServer[ms.id] || [];
@@ -243,6 +243,8 @@ export function DevicesManager({
                   isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
                   status={cam.status || 'error'}
                   onDelete={() => handleDeleteCamera(cam.id)}
+                  draggable
+                  dragData={cam.id}
                 />
               ))}
             </div>
@@ -264,6 +266,8 @@ export function DevicesManager({
                   isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
                   status={cam.status || 'error'}
                   onDelete={() => handleDeleteCamera(cam.id)}
+                  draggable
+                  dragData={cam.id}
                 />
               ))}
             </div>
@@ -309,11 +313,12 @@ function GroupHeader({ icon, label, color, count, expanded, onToggle, onAdd }: {
   );
 }
 
-function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onClick, isSelected, indent, status, onDelete }: {
+function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onClick, isSelected, indent, status, onDelete, draggable, dragData }: {
   label: string; sublabel?: string; icon?: React.ReactNode;
   hasChildren?: boolean; expanded?: boolean; onToggle?: () => void;
   onClick: () => void; isSelected?: boolean; indent?: boolean;
   status?: string; onDelete?: () => void;
+  draggable?: boolean; dragData?: string;
 }) {
   return (
     <div
@@ -328,6 +333,11 @@ function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onCl
           onToggle();
         } onClick();
       }}
+      draggable={draggable}
+      onDragStart={draggable && dragData ? (e) => {
+        e.dataTransfer.setData('application/camera-id', dragData);
+        e.dataTransfer.effectAllowed = 'link';
+      } : undefined}
     >
       {hasChildren && onToggle ? (
         <button onClick={(e) => { e.stopPropagation(); onToggle(); }} className="shrink-0 cursor-pointer p-0.5">
@@ -520,18 +530,18 @@ function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera }: 
 
 function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDeviceCamera }: { dev: MqttDeviceInfo; srv: MqttServerConfig; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; }) {
   const { t } = useTranslation();
+  const [dragOverCatId, setDragOverCatId] = useState<string | null>(null);
 
   const RADAR_CATEGORIES = [
     {
-      id: 'fall_bed',
-      label: t('app.devices.radar_categories.fall_bed'),
+      id: 'accident',
+      label: t('app.devices.radar_categories.accident'),
       colorClass: 'text-cyan-400',
       bgClass: 'bg-cyan-500/5 border-cyan-500/10',
       indicatorColor: 'bg-cyan-400',
       subEvents: [
-        { code: 'fall', label: 'Fall Alarm' },
-        { code: 'out_of_bed', label: 'Out of Bed Alarm' },
-        { code: 'lying', label: 'Lying State' },
+        { code: 'fall', label: t('app.devices.radar_categories.sub_fall') },
+        { code: 'lying', label: t('app.devices.radar_categories.sub_lying') },
       ],
     },
     {
@@ -541,21 +551,22 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
       bgClass: 'bg-cyan-500/5 border-cyan-500/10',
       indicatorColor: 'bg-cyan-400',
       subEvents: [
-        { code: 'occupied', label: 'Occupied' },
-        { code: 'vacant', label: 'Vacant' },
-        { code: 'dwell', label: 'Dwell / Stay Alarm' },
+        { code: 'occupied', label: t('app.devices.radar_categories.sub_occupied') },
+        { code: 'vacant', label: t('app.devices.radar_categories.sub_vacant') },
+        { code: 'dwell', label: t('app.devices.radar_categories.sub_dwell') },
       ],
     },
     {
-      id: 'respiration',
-      label: t('app.devices.radar_categories.respiration'),
+      id: 'vital_signs',
+      label: t('app.devices.radar_categories.vital_signs'),
       colorClass: 'text-cyan-400',
       bgClass: 'bg-cyan-500/5 border-cyan-500/10',
       indicatorColor: 'bg-cyan-400',
       subEvents: [
-        { code: 'bradynea', label: 'Bradynea Alarm' },
-        { code: 'tachypnea', label: 'Tachypnea Alarm' },
-        { code: 'motionless', label: 'Abnormal Static Alarm' },
+        { code: 'motionless', label: t('app.devices.radar_categories.sub_motionless') },
+        { code: 'out_of_bed', label: t('app.devices.radar_categories.sub_out_of_bed') },
+        { code: 'bradynea', label: t('app.devices.radar_categories.sub_bradynea') },
+        { code: 'tachypnea', label: t('app.devices.radar_categories.sub_tachypnea') },
       ],
     },
   ];
@@ -611,7 +622,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
       <InfoRow label={t('app.monitor.alarm_count')} value={dev.alarmCount} />
       <InfoRow label={t('app.monitor.last_seen')} value={formatDate(dev.lastSeen)} />
       <div className="mt-4 pt-3 border-t border-outline-variant/10">
-        <InfoRow label={t('app.monitor.parent_mqtt')} value={srv.name || `${srv.brokerHost}:${srv.brokerPort}`} mono />
+        <InfoRow label={t('app.monitor.mqtt_ip')} value={srv.name || `${srv.brokerHost}:${srv.brokerPort}`} mono />
         <InfoRow label={t('app.monitor.topic')} value={srv.topic || srv.defaultTopic} mono />
       </div>
       <div className="mt-4 pt-3 border-t border-outline-variant/10 flex items-center gap-3">
@@ -637,7 +648,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
         {/* Section title */}
         <div className="flex items-center gap-2 mb-3">
           <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
-            🎛 Event Filter — MQTT Radar
+            🎛 Event
           </span>
           <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
             {totalEnabled}/{totalEvents} {t('app.devices.radar_categories.enabled_count')}
@@ -646,7 +657,43 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
         <div className="flex flex-col gap-3">
           {RADAR_CATEGORIES.map((cat) => (
-            <div key={cat.id} className={`rounded-md border p-3 ${cat.bgClass}`}>
+            <div key={cat.id}
+              className={`relative rounded-md border p-3 transition-all duration-150 ${cat.bgClass} ${dragOverCatId === cat.id ? 'ring-2 ring-cyan-400/50 bg-cyan-500/10' : ''}`}
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes('application/camera-id')) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'link';
+                  setDragOverCatId(cat.id);
+                }
+              }}
+              onDragLeave={() => setDragOverCatId(null)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverCatId(null);
+                const cameraId = e.dataTransfer.getData('application/camera-id');
+                if (cameraId) {
+                  const batchFeatures: Record<string, { cameraId: string }> = {};
+                  for (const sub of cat.subEvents) {
+                    batchFeatures[sub.code] = { cameraId };
+                  }
+                  socket.emit('update-device-features', {
+                    devEui: dev.devEui,
+                    mqttServerId: srv.id,
+                    features: batchFeatures,
+                  });
+                }
+              }}
+            >
+              {dragOverCatId === cat.id && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-cyan-500/5 rounded-md pointer-events-none">
+                  <div className="flex flex-col items-center gap-1">
+                    <Camera className="w-5 h-5 text-cyan-400 animate-bounce" />
+                    <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest bg-surface-container px-2 py-0.5 rounded shadow-sm">
+                      Thả để gán camera
+                    </span>
+                  </div>
+                </div>
+              )}
               {/* Category Header */}
               {(() => {
                 const allEnabled = cat.subEvents.every(sub => getFeature(sub.code).enabled);
@@ -663,7 +710,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
                   });
                 };
                 return (
-                  <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-outline-variant/5">
+                  <div className={`flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-outline-variant/5`}>
                     <div className="flex items-center gap-2">
                       <span className={`w-1.5 h-1.5 rounded-full ${cat.indicatorColor}`} />
                       <span className={`text-[11px] font-bold uppercase tracking-wider ${cat.colorClass}`}>
@@ -672,13 +719,12 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
                     </div>
                     <button
                       onClick={handleGroupToggle}
-                      className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 p-0
-                        ${allEnabled ? cat.indicatorColor : 'bg-surface-container-high'}`}
+                      className={`${!allEnabled && 'opacity-50'} flex items-center w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
+                        ${allEnabled ? cat.indicatorColor + ' justify-end' : 'bg-surface-container-high justify-start '}`}
                       title={allEnabled ? 'Tất cả đang bật — Click để tắt hết' : 'Có event đang tắt — Click để bật tất cả'}
                     >
                       <span
-                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200
-                          ${allEnabled ? 'left-[22px]' : 'left-0.5'}`}
+                        className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200"
                       />
                     </button>
                   </div>
@@ -701,43 +747,42 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
                       className="flex flex-col gap-1.5 py-1.5 first:pt-0 last:pb-0"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 grow">
                           <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? cat.indicatorColor : 'bg-on-surface-variant/30'}`} />
-                          <span className={`text-[11px] font-medium leading-tight transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'}`}>
+                          <span className={`text-[11px] font-medium leading-tight transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'} min-w-[18%]`}>
                             {sub.label}
                           </span>
+                          {/* Per-event camera selector — chỉ hiện khi event đang bật */}
+                          <div className="ml-3 flex items-center gap-2">
+                            <select
+                              disabled={!enabled}
+                              value={feat.cameraId || ''}
+                              onChange={(e) => handleEventCamera(sub.code, e.target.value || null)}
+                              className={`
+                                ${!enabled && 'opacity-[50%]'}
+                                transition-opacity duration-200
+                                flex-1 text-[10px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors`}
+                            >
+                              <option value="">{t('app.monitor.camera_default')}</option>
+                              {allCameras.map(cam => (
+                                <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
 
                         {/* Enable toggle */}
                         <button
                           onClick={() => handleToggle(sub.code, !enabled)}
-                          className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 p-0
-                            ${enabled ? cat.indicatorColor : 'bg-surface-container-high'}`}
+                          className={`flex items-center w-7 h-4 rounded-full transition-colors transition-opacity cursor-pointer shrink-0 border-0 px-0.5
+                            ${enabled ? cat.indicatorColor + ' justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
                           title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
                         >
                           <span
-                            className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200
-                              ${enabled ? 'left-[22px]' : 'left-0.5'}`}
+                            className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200"
                           />
                         </button>
                       </div>
-
-                      {/* Per-event camera selector — chỉ hiện khi event đang bật */}
-                      {enabled && (
-                        <div className="ml-3 flex items-center gap-2">
-                          <span className="text-[8px] font-bold text-on-surface-variant/50 uppercase tracking-widest shrink-0">📷</span>
-                          <select
-                            value={feat.cameraId || ''}
-                            onChange={(e) => handleEventCamera(sub.code, e.target.value || null)}
-                            className="flex-1 text-[10px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors"
-                          >
-                            <option value="">{t('app.monitor.camera_default')}</option>
-                            {allCameras.map(cam => (
-                              <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -910,13 +955,12 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
                     {/* Enable toggle */}
                     <button
                       onClick={() => handleToggle(key, !enabled)}
-                      className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0
-                        ${enabled ? 'bg-primary' : 'bg-surface-container-high'}`}
+                      className={`flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
+                        ${enabled ? 'bg-primary justify-end' : 'bg-surface-container-high justify-start'}`}
                       title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
                     >
                       <span
-                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200
-                          ${enabled ? 'left-[22px]' : 'left-0.5'}`}
+                        className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200"
                       />
                     </button>
                   </div>

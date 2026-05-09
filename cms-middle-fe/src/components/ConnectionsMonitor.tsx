@@ -1255,6 +1255,7 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
 }
 
 function CameraDevicesList({ cameras }: { cameras: MqttDeviceConfig[] }) {
+  const { t } = useTranslation();
   const [isAddingDevice, setIsAddingDevice] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [addDeviceForm, setAddDeviceForm] = useState({
