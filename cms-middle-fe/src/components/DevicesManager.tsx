@@ -3,12 +3,14 @@ import { useTranslation } from 'react-i18next';
 import type { ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
 import {
   ChevronRight, ChevronDown, Plus, Cpu, Radio, Camera,
-  Server, Wifi, WifiOff, MonitorSmartphone, Info, X, Trash2
+  Server, Wifi, WifiOff, MonitorSmartphone, Info, X, Trash2, Edit2
 } from 'lucide-react';
 import { CameraForm } from './CameraForm';
 import { AddExternalServer } from './AddExternalServer';
 import { socket } from '../socket';
 import apiClient from '../api/apiClient';
+
+const NOOP = () => {};
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type SelectedItemType =
@@ -53,6 +55,8 @@ export function DevicesManager({
   });
   const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({});
   const [addingForm, setAddingForm] = useState<'svms' | 'mqtt' | 'camera' | 'sunell_camera' | null>(null);
+  const [editingMqtt, setEditingMqtt] = useState<MqttServerConfig | null>(null);
+  const [editingCamera, setEditingCamera] = useState<any | null>(null);
 
   const toggleGroup = (key: string) =>
     setExpandedGroups(p => ({ ...p, [key]: !p[key] }));
@@ -143,18 +147,31 @@ export function DevicesManager({
       {addingForm === 'svms' && (
         <AddExternalServer
           onSave={handleSaveSvms}
-          onSaveMqtt={() => { }}
+          onSaveMqtt={NOOP}
           initialIp="192.168.1." initialPort="5050" initialMode="receive"
           onClose={handleCloseForm}
         />
       )}
       {addingForm === 'mqtt' && (
         <AddExternalServer
-          onSave={() => { }}
+          onSave={NOOP}
           onSaveMqtt={handleSaveMqtt}
           initialIp="" initialPort="" initialMode="receive"
           initialConnectionType="mqtt"
           onClose={handleCloseForm}
+        />
+      )}
+      {editingMqtt && (
+        <AddExternalServer
+          onSave={NOOP}
+          onSaveMqtt={(cfg) => {
+            handleSaveMqtt(cfg);
+            setEditingMqtt(null);
+          }}
+          initialIp="" initialPort="" initialMode="receive"
+          initialConnectionType="mqtt"
+          mqttToEdit={editingMqtt}
+          onClose={() => setEditingMqtt(null)}
         />
       )}
       {(addingForm === 'camera' || addingForm === 'sunell_camera') && (
@@ -162,6 +179,17 @@ export function DevicesManager({
           onCancel={handleCloseForm}
           onSuccess={handleSaveCameraSuccess}
           initialType={addingForm === 'sunell_camera' ? 'sunell' : 'other'}
+        />
+      )}
+      {editingCamera && (
+        <CameraForm
+          onCancel={() => setEditingCamera(null)}
+          onSuccess={() => {
+            setEditingCamera(null);
+            fetchCameras();
+          }}
+          initialType={editingCamera.type}
+          cameraToEdit={editingCamera}
         />
       )}
 
@@ -230,6 +258,7 @@ export function DevicesManager({
                       onClick={() => setSelected({ kind: 'mqtt-server', data: ms, mqttDevices: mqttDevs })}
                       isSelected={selected?.kind === 'mqtt-server' && (selected.data as MqttServerConfig).id === ms.id}
                       status={ms.status === 'connected' ? 'connected' : ms.status === 'error' ? 'disconnected' : ms.status}
+                      onEdit={() => setEditingMqtt(ms)}
                       onDelete={() => handleDeleteMqttServer(ms.id)}
                     />
                     {expanded && mqttDevs.map(d => (
@@ -261,6 +290,7 @@ export function DevicesManager({
                   onClick={() => setSelected({ kind: 'camera', data: cam })}
                   isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
                   status={cam.status || 'error'}
+                  onEdit={() => setEditingCamera(cam)}
                   onDelete={() => handleDeleteCamera(cam.id)}
                 />
               ))}
@@ -282,6 +312,7 @@ export function DevicesManager({
                   onClick={() => setSelected({ kind: 'camera', data: cam })}
                   isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
                   status={cam.status || 'error'}
+                  onEdit={() => setEditingCamera(cam)}
                   onDelete={() => handleDeleteCamera(cam.id)}
                 />
               ))}
@@ -297,7 +328,22 @@ export function DevicesManager({
               <span className="text-[11px] uppercase font-bold tracking-widest">{t('app.devices.select_device')}</span>
             </div>
           ) : (
-            <DetailPanel item={selected} onClose={() => setSelected(null)} cameraDevices={cameraDevices} mqttServers={mqttServers} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} onLinkMqttServerCamera={onLinkMqttServerCamera} />
+            <DetailPanel
+              item={selected}
+              onClose={() => setSelected(null)}
+              cameraDevices={cameraDevices}
+              mqttServers={mqttServers}
+              deviceCameraLinks={deviceCameraLinks}
+              onLinkDeviceCamera={onLinkDeviceCamera}
+              onLinkMqttServerCamera={onLinkMqttServerCamera}
+              onEdit={(item) => {
+                if (item.kind === 'mqtt-server') {
+                  setEditingMqtt(item.data);
+                } else if (item.kind === 'camera') {
+                  setEditingCamera(item.data);
+                }
+              }}
+            />
           )}
         </div>
       </div>
@@ -328,11 +374,11 @@ function GroupHeader({ icon, label, color, count, expanded, onToggle, onAdd }: {
   );
 }
 
-function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onClick, isSelected, indent, status, onDelete }: {
+function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onClick, isSelected, indent, status, onDelete, onEdit }: {
   label: string; sublabel?: string; icon?: React.ReactNode;
   hasChildren?: boolean; expanded?: boolean; onToggle?: () => void;
   onClick: () => void; isSelected?: boolean; indent?: boolean;
-  status?: string; onDelete?: () => void;
+  status?: string; onDelete?: () => void; onEdit?: () => void;
 }) {
   return (
     <div
@@ -364,6 +410,15 @@ function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onCl
         <span className="font-bold truncate leading-tight">{label}</span>
         {sublabel && <span className="text-[9px] font-mono text-on-surface-variant/50 truncate leading-tight">{sublabel}</span>}
       </div>
+      {onEdit && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onEdit(); }}
+          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-primary/20 text-primary hover:text-primary/80 cursor-pointer"
+          title="Sửa"
+        >
+          <Edit2 className="w-3 h-3" />
+        </button>
+      )}
       {onDelete && (
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
@@ -384,7 +439,7 @@ function EmptyHint({ text }: { text: string }) {
 }
 
 // ── Detail Panel ─────────────────────────────────────────────────────────────
-function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera }: { item: SelectedItemType; onClose: () => void; cameraDevices: MqttDeviceConfig[]; mqttServers: MqttServerConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void; }) {
+function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera, onEdit }: { item: SelectedItemType; onClose: () => void; cameraDevices: MqttDeviceConfig[]; mqttServers: MqttServerConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void; onEdit?: (item: SelectedItemType) => void; }) {
   const { t } = useTranslation();
 
   const isSunell = item.kind === 'camera' && item.data.type === 'sunell';
@@ -423,9 +478,9 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
       {/* Content */}
       {item.kind === 'svms-server' && <SvmsServerDetail srv={item.data} devices={item.devices} />}
       {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} />}
-      {item.kind === 'mqtt-server' && latestMqttServer && <MqttServerDetail srv={latestMqttServer} devices={item.mqttDevices} allCameras={cameraDevices} onLinkMqttServerCamera={onLinkMqttServerCamera} />}
+      {item.kind === 'mqtt-server' && latestMqttServer && <MqttServerDetail srv={latestMqttServer} devices={item.mqttDevices} allCameras={cameraDevices} onLinkMqttServerCamera={onLinkMqttServerCamera} onEdit={() => onEdit?.(item)} />}
       {item.kind === 'mqtt-device' && latestMqttDeviceServer && <MqttDeviceDetail dev={item.data} srv={latestMqttDeviceServer} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} />}
-      {item.kind === 'camera' && latestCam && <CameraDetail cam={latestCam} />}
+      {item.kind === 'camera' && latestCam && <CameraDetail cam={latestCam} onEdit={() => onEdit?.(item)} />}
     </div>
   );
 }
@@ -503,11 +558,22 @@ function SvmsDeviceDetail({ dev, srv }: { dev: any; srv: ServerData }) {
   );
 }
 
-function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera }: { srv: MqttServerConfig; devices: MqttDeviceInfo[]; allCameras: MqttDeviceConfig[]; onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void; }) {
+function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera, onEdit }: { srv: MqttServerConfig; devices: MqttDeviceInfo[]; allCameras: MqttDeviceConfig[]; onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void; onEdit?: () => void; }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
-      <h3 className="text-lg font-black text-on-surface mb-2">{srv.name || `${srv.brokerHost}:${srv.brokerPort}`}</h3>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-lg font-black text-on-surface">{srv.name || `${srv.brokerHost}:${srv.brokerPort}`}</h3>
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-amber-400 border border-amber-400/20 hover:border-amber-400/50 bg-amber-400/5 hover:bg-amber-400/10 rounded-md transition-all cursor-pointer"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+            {t('app.devices.edit') || 'Chỉnh sửa'}
+          </button>
+        )}
+      </div>
       <div className="mb-3"><StatusBadge status={srv.status} /></div>
       <InfoRow label={t('app.monitor.server_id')} value={srv.id} mono />
       <InfoRow label={t('app.monitor.protocol')} value={srv.protocol} />
@@ -753,7 +819,7 @@ const SUNELL_SUBEVENTS: Record<string, { code: string; label: string }[]> = {
   ],
 };
 
-function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
+function CameraDetail({ cam, onEdit }: { cam: MqttDeviceConfig; onEdit?: () => void; }) {
   const { t } = useTranslation();
   const features = (cam as any).features || {};
   const [expandedSub, setExpandedSub] = useState<Record<string, boolean>>({});
@@ -784,9 +850,20 @@ function CameraDetail({ cam }: { cam: MqttDeviceConfig }) {
 
   return (
     <div className="CameraDetail flex flex-col gap-1">
-      <h3 className="text-lg font-black text-on-surface mb-2">
-        {(cam as any).name || `Camera: ${cam.cameraIp}`}
-      </h3>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-lg font-black text-on-surface">
+          {(cam as any).name || `Camera: ${cam.cameraIp}`}
+        </h3>
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-cyan-400 border border-cyan-400/20 hover:border-cyan-400/50 bg-cyan-400/5 hover:bg-cyan-400/10 rounded-md transition-all cursor-pointer"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+            {t('app.devices.edit') || 'Chỉnh sửa'}
+          </button>
+        )}
+      </div>
       <div className="mb-3"><StatusBadge status={cam.status} /></div>
       <InfoRow label={t('app.monitor.camera_id')} value={cam.id} mono />
       <InfoRow label={t('app.monitor.camera_ip')} value={cam.cameraIp} mono />

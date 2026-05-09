@@ -143,7 +143,8 @@ const resources = {
           svms_device: "SVMS Device",
           mqtt_server: "MQTT Server",
           mqtt_device: "MQTT Device",
-          camera_device: "Camera độc lập"
+          camera_device: "Camera độc lập",
+          edit: "Sửa"
         },
         camera_form: {
           add_camera: "Thêm Camera",
@@ -527,7 +528,8 @@ const resources = {
           svms_device: "SVMS Device",
           mqtt_server: "MQTT Server",
           mqtt_device: "MQTT Device",
-          camera_device: "Camera Device"
+          camera_device: "Camera Device",
+          edit: "Edit"
         },
         camera_form: {
           add_camera: "Add Camera",

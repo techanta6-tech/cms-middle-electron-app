@@ -3,30 +3,69 @@ import { useTranslation } from 'react-i18next';
 import apiClient from '../api/apiClient';
 import { Camera, X, Eye, EyeOff } from 'lucide-react';
 
+import type { ManualAddedCamera } from '../types';
+
 interface CameraFormProps {
   onCancel: () => void;
   onSuccess: () => void;
   initialType?: 'sunell' | 'other';
+  cameraToEdit?: ManualAddedCamera;
 }
 
-export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, initialType = 'other' }: CameraFormProps) {
+export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, initialType = 'other', cameraToEdit }: CameraFormProps) {
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [addDeviceForm, setAddDeviceForm] = useState({
-    name: '',
-    type: initialType,
-    cameraIp: '192.168.1.252',
-    controlPort: '30001',
+    name: cameraToEdit?.name || '',
+    type: cameraToEdit?.type || initialType,
+    cameraIp: cameraToEdit?.cameraIp || '192.168.1.252',
+    controlPort: cameraToEdit?.cameraPort ? String(cameraToEdit.cameraPort) : '30001',
     rtspPort: '554',
     cameraUser: 'admin',
-    cameraPass: 'Admin1234',
-    // rtspUrl: 'rtsp://fake-camera:554/stream'
-    rtspUrl: 'rtsp://admin:admin1234@192.168.1.208:554/snl/live/1/1', // port 554 = RTSP, port 30001 = SDK control (khác nhau!)
+    cameraPass: 'admin1234',
+    rtspUrl: cameraToEdit?.rtspUrl || 'rtsp://admin:admin1234@192.168.1.208:554/snl/live/1/1',
   });
 
-
   const [isCustomRtsp, setIsCustomRtsp] = useState(false);
+
+  // Parse fields from cameraToEdit.rtspUrl if editing
+  useEffect(() => {
+    if (cameraToEdit && cameraToEdit.rtspUrl) {
+      try {
+        const match = cameraToEdit.rtspUrl.match(/rtsp:\/\/([^:]+):([^@]+)@([^:]+):(\d+)/);
+        if (match) {
+          const [, user, pass, ip, port] = match;
+          const defaultTemplate = `rtsp://${user}:${pass}@${cameraToEdit.cameraIp}:${port}/snl/live/1/1`;
+          setAddDeviceForm({
+            name: cameraToEdit.name || '',
+            type: cameraToEdit.type,
+            cameraIp: cameraToEdit.cameraIp || ip,
+            controlPort: String(cameraToEdit.cameraPort || '30001'),
+            rtspPort: port,
+            cameraUser: user,
+            cameraPass: pass,
+            rtspUrl: cameraToEdit.rtspUrl
+          });
+          setIsCustomRtsp(cameraToEdit.rtspUrl !== defaultTemplate);
+        } else {
+          setAddDeviceForm({
+            name: cameraToEdit.name || '',
+            type: cameraToEdit.type,
+            cameraIp: cameraToEdit.cameraIp,
+            controlPort: String(cameraToEdit.cameraPort || '30001'),
+            rtspPort: '554',
+            cameraUser: 'admin',
+            cameraPass: 'admin1234',
+            rtspUrl: cameraToEdit.rtspUrl
+          });
+          setIsCustomRtsp(true);
+        }
+      } catch (e) {
+        console.warn('Error parsing camera RTSP url:', e);
+      }
+    }
+  }, [cameraToEdit]);
 
   // Unified state update to avoid double re-renders from useEffect
   const updateForm = (updates: Partial<typeof addDeviceForm>) => {
@@ -62,7 +101,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
 
     setIsSubmitting(true);
     try {
-      await apiClient.post('/api/v1/cameras', {
+      const payload = {
         name: addDeviceForm.name || `Cam ${addDeviceForm.cameraIp}`,
         type: addDeviceForm.type,
         cameraIp: addDeviceForm.cameraIp,
@@ -70,7 +109,13 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
         cameraUser: addDeviceForm.cameraUser,
         cameraPass: addDeviceForm.cameraPass,
         rtspUrl: addDeviceForm.rtspUrl
-      });
+      };
+
+      if (cameraToEdit) {
+        await apiClient.patch(`/api/v1/cameras/${cameraToEdit.id}`, payload);
+      } else {
+        await apiClient.post('/api/v1/cameras', payload);
+      }
       onSuccess();
     } catch (err: any) {
       console.error('Lỗi khi lưu Camera:', err);
@@ -81,7 +126,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
   };
 
   return (
-    <div className="add-external-server-overlay fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-300">
+    <div className="add-external-server-overlay fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 animate-in fade-in duration-300">
       <div
         className="add-external-server-container w-full max-w-md bg-surface-container-low border border-outline-variant/30 rounded-lg shadow-[0_0_50px_rgba(6,182,212,0.1)] overflow-hidden animate-in zoom-in-95 duration-300"
         onClick={(e) => e.stopPropagation()}
@@ -93,7 +138,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
             <div>
               <h3 className="text-sm font-black tracking-[0.2em] uppercase text-on-surface flex items-center gap-2">
                 <Camera className="w-4 h-4 text-cyan-500" />
-                {t('app.camera_form.add_camera')}
+                {cameraToEdit ? 'CẬP NHẬT CAMERA' : t('app.camera_form.add_camera')}
               </h3>
             </div>
           </div>
