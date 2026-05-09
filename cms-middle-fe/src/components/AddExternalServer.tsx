@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 import type { AddExternalServerProps, MqttServerConfig } from '../types';
 import { TriangleAlert, Inbox, Send, Cloud, Terminal, Radio, X } from 'lucide-react';
 
-export const AddExternalServer = React.memo(function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '', initialPort = '', initialMode = 'receive', initialConnectionType = 'svms' }: AddExternalServerProps) {
+export const AddExternalServer = React.memo(function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '', initialPort = '', initialMode = 'receive', initialConnectionType = 'svms', mqttToEdit }: AddExternalServerProps) {
   const { t } = useTranslation();
   // Connection type: 'svms' or 'mqtt'
-  const [connectionType, setConnectionType] = useState<'svms' | 'mqtt'>(initialConnectionType);
+  const [connectionType, setConnectionType] = useState<'svms' | 'mqtt'>(mqttToEdit ? 'mqtt' : initialConnectionType);
 
   // SVMS fields
   const [ip, setIp] = useState(initialIp);
@@ -14,12 +14,14 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
   const [mode, setMode] = useState<'receive' | 'send'>(initialMode);
 
   // MQTT fields — placeholders from current .env defaults
-  const [mqttName, setMqttName] = useState('');
-  const [mqttProtocol, setMqttProtocol] = useState<'mqtt' | 'mqtts'>('mqtt');
-  const [mqttHost, setMqttHost] = useState('192.168.1.93');
-  const [mqttPort, setMqttPort] = useState('1883');
-  const [mqttTopic, setMqttTopic] = useState('');
-  const [useDefaultTopic, setUseDefaultTopic] = useState(false);
+  const [mqttName, setMqttName] = useState(mqttToEdit?.name || '');
+  const [mqttProtocol, setMqttProtocol] = useState<'mqtt' | 'mqtts'>(mqttToEdit?.protocol || 'mqtt');
+  const [mqttHost, setMqttHost] = useState(mqttToEdit?.brokerHost || '192.168.1.93');
+  const [mqttPort, setMqttPort] = useState(mqttToEdit?.brokerPort || '1883');
+  const [mqttTopic, setMqttTopic] = useState(mqttToEdit?.topic || '');
+  const [useDefaultTopic, setUseDefaultTopic] = useState(
+    mqttToEdit ? mqttToEdit.topic === mqttToEdit.defaultTopic : false
+  );
   const defaultTopicTemplate = 'application/32dc910f-33ae-4526-ac0b-6344e378f00f/device/24e124806e515126/event/up';
 
   const isSubmitDisabled = connectionType === 'mqtt' && !useDefaultTopic && !mqttTopic.trim();
@@ -30,7 +32,7 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
       onSave(ip, port, mode);
     } else if (connectionType === 'mqtt' && onSaveMqtt) {
       const config: MqttServerConfig = {
-        id: '', // BE will generate
+        id: mqttToEdit?.id || '', // Keep existing ID if editing, BE will generate if empty
         name: mqttName,
         brokerHost: mqttHost,
         brokerPort: mqttPort,
@@ -44,7 +46,7 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
   };
 
   return (
-    <div className="add-external-server-overlay fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-300">
+    <div className="add-external-server-overlay fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 animate-in fade-in duration-300">
       <div
         className="add-external-server-container w-full max-w-md bg-surface-container-low border border-outline-variant/30 rounded-lg shadow-[0_0_50px_rgba(192,132,252,0.1)] overflow-hidden animate-in zoom-in-95 duration-300"
         onClick={(e) => e.stopPropagation()}
@@ -54,7 +56,9 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-8 bg-primary rounded-full shadow-[0_0_12px_rgba(192,132,252,0.5)]"></div>
             <div>
-              <h3 className="text-sm font-black tracking-[0.2em] uppercase text-on-surface">{t('app.add_server.title')}</h3>
+              <h3 className="text-sm font-black tracking-[0.2em] uppercase text-on-surface">
+                {mqttToEdit ? 'CẬP NHẬT MQTT SERVER' : t('app.add_server.title')}
+              </h3>
             </div>
           </div>
           <button
@@ -68,35 +72,37 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="add-external-server-form p-8 space-y-6">
           {/* Connection Type Switcher */}
-          <div className="space-y-3">
-            <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1">
-              {t('app.add_server.conn_type')}
-            </label>
-            <div className="flex bg-black/40 p-1 rounded-sm border border-outline-variant/30">
-              <button
-                type="button"
-                onClick={() => setConnectionType('svms')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xs text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${connectionType === 'svms'
-                  ? 'bg-secondary text-white shadow-lg shadow-secondary/20'
-                  : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                  }`}
-              >
-                <Terminal className={`w-3.5 h-3.5 ${connectionType === 'svms' ? 'animate-pulse' : ''}`} />
-                SVMS
-              </button>
-              <button
-                type="button"
-                onClick={() => setConnectionType('mqtt')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xs text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${connectionType === 'mqtt'
-                  ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20'
-                  : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                  }`}
-              >
-                <Radio className={`w-3.5 h-3.5 ${connectionType === 'mqtt' ? 'animate-pulse' : ''}`} />
-                MQTT
-              </button>
+          {!mqttToEdit && (
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1">
+                {t('app.add_server.conn_type')}
+              </label>
+              <div className="flex bg-black/40 p-1 rounded-sm border border-outline-variant/30">
+                <button
+                  type="button"
+                  onClick={() => setConnectionType('svms')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xs text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${connectionType === 'svms'
+                    ? 'bg-secondary text-white shadow-lg shadow-secondary/20'
+                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                    }`}
+                >
+                  <Terminal className={`w-3.5 h-3.5 ${connectionType === 'svms' ? 'animate-pulse' : ''}`} />
+                  SVMS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConnectionType('mqtt')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xs text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${connectionType === 'mqtt'
+                    ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20'
+                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                    }`}
+                >
+                  <Radio className={`w-3.5 h-3.5 ${connectionType === 'mqtt' ? 'animate-pulse' : ''}`} />
+                  MQTT
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* ─── SVMS Form ─────────────────────────────────────────────── */}
           {connectionType === 'svms' && (
@@ -299,7 +305,7 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
                 : 'bg-primary text-primary-container hover:bg-primary/90 shadow-[0_0_20px_rgba(192,132,252,0.2)]'
                 }`}
             >
-              {connectionType === 'mqtt' ? t('app.add_server.connect_mqtt') : t('app.add_server.confirm')}
+              {mqttToEdit ? 'LƯU CẤU HÌNH' : (connectionType === 'mqtt' ? t('app.add_server.connect_mqtt') : t('app.add_server.confirm'))}
             </button>
           </div>
         </form>

@@ -42,6 +42,7 @@ export interface AddExternalServerProps {
   initialPort?: string;
   initialMode?: 'receive' | 'send';
   initialConnectionType?: 'svms' | 'mqtt';
+  mqttToEdit?: MqttServerConfig;
 }
 
 export interface ServerData {

@@ -152,6 +152,7 @@ const resources = {
           mqtt_server: "MQTT Server",
           mqtt_device: "MQTT Device",
           camera_device: "Camera độc lập",
+          edit: "Sửa",
           confirm_delete_camera: 'Bạn có chắc chắn muốn xóa camera này?',
           confirm_delete_mqtt: 'Bạn có chắc chắn muốn xóa MQTT server này?',
           radar_categories: {

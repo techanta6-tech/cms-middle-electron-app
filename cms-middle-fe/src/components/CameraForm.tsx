@@ -1,43 +1,95 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../api/apiClient';
 import { Camera, X, Eye, EyeOff } from 'lucide-react';
+
+import type { ManualAddedCamera } from '../types';
 
 interface CameraFormProps {
   onCancel: () => void;
   onSuccess: () => void;
   initialType?: 'sunell' | 'other';
+  cameraToEdit?: ManualAddedCamera;
 }
 
-export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, initialType = 'other' }: CameraFormProps) {
+export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, initialType = 'other', cameraToEdit }: CameraFormProps) {
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [addDeviceForm, setAddDeviceForm] = useState({
-    name: '',
-    type: initialType,
-    cameraIp: '192.168.1.252',
-    controlPort: '30001',
+    name: cameraToEdit?.name || '',
+    type: cameraToEdit?.type || initialType,
+    cameraIp: cameraToEdit?.cameraIp || '192.168.1.252',
+    controlPort: cameraToEdit?.cameraPort ? String(cameraToEdit.cameraPort) : '30001',
     rtspPort: '554',
     cameraUser: 'admin',
-    cameraPass: 'Admin1234',
-    // rtspUrl: 'rtsp://fake-camera:554/stream'
-    rtspUrl: 'rtsp://admin:admin1234@192.168.1.208:554/snl/live/1/1', // port 554 = RTSP, port 30001 = SDK control (khác nhau!)
+    cameraPass: 'admin1234',
+    rtspUrl: cameraToEdit?.rtspUrl || 'rtsp://admin:admin1234@192.168.1.208:554/snl/live/1/1',
   });
-
-
 
   const [isCustomRtsp, setIsCustomRtsp] = useState(false);
 
+  // Parse fields from cameraToEdit.rtspUrl if editing
   useEffect(() => {
-    if (!isCustomRtsp) {
-      const { type, cameraIp, cameraUser, cameraPass, rtspPort } = addDeviceForm;
-      let generatedUrl = '';
-      generatedUrl = `rtsp://${cameraUser}:${cameraPass}@${cameraIp}:${rtspPort}/snl/live/1/1`;
-
-      setAddDeviceForm(f => ({ ...f, rtspUrl: generatedUrl }));
+    if (cameraToEdit && cameraToEdit.rtspUrl) {
+      try {
+        const match = cameraToEdit.rtspUrl.match(/rtsp:\/\/([^:]+):([^@]+)@([^:]+):(\d+)/);
+        if (match) {
+          const [, user, pass, ip, port] = match;
+          const defaultTemplate = `rtsp://${user}:${pass}@${cameraToEdit.cameraIp}:${port}/snl/live/1/1`;
+          setAddDeviceForm({
+            name: cameraToEdit.name || '',
+            type: cameraToEdit.type,
+            cameraIp: cameraToEdit.cameraIp || ip,
+            controlPort: String(cameraToEdit.cameraPort || '30001'),
+            rtspPort: port,
+            cameraUser: user,
+            cameraPass: pass,
+            rtspUrl: cameraToEdit.rtspUrl
+          });
+          setIsCustomRtsp(cameraToEdit.rtspUrl !== defaultTemplate);
+        } else {
+          setAddDeviceForm({
+            name: cameraToEdit.name || '',
+            type: cameraToEdit.type,
+            cameraIp: cameraToEdit.cameraIp,
+            controlPort: String(cameraToEdit.cameraPort || '30001'),
+            rtspPort: '554',
+            cameraUser: 'admin',
+            cameraPass: 'admin1234',
+            rtspUrl: cameraToEdit.rtspUrl
+          });
+          setIsCustomRtsp(true);
+        }
+      } catch (e) {
+        console.warn('Error parsing camera RTSP url:', e);
+      }
     }
-  }, [isCustomRtsp, addDeviceForm.type, addDeviceForm.cameraIp, addDeviceForm.cameraUser, addDeviceForm.cameraPass, addDeviceForm.rtspPort]);
+  }, [cameraToEdit]);
+
+  // Unified state update to avoid double re-renders from useEffect
+  const updateForm = (updates: Partial<typeof addDeviceForm>) => {
+    setAddDeviceForm(prev => {
+      const next = { ...prev, ...updates };
+      // Sync RTSP URL if not in custom mode
+      if (!isCustomRtsp) {
+        next.rtspUrl = `rtsp://${next.cameraUser}:${next.cameraPass}@${next.cameraIp}:${next.rtspPort}/snl/live/1/1`;
+      }
+      return next;
+    });
+  };
+
+  // Special handler for custom RTSP toggle
+  const handleCustomRtspToggle = (checked: boolean) => {
+    setIsCustomRtsp(checked);
+    if (!checked) {
+      // Re-sync URL immediately when switching back to auto
+      setAddDeviceForm(prev => ({
+        ...prev,
+        rtspUrl: `rtsp://${prev.cameraUser}:${prev.cameraPass}@${prev.cameraIp}:${prev.rtspPort}/snl/live/1/1`
+      }));
+    }
+  };
 
   const handleSubmitDevice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +101,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
 
     setIsSubmitting(true);
     try {
-      await apiClient.post('/api/v1/cameras', {
+      const payload = {
         name: addDeviceForm.name || `Cam ${addDeviceForm.cameraIp}`,
         type: addDeviceForm.type,
         cameraIp: addDeviceForm.cameraIp,
@@ -57,7 +109,13 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
         cameraUser: addDeviceForm.cameraUser,
         cameraPass: addDeviceForm.cameraPass,
         rtspUrl: addDeviceForm.rtspUrl
-      });
+      };
+
+      if (cameraToEdit) {
+        await apiClient.patch(`/api/v1/cameras/${cameraToEdit.id}`, payload);
+      } else {
+        await apiClient.post('/api/v1/cameras', payload);
+      }
       onSuccess();
     } catch (err: any) {
       console.error('Error saving camera:', err);
@@ -68,7 +126,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
   };
 
   return (
-    <div className="add-external-server-overlay fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-300">
+    <div className="add-external-server-overlay fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 animate-in fade-in duration-300">
       <div
         className="add-external-server-container w-full max-w-md bg-surface-container-low border border-outline-variant/30 rounded-lg shadow-[0_0_50px_rgba(6,182,212,0.1)] overflow-hidden animate-in zoom-in-95 duration-300"
         onClick={(e) => e.stopPropagation()}
@@ -80,7 +138,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
             <div>
               <h3 className="text-sm font-black tracking-[0.2em] uppercase text-on-surface flex items-center gap-2">
                 <Camera className="w-4 h-4 text-cyan-500" />
-                {t('app.camera_form.add_camera')}
+                {cameraToEdit ? 'CẬP NHẬT CAMERA' : t('app.camera_form.add_camera')}
               </h3>
             </div>
           </div>
@@ -101,7 +159,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.type')}</label>
                 <select
                   value={addDeviceForm.type}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, type: e.target.value as 'sunell' | 'other' }))}
+                  onChange={e => updateForm({ type: e.target.value as 'sunell' | 'other' })}
                   className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all"
                 >
                   <option value="sunell">{t('app.camera_form.sunell')}</option>
@@ -113,7 +171,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.name_optional')}</label>
                 <input
                   value={addDeviceForm.name}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, name: e.target.value }))}
+                  onChange={e => updateForm({ name: e.target.value })}
                   className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                   placeholder={t('app.camera_form.name_placeholder')}
                 />
@@ -123,7 +181,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.camera_ip')}</label>
                 <input
                   value={addDeviceForm.cameraIp}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, cameraIp: e.target.value }))}
+                  onChange={e => updateForm({ cameraIp: e.target.value })}
                   className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                   placeholder="192.168.1.xxx"
                 />
@@ -134,7 +192,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                   <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.control_port')}</label>
                   <input
                     value={addDeviceForm.controlPort}
-                    onChange={e => setAddDeviceForm(f => ({ ...f, controlPort: e.target.value }))}
+                    onChange={e => updateForm({ controlPort: e.target.value })}
                     className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                     placeholder="30001"
                   />
@@ -145,7 +203,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.rtsp_port')}</label>
                 <input
                   value={addDeviceForm.rtspPort}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, rtspPort: e.target.value }))}
+                  onChange={e => updateForm({ rtspPort: e.target.value })}
                   className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                   placeholder="554"
                 />
@@ -155,7 +213,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.username')}</label>
                 <input
                   value={addDeviceForm.cameraUser}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, cameraUser: e.target.value }))}
+                  onChange={e => updateForm({ cameraUser: e.target.value })}
                   className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                   placeholder="admin"
                 />
@@ -166,7 +224,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <div className="relative flex items-center">
                   <input
                     value={addDeviceForm.cameraPass}
-                    onChange={e => setAddDeviceForm(f => ({ ...f, cameraPass: e.target.value }))}
+                    onChange={e => updateForm({ cameraPass: e.target.value })}
                     className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm pl-4 pr-10 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                     placeholder="admin1234"
                     type={showPassword ? "text" : "password"}
@@ -190,13 +248,13 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                       type="checkbox"
                       className="accent-cyan-500 w-3 h-3 cursor-pointer"
                       checked={isCustomRtsp}
-                      onChange={(e) => setIsCustomRtsp(e.target.checked)}
+                      onChange={(e) => handleCustomRtspToggle(e.target.checked)}
                     />
                   </label>
                 </div>
                 <input
                   value={addDeviceForm.rtspUrl}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, rtspUrl: e.target.value }))}
+                  onChange={e => isCustomRtsp && updateForm({ rtspUrl: e.target.value })}
                   disabled={!isCustomRtsp}
                   className={`w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20 ${!isCustomRtsp ? 'opacity-50 cursor-not-allowed' : ''}`}
                   placeholder="rtsp://..."
