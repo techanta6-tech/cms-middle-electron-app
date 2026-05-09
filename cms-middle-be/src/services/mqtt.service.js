@@ -1,196 +1,65 @@
 const mqtt = require('mqtt');
 const path = require('path');
-const { mqttServers, mqttDevices, servers, getClientSockets } = require('../socketState');
+const { mqttServers, servers, deviceCameraLinks, getClientSockets } = require('../socketState');
 let cameraModule;
 try {
   cameraModule = require('./cameraModule');
 } catch (err) {
-  console.warn('[MQTT-Service] cameraModule load failed — snapshot disabled:', err.message);
-  cameraModule = {
-    init: () => {},
-    connectCamera: async () => ({ online: false, error: 'cameraModule not available' }),
-    captureSnapshotBase64: async () => null,
-  };
+  try {
+    cameraModule = require('../../cameraModule');
+  } catch (err2) {
+    cameraModule = { init: () => { } };
+  }
 }
+
+const { getSnapshotForCamera } = require('./cameras.service');
 
 /** Map of active MQTT client instances, keyed by server config id */
 const mqttClients = new Map();
 
 const MAX_LOGS_PER_SERVER = 100;
 
-// ─── Device CRUD ────────────────────────────────────────────────────────────────
-
-/**
- * Thêm camera device liên kết với 1 MQTT server.
- * Nếu type=sunell → gọi cameraModule để kết nối SDK.
- * @param {object} deviceConfig - { mqttServerId, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl }
- * @returns {Promise<object>} result { success, device, sdkResult? }
- */
-async function addMqttDevice(deviceConfig) {
-  const { mqttServerId, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl } = deviceConfig;
-
-  const id = `cam-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const snapshotDir = path.join(__dirname, '..', '..', 'snapshots');
-  const sdkPath = path.join(__dirname, '..', 'module', 'sunell');
-
-  const device = {
-    id,
-    mqttServerId,
-    type: type || 'sunell',
-    cameraIp,
-    cameraPort: cameraPort || 30001,
-    cameraUser: cameraUser || 'admin',
-    cameraPass: cameraPass || 'admin1234',
-    rtspUrl,
-    snapshotDir,
-    sdkPath,
-    status: 'connecting',
-    handle: null,
-  };
-
-  mqttDevices.push(device);
-  console.log(`[MQTT-Device] Added device '${id}' (${type}) for MQTT server '${mqttServerId}'`);
-
-  let sdkResult = null;
-
-  if (type === 'sunell') {
-    try {
-      // Init + connect camera via SDK
-      cameraModule.init({
-        rtspUrl,
-        snapshotDir,
-        sdkPath,
-        cameraIp,
-        cameraPort: cameraPort || 30001,
-        cameraUser: cameraUser || 'admin',
-        cameraPass: cameraPass || 'admin1234',
-      });
-
-      sdkResult = await cameraModule.connectCamera();
-      device.status = sdkResult.online ? 'connected' : 'error';
-      device.handle = sdkResult.handle || null;
-      console.log(`[MQTT-Device] SDK connect result for '${id}':`, sdkResult);
-    } catch (err) {
-      device.status = 'error';
-      sdkResult = { online: false, error: err.message || String(err) };
-      console.error(`[MQTT-Device] SDK connect error for '${id}':`, err);
-    }
-  }
-
-  // Emit update to FE
-  _emitMqttDevicesUpdate();
-
-  return { success: true, device: _sanitizeDevice(device), sdkResult };
-}
-
-/**
- * Xoá device theo ID.
- * @param {string} deviceId
- * @returns {object}
- */
-function removeMqttDevice(deviceId) {
-  const idx = mqttDevices.findIndex(d => d.id === deviceId);
-  if (idx === -1) return { success: false, error: 'Device not found' };
-
-  mqttDevices.splice(idx, 1);
-  console.log(`[MQTT-Device] Removed device '${deviceId}'`);
-  _emitMqttDevicesUpdate();
-  return { success: true };
-}
-
-/**
- * Cập nhật thông tin device (VD: rtspUrl).
- * @param {string} deviceId
- * @param {object} updates - Các trường cần cập nhật { rtspUrl?, cameraIp?, cameraPort?, cameraUser?, cameraPass? }
- * @returns {object}
- */
-function updateMqttDevice(deviceId, updates) {
-  const device = mqttDevices.find(d => d.id === deviceId);
-  if (!device) return { success: false, error: 'Device not found' };
-
-  if (updates.rtspUrl !== undefined) device.rtspUrl = updates.rtspUrl;
-  if (updates.cameraIp !== undefined) device.cameraIp = updates.cameraIp;
-  if (updates.cameraPort !== undefined) device.cameraPort = updates.cameraPort;
-  if (updates.cameraUser !== undefined) device.cameraUser = updates.cameraUser;
-  if (updates.cameraPass !== undefined) device.cameraPass = updates.cameraPass;
-
-  console.log(`[MQTT-Device] Updated device '${deviceId}':`, JSON.stringify(updates));
-  _emitMqttDevicesUpdate();
-  return { success: true, device: _sanitizeDevice(device) };
-}
-
-/**
- * Lấy danh sách devices (sanitized).
- * @param {string} [mqttServerId] - Lọc theo MQTT server ID (optional)
- * @returns {Array}
- */
-function getMqttDevicesList(mqttServerId) {
-  const list = mqttServerId
-    ? mqttDevices.filter(d => d.mqttServerId === mqttServerId)
-    : mqttDevices;
-  return list.map(_sanitizeDevice);
-}
-
-function _sanitizeDevice(d) {
-  return {
-    id: d.id,
-    mqttServerId: d.mqttServerId,
-    type: d.type,
-    cameraIp: d.cameraIp,
-    cameraPort: d.cameraPort,
-    cameraUser: d.cameraUser,
-    rtspUrl: d.rtspUrl || null,
-    status: d.status,
-    handle: d.handle,
-  };
-}
-
-function _emitMqttDevicesUpdate() {
-  const clientSockets = getClientSockets();
-  if (clientSockets) {
-    clientSockets.emit('update-mqtt-devices', getMqttDevicesList());
-  }
-}
-
-// ─── Snapshot Function ──────────────────────────────────────────────────────────
-
-/**
- * Lấy snapshot từ camera đầu tiên liên kết với MQTT server của log.
- * Chờ camera trả về -> trả base64 hoặc null nếu không có device/lỗi.
- * @param {string} mqttServerId
- * @returns {Promise<string|null>}
- */
-async function getSnapshotForServer(mqttServerId) {
-  const device = mqttDevices.find(d => d.mqttServerId === mqttServerId && d.status === 'connected');
-  if (!device) {
-    console.log(`[MQTT-Snapshot] No connected camera for MQTT server '${mqttServerId}'`);
-    return null;
-  }
-
-  console.log(`[MQTT-Snapshot] Capturing from device '${device.id}' (${device.cameraIp}) ...`);
-  try {
-    const base64 = await cameraModule.captureSnapshotBase64(device.rtspUrl);
-    return base64;
-  } catch (err) {
-    console.error(`[MQTT-Snapshot] Capture failed for device '${device.id}':`, err.message);
-    return null;
-  }
-}
-
 // ─── MQTT Connection ────────────────────────────────────────────────────────────
 
 /**
  * Connect to a single MQTT server config and start listening.
- * @param {object} serverConfig - { id, brokerHost, brokerPort, protocol, topic, defaultTopic }
+ * @param {object} serverConfig - { id, brokerHost, brokerPort, protocol, topic, defaultTopic, cameraId }
  */
 const connectMqttServer = (serverConfig) => {
-  const { id, brokerHost, brokerPort, protocol, topic } = serverConfig;
+  const { id, brokerHost, brokerPort, protocol, topic, cameraId } = serverConfig;
   const brokerUrl = `${protocol || 'mqtt'}://${brokerHost}:${brokerPort}`;
 
   console.log(`[MQTT] Connecting to server '${id}' at ${brokerUrl}...`);
 
   // Update status in mqttServers array
   const entry = mqttServers.find(s => s.id === id);
+
+  if (!topic || !topic.trim()) {
+    console.error(`[MQTT] Server '${id}' has no topic specified.`);
+    if (entry) entry.status = 'error';
+
+    // Register as a disconnected server entry for unified display on FE
+    servers.set(`mqtt-${id}`, {
+      id: `mqtt-${id}`,
+      serial: '',
+      server_ip: brokerHost,
+      server_name: serverConfig.name || `MQTT: ${brokerHost}:${brokerPort}`,
+      version: '',
+      location: '',
+      day: 0, month: 0, year: 0,
+      svms_ipv4_ip: brokerHost,
+      type: 'mqtt',
+      connectionStatus: 'disconnected',
+      lastSeen: new Date().toISOString(),
+      mqttTopic: '',
+    });
+
+    _pushSystemLog(id, `Connection ERROR: No topic specified for subscription`);
+    _emitMqttServersUpdate();
+    _emitServerInfoUpdate();
+    return;
+  }
+
   if (entry) entry.status = 'connecting';
 
   // Register as a server entry for unified display on FE
@@ -198,7 +67,7 @@ const connectMqttServer = (serverConfig) => {
     id: `mqtt-${id}`,
     serial: '',
     server_ip: brokerHost,
-    server_name: `MQTT: ${brokerHost}:${brokerPort}`,
+    server_name: serverConfig.name || `MQTT: ${brokerHost}:${brokerPort}`,
     version: '',
     location: '',
     day: 0, month: 0, year: 0,
@@ -256,18 +125,66 @@ const connectMqttServer = (serverConfig) => {
         const parsedBody = JSON.parse(message.toString());
         const dataTarget = parsedBody.payload || parsedBody;
 
+        // ── DEBUG: In cấu trúc payload để chuẩn đoán ──
+        console.log(`[MQTT][${id}] Payload keys:`, Object.keys(parsedBody));
+        if (parsedBody.object) {
+          console.log(`[MQTT][${id}] object keys:`, Object.keys(parsedBody.object));
+          console.log(`[MQTT][${id}] object.events:`, JSON.stringify(parsedBody.object.events)?.substring(0, 300));
+        } else {
+          console.log(`[MQTT][${id}] ⚠️  parsedBody.object is MISSING`);
+        }
+        // ── END DEBUG ──
+
+        // ── Device-level snapshot: tìm camera theo devEui của device gửi log ──
+        const devEui = (dataTarget?.deviceInfo?.devEui) || (parsedBody?.deviceInfo?.devEui) || '';
+        const deviceLink = devEui
+          ? deviceCameraLinks.find(l => l.devEui === devEui && l.mqttServerId === id)
+          : null;
+        // Fallback: dùng server-level cameraId nếu không tìm thấy device-level link
+        const resolvedCameraId = deviceLink?.cameraId || (entry && entry.cameraId) || null;
+
         if (dataTarget && dataTarget.object && dataTarget.object.events) {
           const events = dataTarget.object.events;
           // Lấy snapshot 1 lần duy nhất cho tất cả events
-          const snapshot = await getSnapshotForServer(id);
+          let snapshot = null;
+          if (resolvedCameraId && resolvedCameraId !== 'none') {
+            snapshot = await getSnapshotForCamera(resolvedCameraId);
+          }
 
           // Tạo 1 log entry riêng cho mỗi event trong mảng
           for (const event of events) {
+            // Lọc bỏ các sự kiện có trạng thái deactivated hoặc ignored
+            const status = (event.alarm_status || '').toLowerCase();
+            if (status.includes('deactivated') || status.includes('ignored')) {
+              console.log(`[MQTT][${id}] Skipped event with status: ${event.alarm_status}`);
+              continue;
+            }
+
+            // Event Filtering for MQTT Radar (individual toggles)
+            const alarmType = (event.alarm_type || '').toLowerCase();
+            const linkFeatures = deviceLink?.features || {};
+
+            // Check individual toggle state. Default to true if not defined.
+            const isAllowed = linkFeatures[alarmType] ?? true;
+
+            if (!isAllowed) {
+              console.log(`[MQTT][${id}] Skipped filtered event: ${alarmType} for devEui: ${devEui}`);
+              continue;
+            }
+            // Tách riêng payload để mỗi log mới chỉ lưu một event
+            const isolatedPayload = {
+              ...parsedBody,
+              object: {
+                ...parsedBody.object,
+                events: [event]
+              }
+            };
+
             const logEntry = {
               time: new Date().toISOString(),
               type: 'data',
               topic: msgTopic,
-              payload: parsedBody,
+              payload: isolatedPayload,
               event,              // alarm event riêng lẻ: { alarm_type, alarm_id, alarm_status }
               snapshot: snapshot || null,
               mqttServerId: id,
@@ -276,12 +193,28 @@ const connectMqttServer = (serverConfig) => {
             _emitMqttLog(id, logEntry);
           }
         } else {
-          // Valid JSON but missing object.events — skip
-          console.log(`[MQTT][${id}] Skipped: message has no object.events structure`);
+          // Valid JSON nhưng không có object.events — vẫn tạo log + yêu cầu snapshot
+          console.log(`[MQTT][${id}] Forward raw payload (no object.events)`);
+          let snapshot = null;
+          // if (resolvedCameraId) {
+          //   snapshot = await getSnapshotForCamera(resolvedCameraId);
+          //   console.log(`[MQTT][${id}] Snapshot result:`, snapshot ? `OK (${snapshot.length} chars)` : 'null');
+          // }
+          const logEntry = {
+            time: new Date().toISOString(),
+            type: 'raw',
+            topic: msgTopic,
+            payload: parsedBody,
+            event: { alarm_type: 'debug_raw', alarm_status: 'raw_payload', alarm_id: 0 },
+            snapshot: snapshot || null,
+            mqttServerId: id,
+          };
+          _pushDataLog(id, logEntry);
+          _emitMqttLog(id, logEntry);
         }
       } catch (e) {
         // Binary/Protobuf — skip
-        console.log(`[MQTT][${id}] Skipped: non-JSON payload (binary/protobuf)`);
+        console.log(`[MQTT][${id}] Skipped: non-JSON payload (binary/protobuf)`, e.message);
       }
     });
 
@@ -344,11 +277,13 @@ const disconnectMqttServer = (id) => {
 const getMqttServersList = () => {
   return mqttServers.map(s => ({
     id: s.id,
+    name: s.name || '',
     brokerHost: s.brokerHost,
     brokerPort: s.brokerPort,
     protocol: s.protocol,
     topic: s.topic,
     defaultTopic: s.defaultTopic,
+    cameraId: s.cameraId || null,
     status: s.status || 'disconnected',
     logCount: (s.logs || []).length,
   }));
@@ -362,6 +297,98 @@ const getMqttServersList = () => {
 const getMqttServerLogs = (id) => {
   const entry = mqttServers.find(s => s.id === id);
   return entry ? (entry.logs || []) : [];
+};
+
+// ─── Downlink / Command Publishing ──────────────────────────────────────────────
+
+/**
+ * Publish a downlink command to a device via ChirpStack MQTT.
+ *
+ * ChirpStack v4 topic:
+ *   application/{applicationId}/device/{devEui}/command/down
+ *
+ * @param {string} mqttServerId  - ID của MQTT server đã được cấu hình (phải đang `connected`)
+ * @param {object} options
+ * @param {string} options.applicationId - Application ID trên ChirpStack
+ * @param {string} options.devEui        - Device EUI của thiết bị đích
+ * @param {number} options.fPort         - Application port (VS373 dùng 85)
+ * @param {string} options.dataBase64    - Payload dưới dạng Base64
+ * @param {boolean} [options.confirmed]  - Có yêu cầu ACK từ thiết bị không (mặc định false)
+ * @returns {{ success: boolean, topic?: string, error?: string }}
+ */
+const publishDownlink = (mqttServerId, { applicationId, devEui, fPort, dataBase64, confirmed = false }) => {
+  const client = mqttClients.get(mqttServerId);
+  if (!client) {
+    const msg = `[MQTT][Downlink] No active client for server '${mqttServerId}'`;
+    console.error(msg);
+    return { success: false, error: msg };
+  }
+
+  const entry = mqttServers.find(s => s.id === mqttServerId);
+  if (!entry || entry.status !== 'connected') {
+    const msg = `[MQTT][Downlink] Server '${mqttServerId}' is not connected (status: ${entry?.status})`;
+    console.error(msg);
+    return { success: false, error: msg };
+  }
+
+  const topic = `application/${applicationId}/device/${devEui}/command/down`;
+  const payload = JSON.stringify({
+    devEui,
+    confirmed,
+    fPort,
+    data: dataBase64,
+  });
+
+  client.publish(topic, payload, { qos: 0 }, (err) => {
+    if (err) {
+      console.error(`[MQTT][Downlink] Publish error on topic '${topic}':`, err);
+      _pushSystemLog(mqttServerId, `Downlink FAILED for devEui=${devEui} fPort=${fPort}: ${String(err)}`);
+    } else {
+      console.log(`[MQTT][Downlink] Published to '${topic}': ${payload}`);
+      _pushSystemLog(mqttServerId, `Downlink OK → devEui=${devEui} fPort=${fPort} data=${dataBase64}`);
+      _emitMqttServersUpdate();
+    }
+  });
+
+  return { success: true, topic };
+};
+
+/**
+ * Bật hoặc tắt còi báo động (Buzzer) trên thiết bị VS373.
+ *
+ * Lệnh theo tài liệu VS373:
+ *   - Bật Buzzer  : Hex ff3e01 → Base64 /z4B
+ *   - Tắt Buzzer  : Hex ff3e00 → Base64 /z4A
+ *
+ * @param {string} mqttServerId  - ID của MQTT server
+ * @param {object} options
+ * @param {string} options.applicationId - Application ID trên ChirpStack
+ * @param {string} options.devEui        - Device EUI của thiết bị VS373
+ * @param {boolean} options.enable       - true = bật còi, false = tắt còi
+ * @param {number}  [options.fPort]      - Application port (mặc định 85 theo spec VS373)
+ * @returns {{ success: boolean, topic?: string, error?: string }}
+ */
+const controlBuzzer = (mqttServerId, { applicationId, devEui, enable, fPort = 85 }) => {
+  // Hex ff3e01 (enable) / ff3e00 (disable) → Buffer → Base64
+  const hexBytes = enable ? [0xff, 0x3e, 0x01] : [0xff, 0x3e, 0x00];
+  const dataBase64 = Buffer.from(hexBytes).toString('base64');
+
+  console.log(`[MQTT][Buzzer] ${enable ? 'ON' : 'OFF'} → devEui=${devEui} data=${dataBase64}`);
+
+  // return publishDownlink(mqttServerId, {
+  //   applicationId,
+  //   devEui,
+  //   fPort,
+  //   dataBase64,
+  //   confirmed: false,
+  // });
+  return publishDownlink(mqttServerId, {
+    applicationId,
+    devEui: '24e124806e515126',
+    fPort,
+    dataBase64,
+    confirmed: false,
+  });
 };
 
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
@@ -416,8 +443,7 @@ module.exports = {
   disconnectMqttServer,
   getMqttServersList,
   getMqttServerLogs,
-  addMqttDevice,
-  removeMqttDevice,
-  updateMqttDevice,
-  getMqttDevicesList,
+  publishDownlink,
+  controlBuzzer,
 };
+

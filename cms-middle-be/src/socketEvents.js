@@ -34,6 +34,27 @@ const setupSocketEvents = () => {
       clientSockets.emit('message', data);
     });
 
+    socket.on('update-camera-features', ({ id, features }) => {
+      const { updateCameraFeatures } = require('./services/cameras.service');
+      console.log(`[SOCKET] Received request to update camera features for ${id}`);
+      updateCameraFeatures(id, features);
+    });
+
+    socket.on('update-device-features', ({ devEui, mqttServerId, features }) => {
+      const { deviceCameraLinks } = require('./socketState');
+      let link = deviceCameraLinks.find(l => l.devEui === devEui && l.mqttServerId === mqttServerId);
+      if (!link) {
+        link = { devEui, mqttServerId, cameraId: 'none', features: {} };
+        deviceCameraLinks.push(link);
+      }
+      if (!link.features) {
+        link.features = {};
+      }
+      Object.assign(link.features, features);
+      console.log(`[SOCKET] Updated features for device ${devEui}:`, link.features);
+      clientSockets.emit('update-device-camera-links', [...deviceCameraLinks]);
+    });
+
     socket.on('disconnect', () => {
       syncClientsToFrontend();
     });

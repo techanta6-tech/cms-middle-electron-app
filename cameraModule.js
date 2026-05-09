@@ -1,80 +1,20 @@
 /**
  * ============================================================
- *  Camera Module — Sunell Camera Integration
+ *  Camera Module — Camera Integration (Class-based)
  * ============================================================
- *  Module tách riêng các chức năng camera để tích hợp vào bất kỳ server nào.
- *
  *  Chức năng:
  *    1. captureSnapshot()     — Chụp snapshot qua RTSP (FFmpeg)
- *    2. triggerSnapshot()     — Chụp snapshot + broadcast qua WebSocket
- *    3. getStatus()           — Lấy trạng thái kết nối camera & WebSocket
- *    4. connectCamera()       — Kết nối camera qua SDK C# (edge-js)
- *    5. registerRoutes(app)   — Đăng ký các API routes vào Express app
- *    6. setupWebSocket(server)— Khởi tạo WebSocket server
- *    7. broadcastMessage()    — Gửi message tới tất cả client WebSocket
- *
- *  Cách sử dụng:
- *    const camera = require('./cameraModule');
- *
- *    // Khởi tạo với cấu hình
- *    camera.init({
- *        rtspUrl: 'rtsp://admin:admin1234@192.168.1.208:555/snl/live/1/1',
- *        snapshotDir: path.join(__dirname, '..', 'snapshots'),
- *        sdkPath: path.join(__dirname, '..'),
- *        cameraIp: '192.168.1.208',
- *        cameraPort: 30001,
- *        cameraUser: 'admin',
- *        cameraPass: 'admin1234'
- *    });
- *
- *    // Đăng ký routes vào Express app
- *    camera.registerRoutes(app);
- *
- *    // Khởi tạo WebSocket trên HTTP server
- *    camera.setupWebSocket(server);
- *
- *    // Kết nối camera (tùy chọn, nếu có SDK)
- *    camera.connectCamera();
+ *    2. connectCamera()       — Kết nối camera qua SDK C# (edge-js)
  * ============================================================
  */
 
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
-const WebSocket = require('ws');
+const { execFile, spawn } = require('child_process');
 
-// Lazy-load optional dependencies
 let ffmpegPath = null;
 let edge = null;
 
-// ===== TRẠNG THÁI NỘI BỘ =====
-const state = {
-    // Cấu hình
-    rtspUrl: '',
-    snapshotDir: '',
-    sdkPath: '',
-    cameraIp: '',
-    cameraPort: 30001,
-    cameraUser: '',
-    cameraPass: '',
-
-    // Trạng thái runtime
-    initialized: false,
-    cameraConnected: false,
-    cameraHandle: null,
-    cameraError: null,
-    lastSnapshotTime: null,
-    snapshotCount: 0,
-
-    // WebSocket
-    wss: null,
-    clients: new Set(),
-
-    // Logger tùy chỉnh (có thể override)
-    logger: null
-};
-
-// ===== BẢNG TÊN SỰ KIỆN SUNELL =====
 const ALARM_NAMES = {
     // main_type 1: Báo động an ninh chung
     '1/1': 'Báo động I/O',
@@ -116,465 +56,528 @@ const ALARM_NAMES = {
     '6/32': 'Đậu xe trái phép (Illegal parking)',
     '6/33': 'Camera bị dời góc (Camera shift)',
     '6/34': 'Lỗi tín hiệu video AI (Video signal abnormal)',
-    '6/37': 'Nhận diện biển số (License plate recognition)'
+    '6/37': 'Nhận diện biển số (License plate recognition)',
+
+    // main_type 7: Báo động nhiệt độ (Thermal)
+    '7/0': 'Cảnh báo ngưỡng nhiệt độ (Temperature threshold warning)',
+    '7/1': 'Báo động vượt ngưỡng nhiệt (Temperature threshold alarm)',
+    '7/4': 'Cảnh báo chênh lệch nhiệt (Temperature difference warning)',
+    '7/5': 'Báo động chênh lệch nhiệt (Temperature difference alarm)',
+    '7/16': 'Phát hiện điểm cháy (Fire spot detection)',
+    '7/17': 'Phát hiện hút thuốc (Smoking detection)',
+    '7/18': 'Phát hiện khói và lửa (Smoke & flame detection)',
+
+    // main_type 9: Báo động chuyển động thông minh (SMD)
+    '9/50': 'Phát hiện chuyển động thông minh (Không xác định)',
+    '9/51': 'Phát hiện chuyển động thông minh - Người (SMD Human)',
+    '9/52': 'Phát hiện chuyển động thông minh - Xe (SMD Vehicle)',
+    '9/53': 'Phát hiện chuyển động thông minh - Xe thô sơ (SMD Non-motor)'
 };
-
-// ===== HÀM NỘI BỘ =====
-
-function log(direction, label, data) {
-    if (state.logger) {
-        state.logger(direction, label, data);
-    } else {
-        const ts = new Date().toLocaleTimeString('vi-VN', { hour12: false });
-        const arrow = direction === 'IN' ? '⬇️  IN' : '⬆️ OUT';
-        const line = `[${ts}] ${arrow} | ${label}` + (data !== undefined ? ` | ${typeof data === 'string' ? data : JSON.stringify(data)}` : '');
-        console.log(line);
-    }
-}
 
 function getAlarmName(mainType, subType) {
     const name = ALARM_NAMES[`${mainType}/${subType}`];
-    if (!name) {
-        console.log(`[ALARM] ⚠️ Sự kiện CHƯA BIẾT TÊN: main_type=${mainType}, sub_type=${subType}`);
-    }
     return name || `Sự kiện chưa bóc tách (${mainType}/${subType})`;
 }
 
-// ===== HÀM CHỤP SNAPSHOT QUA RTSP BẰNG FFMPEG =====
+class CameraDevice {
+    /**
+     * @param {Object} config
+     * @param {string} config.id - ID thiết bị
+     * @param {string} [config.rtspUrl] - URL RTSP của camera
+     * @param {string} config.snapshotDir - Thư mục lưu ảnh snapshot
+     * @param {string} [config.sdkPath] - Đường dẫn tới thư mục chứa SDK DLLs + SunellWrapper.cs
+     * @param {string} [config.cameraIp] - IP camera (cho SDK)
+     * @param {number} [config.cameraPort=30001] - Port SDK camera
+     * @param {string} [config.cameraUser] - Username camera
+     * @param {string} [config.cameraPass] - Password camera
+     * @param {Function} [config.logger] - Hàm log tùy chỉnh
+     * @param {Function} [config.onAlarm] - Hàm callback khi có báo động SDK: (payload) => void
+     */
+    constructor(config = {}) {
+        this.id = config.id || 'unknown';
+        this.rtspUrl = config.rtspUrl || '';
+        this.snapshotDir = config.snapshotDir || '';
+        this.sdkPath = config.sdkPath || '';
+        this.cameraIp = config.cameraIp || '';
+        this.cameraPort = config.cameraPort || 30001;
+        this.cameraUser = config.cameraUser || '';
+        this.cameraPass = config.cameraPass || '';
+        this.logger = config.logger || null;
+        this.onAlarm = config.onAlarm || null;
 
-/**
- * Chụp 1 frame ảnh JPEG từ camera qua giao thức RTSP bằng FFmpeg.
- * @param {string} [rtspUrl] - URL RTSP (mặc định dùng config đã init)
- * @param {string} [outputPath] - Đường dẫn file output (tự tạo nếu không truyền)
- * @param {number} [timeoutMs=8000] - Timeout (ms)
- * @returns {Promise<{filePath: string, sizeKB: number}>} Thông tin file snapshot
- */
-function captureSnapshot(rtspUrl, outputPath, timeoutMs = 8000) {
-    const url = rtspUrl || state.rtspUrl;
-    if (!url) return Promise.reject(new Error('RTSP URL chưa được cấu hình'));
+        this.initialized = false;
+        this.cameraConnected = false;
+        this.cameraHandle = null;
+        this.cameraError = null;
 
-    // Tạo đường dẫn output nếu chưa truyền
-    if (!outputPath) {
-        if (!state.snapshotDir) return Promise.reject(new Error('snapshotDir chưa được cấu hình'));
-        const filename = `snap_${Date.now()}.jpg`;
-        outputPath = path.join(state.snapshotDir, filename);
+        if (this.snapshotDir && !fs.existsSync(this.snapshotDir)) {
+            fs.mkdirSync(this.snapshotDir, { recursive: true });
+        }
+        
+        this.initialized = true;
     }
 
-    // Lazy-load ffmpeg
-    if (!ffmpegPath) {
-        try {
-            ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
-        } catch (e) {
-            return Promise.reject(new Error('Không tìm thấy @ffmpeg-installer/ffmpeg. Chạy: npm install @ffmpeg-installer/ffmpeg'));
+    log(direction, label, data) {
+        if (this.logger) {
+            this.logger(direction, label, data);
+        } else {
+            const ts = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+            const arrow = direction === 'IN' ? '⬇️  IN' : '⬆️ OUT';
+            const line = `[${ts}] ${arrow} | [${this.id}] ${label}` + (data !== undefined ? ` | ${typeof data === 'string' ? data : JSON.stringify(data)}` : '');
+            console.log(line);
         }
     }
 
-    return new Promise((resolve, reject) => {
-        const args = [
-            '-y',                        // Ghi đè file
-            '-rtsp_transport', 'tcp',    // Dùng TCP cho ổn định
-            '-i', url,                   // URL RTSP
-            '-frames:v', '1',            // Chỉ lấy 1 frame
-            '-q:v', '2',                 // Chất lượng JPEG (2 = cao)
-            outputPath                   // File output
-        ];
+    /**
+     * Chụp 1 frame ảnh JPEG từ camera qua giao thức RTSP bằng FFmpeg.
+     */
+    captureSnapshot(rtspUrlOverride, outputPath, timeoutMs = 8000) {
+        const url = rtspUrlOverride || this.rtspUrl;
+        if (!url) return Promise.reject(new Error('RTSP URL chưa được cấu hình'));
 
-        log('IN', `[RTSP] Chụp snapshot: ${outputPath}`);
-        const startTime = Date.now();
+        if (!outputPath) {
+            if (!this.snapshotDir) return Promise.reject(new Error('snapshotDir chưa được cấu hình'));
+            const filename = `snap_${this.id}_${Date.now()}.jpg`;
+            outputPath = path.join(this.snapshotDir, filename);
+        }
 
-        execFile(ffmpegPath, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
-            const elapsed = Date.now() - startTime;
-            if (error) {
-                log('IN', `[RTSP] Lỗi ffmpeg (${elapsed}ms)`, error.message);
-                return reject(error);
+        if (!ffmpegPath) {
+            try {
+                if (process.pkg) {
+                    // Production: ffmpeg cạnh file exe
+                    ffmpegPath = require(path.join(path.dirname(process.execPath), 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
+                } else {
+                    try {
+                        ffmpegPath = require(path.join(__dirname, 'cms-middle-be', 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
+                    } catch (err) {
+                        ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+                    }
+                }
+            } catch (e) {
+                return Promise.reject(new Error('Không tìm thấy @ffmpeg-installer/ffmpeg.'));
             }
-
-            if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-                const sizeKB = parseFloat((fs.statSync(outputPath).size / 1024).toFixed(1));
-                log('IN', `[RTSP] ✅ Snapshot OK!`, `${sizeKB} KB (${elapsed}ms)`);
-                state.lastSnapshotTime = new Date().toISOString();
-                state.snapshotCount++;
-                resolve({ filePath: outputPath, sizeKB });
-            } else {
-                reject(new Error('File snapshot rỗng hoặc không tồn tại'));
-            }
-        });
-    });
-}
-
-// ===== BROADCAST WEBSOCKET =====
-
-/**
- * Gửi message tới tất cả client WebSocket đang kết nối.
- * @param {string} message - Chuỗi JSON hoặc text
- */
-function broadcastMessage(message) {
-    log('OUT', `Broadcast tới ${state.clients.size} client(s)`, message);
-    for (const ws of state.clients) {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(message);
         }
+
+        return new Promise((resolve, reject) => {
+            const args = [
+                '-y',
+                '-rtsp_transport', 'tcp',
+                '-probesize', '10000000',
+                '-analyzeduration', '10000000',
+                '-i', url,
+                '-frames:v', '1',
+                '-q:v', '2',
+                outputPath
+            ];
+
+            this.log('IN', `[RTSP] Bắt đầu quá trình chụp ảnh qua RTSP...`);
+            this.log('IN', `[RTSP] URL đích: ${url.replace(/:[^:@]+@/, ':***@')}`);
+            const startTime = Date.now();
+
+            const proc = spawn(ffmpegPath, args);
+            
+            let isTimeout = false;
+            let rawStderr = '';
+            const timeoutTimer = setTimeout(() => {
+                isTimeout = true;
+                proc.kill('SIGKILL');
+                this.log('IN', `[RTSP] ❌ Quá hạn kết nối (Timeout) sau ${timeoutMs}ms!`);
+                reject(new Error('RTSP Connection Timeout'));
+            }, timeoutMs);
+
+            proc.stderr.on('data', (data) => {
+                const str = data.toString();
+                rawStderr += str;
+                
+                // Phân tích stderr của ffmpeg để thông báo tiến trình thực
+                if (str.includes('Input #0')) {
+                    this.log('IN', `[RTSP] ✅ Mở luồng thành công! Đang đọc thông tin luồng...`);
+                } else if (str.includes('tcp://')) {
+                    // Tránh log quá nhiều dòng tcp
+                    if (str.includes('Connection to tcp://') || str.includes('Opening')) {
+                        this.log('IN', `[RTSP] ⏳ Đang kết nối giao thức TCP...`);
+                    }
+                } else if (str.includes('401 Unauthorized')) {
+                    this.log('IN', `[RTSP] ❌ Từ chối truy cập (401 Unauthorized) - Sai user/pass!`);
+                } else if (str.includes('Connection refused')) {
+                    this.log('IN', `[RTSP] ❌ Bị từ chối kết nối (Connection refused) - Kiểm tra port!`);
+                } else if (str.includes('Server returned 404') || str.includes('Stream not found')) {
+                    this.log('IN', `[RTSP] ❌ Không tìm thấy luồng (404 Not Found) - Sai đường dẫn stream!`);
+                } else if (str.includes('Output #0')) {
+                    this.log('IN', `[RTSP] 📸 Bắt đầu trích xuất frame ảnh (JPEG)...`);
+                }
+            });
+
+            proc.on('close', (code) => {
+                clearTimeout(timeoutTimer);
+                if (isTimeout) return; // Đã xử lý ở setTimeout
+
+                const elapsed = Date.now() - startTime;
+                if (code !== 0) {
+                    this.log('IN', `[RTSP] ❌ Quá trình thất bại (Mã lỗi FFmpeg: ${code}) sau ${elapsed}ms`);
+                    
+                    // Lấy 3 dòng cuối của log FFmpeg để hiển thị chi tiết lý do lỗi
+                    const lines = rawStderr.trim().split('\n');
+                    const lastLines = lines.slice(-3).join(' | ').trim();
+                    if (lastLines) {
+                        this.log('IN', `[RTSP-DETAIL] Chi tiết lỗi FFmpeg: ${lastLines}`);
+                    }
+                    
+                    return reject(new Error(`ffmpeg exited with code ${code}`));
+                }
+
+                if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+                    const sizeKB = parseFloat((fs.statSync(outputPath).size / 1024).toFixed(1));
+                    this.log('IN', `[RTSP] ✅ Chụp xong Snapshot thành công! Kích thước: ${sizeKB} KB (${elapsed}ms)`);
+                    resolve({ filePath: outputPath, sizeKB });
+                } else {
+                    this.log('IN', `[RTSP] ❌ File rỗng hoặc ảnh không được tạo ra.`);
+                    reject(new Error('File snapshot rỗng hoặc không tồn tại'));
+                }
+            });
+            
+            proc.on('error', (err) => {
+                clearTimeout(timeoutTimer);
+                this.log('IN', `[RTSP] ❌ Lỗi khi khởi chạy tiến trình hệ thống:`, err.message);
+                reject(err);
+            });
+        });
     }
-}
 
-// ===== TRIGGER SNAPSHOT =====
-
-/**
- * Chụp snapshot + broadcast kết quả qua WebSocket.
- * Dùng khi thiết bị bên ngoài gửi event trigger hoặc gọi thủ công.
- * @param {Object} options
- * @param {string} [options.device_id='unknown'] - ID thiết bị trigger
- * @param {string} [options.event_type='trigger'] - Loại sự kiện
- * @param {string} [options.message] - Mô tả sự kiện
- * @returns {Promise<Object>} Kết quả trigger
- */
-async function triggerSnapshot({ device_id = 'unknown', event_type = 'trigger', message = '' } = {}) {
-    const ts = new Date().toLocaleTimeString('vi-VN', { hour12: false });
-
-    log('IN', `TRIGGER từ thiết bị ngoài`, { device_id, event_type, message });
-
-    const filename = `trigger_${device_id}_${Date.now()}.jpg`;
-    const snapFilePath = path.join(state.snapshotDir, filename);
-
-    try {
-        const { sizeKB } = await captureSnapshot(null, snapFilePath);
-
-        const imgBytes = fs.readFileSync(snapFilePath);
-        const snapBase64 = imgBytes.toString('base64');
-
-        log('IN', 'TRIGGER Snapshot OK', `${sizeKB} KB`);
-
-        const broadcastPayload = {
-            type: 'external_trigger',
-            device_id,
-            event_type,
-            message: message || 'Thiết bị bên ngoài yêu cầu chụp ảnh',
-            snapshot: `data:image/jpeg;base64,${snapBase64}`,
-            snapshotFile: filename,
-            time: ts
-        };
-
-        broadcastMessage(JSON.stringify(broadcastPayload));
-
-        return {
-            success: true,
-            message: 'Snapshot đã chụp và broadcast thành công',
-            snapshotFile: filename,
-            snapshotUrl: `/snapshots/${filename}`,
-            sizeKB,
-            triggeredBy: device_id,
-            time: ts
-        };
-    } catch (err) {
-        log('IN', 'TRIGGER Snapshot FAIL', err.message);
-
-        const broadcastPayload = {
-            type: 'external_trigger',
-            device_id,
-            event_type,
-            message: message || 'Thiết bị bên ngoài yêu cầu chụp ảnh',
-            snapshot: null,
-            snapshotFile: null,
-            error: 'Chụp snapshot thất bại: ' + err.message,
-            time: ts
-        };
-
-        broadcastMessage(JSON.stringify(broadcastPayload));
-
-        throw {
-            success: false,
-            error: 'Không thể chụp snapshot qua RTSP',
-            message: err.message,
-            triggeredBy: device_id
-        };
-    }
-}
-
-// ===== TRẠNG THÁI KẾT NỐI =====
-
-/**
- * Lấy trạng thái hiện tại của hệ thống camera.
- * @returns {Object} Trạng thái camera, WebSocket, snapshot
- */
-function getStatus() {
-    return {
-        initialized: state.initialized,
-        camera: {
-            connected: state.cameraConnected,
-            handle: state.cameraHandle,
-            ip: state.cameraIp,
-            port: state.cameraPort,
-            error: state.cameraError,
-            rtspUrl: state.rtspUrl ? state.rtspUrl.replace(/:[^:@]+@/, ':***@') : null
-        },
-        websocket: {
-            active: state.wss !== null,
-            connectedClients: state.clients.size
-        },
-        snapshot: {
-            directory: state.snapshotDir,
-            totalCaptured: state.snapshotCount,
-            lastCapturedAt: state.lastSnapshotTime
+    /**
+     * Chụp snapshot và trả về chuỗi Base64
+     */
+    async captureSnapshotBase64(rtspUrlOverride, timeoutMs = 8000) {
+        let url = rtspUrlOverride || this.rtspUrl;
+        // Tự tạo RTSP URL nếu chưa cấu hình nhưng có thông tin IP camera
+        if (!url && this.cameraIp) {
+            const user = this.cameraUser || 'admin';
+            const pass = this.cameraPass || 'admin1234';
+            const rtspPort = 554; // Sunell RTSP port chuẩn
+            url = `rtsp://${user}:${pass}@${this.cameraIp}:${rtspPort}/snl/live/1/1`;
+            this.log('IN', `[RTSP] Auto-generated RTSP URL: rtsp://${user}:***@${this.cameraIp}:${rtspPort}/snl/live/1/1`);
         }
-    };
-}
+        if (!url) {
+            this.log('IN', 'captureSnapshotBase64: RTSP URL chưa cấu hình và không có IP camera');
+            return null;
+        }
 
-// ===== KHỞI TẠO WEBSOCKET =====
-
-/**
- * Khởi tạo WebSocket server và quản lý kết nối client.
- * @param {http.Server} server - HTTP server instance
- * @returns {WebSocket.Server} WebSocket server instance
- */
-function setupWebSocket(server) {
-    state.wss = new WebSocket.Server({ server });
-
-    state.wss.on('connection', (ws, req) => {
-        const clientIp = req.socket.remoteAddress;
-        log('IN', `Client kết nối (${clientIp}), tổng: ${state.clients.size + 1}`);
-        state.clients.add(ws);
-
-        ws.on('message', (rawMsg) => {
-            log('IN', `Tin nhắn từ client (${clientIp})`, rawMsg.toString());
-        });
-
-        ws.on('close', (code) => {
-            state.clients.delete(ws);
-            log('IN', `Client ngắt (${clientIp}), code=${code}, còn ${state.clients.size}`);
-        });
-
-        ws.on('error', (err) => {
-            log('IN', `Lỗi WebSocket (${clientIp})`, err.message);
-        });
-    });
-
-    return state.wss;
-}
-
-// ===== KẾT NỐI CAMERA QUA SDK C# =====
-
-/**
- * Kết nối camera Sunell qua SDK C# (edge-js).
- * @returns {Promise<Object>} Kết quả kết nối
- */
-function connectCamera() {
-    return new Promise((resolve) => {
+        // ⚠️ Phát hiện và sửa port sai: SDK port (30001) không phải RTSP port
+        // Sunell dùng 30001 cho SDK control, RTSP streaming dùng port 554 (chuẩn RTSP)
+        const SDK_PORTS = [30001, 30000];
+        const RTSP_FALLBACK_PORT = 554;
         try {
-            edge = require('edge-js');
-        } catch (e) {
-            state.cameraError = 'Không tìm thấy edge-js';
-            log('IN', '[SDK] edge-js không khả dụng', e.message);
-            resolve({ online: false, error: state.cameraError });
-            return;
+            const parsedUrl = new URL(url);
+            const configuredPort = parseInt(parsedUrl.port, 10);
+            if (SDK_PORTS.includes(configuredPort)) {
+                const fixedUrl = url.replace(`:${configuredPort}/`, `:${RTSP_FALLBACK_PORT}/`);
+                this.log('IN', `[RTSP] ⚠️ Phát hiện SDK port (${configuredPort}) trong RTSP URL — tự động chuyển sang port ${RTSP_FALLBACK_PORT}`);
+                this.log('IN', `[RTSP] URL gốc: ${url.replace(/:[^:@]+@/, ':***@')}`);
+                this.log('IN', `[RTSP] URL sửa: ${fixedUrl.replace(/:[^:@]+@/, ':***@')}`);
+                url = fixedUrl;
+            }
+        } catch (_) {
+            // Nếu URL không hợp lệ thì bỏ qua bước sửa port
         }
 
-        const csPath = path.join(state.sdkPath, 'SunellWrapper.cs');
-        if (!fs.existsSync(csPath)) {
-            state.cameraError = `Không tìm thấy SunellWrapper.cs ở: ${csPath}`;
-            log('IN', '[SDK]', state.cameraError);
-            resolve({ online: false, error: state.cameraError });
-            return;
+        if (url.includes('fake') || this.cameraIp === '127.0.0.1') {
+            this.log('IN', `[MOCK RTSP] Trả về ảnh giả lập cho: ${url || this.cameraIp}`);
+            // Chuỗi Base64 của một bức ảnh 1x1 đỏ mẫu
+            const fakeImageBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+            return fakeImageBase64;
         }
 
-        const code = fs.readFileSync(csPath, 'utf8');
+        const tmpDir = this.snapshotDir;
+        const filename = `snap_${this.id}_${Date.now()}.jpg`;
+        const outputPath = path.join(tmpDir, filename);
 
-        const onCameraEvent = function (payload, callback) {
-            if (payload.source === 'FACE_DETECT_STREAM') {
-                log('IN', 'LPR/Face Detect Stream data', payload.rawJson);
-                broadcastMessage(payload.rawJson);
-                callback(null, true);
+        try {
+            await this.captureSnapshot(url, outputPath, timeoutMs);
+            const imgBytes = fs.readFileSync(outputPath);
+            const base64 = imgBytes.toString('base64');
+            try { fs.unlinkSync(outputPath); } catch (_) {}
+            return `data:image/jpeg;base64,${base64}`;
+        } catch (err) {
+            this.log('IN', '[RTSP→Base64] FAIL', err.message);
+            try { fs.unlinkSync(outputPath); } catch (_) {}
+            throw new Error(`Snapshot Error: ${err.message}`);
+        }
+    }
+
+    /**
+     * Kết nối camera Sunell qua SDK C# (edge-js).
+     */
+    connectCamera() {
+        return new Promise((resolve) => {
+            try {
+                if (process.pkg) {
+                    const edgeJsPath = path.join(path.dirname(process.execPath), 'node_modules', 'edge-js');
+                    edge = require(edgeJsPath);
+                } else {
+                    try {
+                        // Trực tiếp require từ thư mục backend nơi edge-js được cài đặt
+                        const beEdgePath = path.join(__dirname, 'cms-middle-be', 'node_modules', 'edge-js');
+                        edge = require(beEdgePath);
+                    } catch (err) {
+                        edge = require('edge-js');
+                    }
+                }
+            } catch (e) {
+                this.cameraError = e.message;
+                this.log('IN', '[SDK] edge-js không khả dụng', e.stack || e.message);
+                resolve({ online: false, error: this.cameraError });
                 return;
             }
 
-            log('IN', 'SDK C# → Node.js ALARM', { handle: payload.handle, timestamp: payload.timestamp });
+            const csPath = path.join(this.sdkPath, 'SunellWrapper.cs');
+            if (!fs.existsSync(csPath)) {
+                this.cameraError = `Không tìm thấy SunellWrapper.cs ở: ${csPath}`;
+                this.log('IN', '[SDK]', this.cameraError);
+                resolve({ online: false, error: this.cameraError });
+                return;
+            }
 
-            try {
-                const jsonStr = payload.rawJson;
-                if (!jsonStr) { callback(null, true); return; }
+            const code = fs.readFileSync(csPath, 'utf8');
 
-                let parsed;
-                try { parsed = JSON.parse(jsonStr); } catch (e) {
-                    log('IN', 'Raw alarm (parse failed)', jsonStr.substring(0, 200));
-                    broadcastMessage(jsonStr);
+            const onCameraEvent = (payload, callback) => {
+                if (payload.source === 'FACE_DETECT_STREAM') {
+                    let parsedData = payload.rawJson;
+                    try {
+                        let p = JSON.parse(payload.rawJson);
+                        if (payload.snapshotBase64) {
+                            p.snapshotBase64 = payload.snapshotBase64;
+                            parsedData = JSON.stringify(p);
+                            if (this.onAlarm) this.onAlarm(parsedData);
+                        } else {
+                            this.log('IN', '[FALLBACK] Chụp ảnh RTSP do SDK không trả về snapshotBase64 (FACE_DETECT)');
+                            this.captureSnapshotBase64().then(b64 => {
+                                if (b64) {
+                                    p.snapshotBase64 = b64;
+                                    this.log('IN', `[FALLBACK] ✅ RTSP snapshot OK, size=${b64.length}`);
+                                } else {
+                                    this.log('IN', '[FALLBACK] ❌ RTSP snapshot trả về null');
+                                }
+                                if (this.onAlarm) this.onAlarm(JSON.stringify(p));
+                            }).catch((err) => {
+                                this.log('IN', `[FALLBACK] ❌ RTSP snapshot lỗi: ${err.message}`);
+                                if (this.onAlarm) this.onAlarm(JSON.stringify(p));
+                            });
+                        }
+                    } catch(e) {
+                        if (this.onAlarm) this.onAlarm(parsedData);
+                    }
+                    
                     callback(null, true);
                     return;
                 }
 
-                const d = parsed.data || {};
-                const alarmFlag = d.alarm_flag;
+                this.log('IN', 'SDK C# → Node.js ALARM', { handle: payload.handle, timestamp: payload.timestamp });
 
-                parsed.eventName = getAlarmName(d.main_type, d.sub_type);
+                try {
+                    const jsonStr = payload.rawJson;
+                    if (!jsonStr) { callback(null, true); return; }
 
-                log('IN', `Alarm [${parsed.eventName}]`, { main_type: d.main_type, sub_type: d.sub_type, alarm_flag: alarmFlag, time: d.time });
+                    let parsed;
+                    try { parsed = JSON.parse(jsonStr); } catch (e) {
+                        if (this.onAlarm) this.onAlarm(jsonStr);
+                        callback(null, true);
+                        return;
+                    }
 
-                // Chỉ chụp snapshot khi alarm BẮT ĐẦU (alarm_flag = 1)
-                if (alarmFlag === 1) {
-                    const filename = `snap_${Date.now()}.jpg`;
-                    const snapFilePath = path.join(state.snapshotDir, filename);
+                    const d = parsed.data || {};
+                    const alarmFlag = d.alarm_flag;
+                    parsed.eventName = getAlarmName(d.main_type, d.sub_type);
+                    
+                    this.log('IN', `Alarm [${parsed.eventName}]`, { main_type: d.main_type, sub_type: d.sub_type, alarm_flag: alarmFlag, time: d.time });
 
-                    captureSnapshot(null, snapFilePath)
-                        .then(({ filePath }) => {
-                            const imgBytes = fs.readFileSync(filePath);
-                            const snapBase64 = imgBytes.toString('base64');
-                            log('IN', 'RTSP Snapshot OK', `${(imgBytes.length / 1024).toFixed(1)} KB`);
-                            parsed.snapshot = `data:image/jpeg;base64,${snapBase64}`;
-                            parsed.snapshotFile = filename;
-                            broadcastMessage(JSON.stringify(parsed));
-                        })
-                        .catch((err) => {
-                            log('IN', 'RTSP Snapshot FAIL', err.message);
-                            broadcastMessage(JSON.stringify(parsed));
-                        });
-                } else {
-                    broadcastMessage(JSON.stringify(parsed));
+                    if (payload.snapshotBase64) {
+                        parsed.snapshotBase64 = payload.snapshotBase64;
+                    }
+                    if (this.onAlarm) this.onAlarm(JSON.stringify(parsed));
+                } catch (error) {
+                    this.log('IN', 'Lỗi xử lý alarm', error.message);
                 }
-            } catch (error) {
-                log('IN', 'Lỗi xử lý alarm', error.message);
-            }
 
-            callback(null, true);
-        };
+                callback(null, true);
+            };
 
-        const connectFn = edge.func({
-            source: code,
-            references: ['System.Data.dll']
-        });
-
-        const sdkPayload = {
-            sdkPath: state.sdkPath,
-            snapshotDir: state.snapshotDir,
-            ip: state.cameraIp,
-            port: state.cameraPort,
-            username: state.cameraUser,
-            password: state.cameraPass,
-            onEvent: onCameraEvent
-        };
-
-        console.log("--------------------------------------------------");
-        console.log("Đang gọi C# SDK để login tới:", sdkPayload.ip);
-
-        connectFn(sdkPayload, function (error, result) {
-            if (error) {
-                state.cameraConnected = false;
-                state.cameraError = error.message;
-                log('IN', '[SDK] Lỗi kết nối', error.message);
-                broadcastMessage(`[LỖI HỆ THỐNG] Lỗi Exception C# SDK: ${error.message}`);
-                resolve({ online: false, error: error.message });
-            } else {
-                console.log("Kết quả phản hồi từ thiết bị:", result);
-                if (result.online) {
-                    state.cameraConnected = true;
-                    state.cameraHandle = result.handle;
-                    state.cameraError = null;
-                    broadcastMessage(`[Hệ thống] SDK kết nối thành công tới ${sdkPayload.ip}! Đang chờ bắt sự kiện...`);
-                } else {
-                    state.cameraConnected = false;
-                    state.cameraError = result.message;
-                    broadcastMessage(`[Lỗi Thiết Bị] Không thể đăng nhập: ${result.message}`);
-                }
-                resolve(result);
-            }
-        });
-    });
-}
-
-// ===== ĐĂNG KÝ API ROUTES =====
-
-/**
- * Đăng ký các API routes vào Express app.
- * Routes được tạo:
- *   GET  /api/status           — Trạng thái hệ thống
- *   POST /api/trigger-snapshot — Trigger chụp snapshot từ thiết bị ngoài
- *   GET  /api/snapshot         — Test chụp snapshot thủ công (trả file JPEG)
- *
- * @param {express.Application} app - Express app instance
- * @param {string} [prefix=''] - Prefix cho route (VD: '/camera' → '/camera/api/status')
- */
-function registerRoutes(app, prefix = '') {
-    // Serve ảnh snapshot qua HTTP
-    app.use(`${prefix}/snapshots`, require('express').static(state.snapshotDir));
-
-    // API lấy trạng thái
-    app.get(`${prefix}/api/status`, (req, res) => {
-        res.json(getStatus());
-    });
-
-    // API trigger snapshot từ thiết bị ngoài
-    app.post(`${prefix}/api/trigger-snapshot`, async (req, res) => {
-        try {
-            const result = await triggerSnapshot(req.body || {});
-            res.json(result);
-        } catch (err) {
-            res.status(500).json(err);
-        }
-    });
-
-    // API test snapshot thủ công (trả file ảnh)
-    app.get(`${prefix}/api/snapshot`, async (req, res) => {
-        const filename = `test_snap_${Date.now()}.jpg`;
-        const snapFilePath = path.join(state.snapshotDir, filename);
-        try {
-            await captureSnapshot(null, snapFilePath);
-            res.sendFile(snapFilePath);
-        } catch (err) {
-            res.status(500).json({
-                error: 'Không thể chụp snapshot qua RTSP',
-                message: err.message,
-                rtspUrl: state.rtspUrl ? state.rtspUrl.replace(/:[^:@]+@/, ':***@') : null,
-                hint: 'Kiểm tra lại RTSP URL, port, user/pass.'
+            const connectFn = edge.func({
+                source: code,
+                references: ['System.Data.dll']
             });
-        }
-    });
 
-    console.log(`[CameraModule] Routes đã đăng ký (prefix: "${prefix || '/'}")`);
-}
+            const sdkPayload = {
+                sdkPath: this.sdkPath,
+                snapshotDir: this.snapshotDir,
+                ip: this.cameraIp,
+                port: this.cameraPort,
+                username: this.cameraUser,
+                password: this.cameraPass,
+                onEvent: onCameraEvent
+            };
 
-// ===== KHỞI TẠO MODULE =====
+            this.log('IN', "Đang gọi C# SDK để login tới:", sdkPayload.ip);
 
-/**
- * Khởi tạo module với cấu hình.
- * @param {Object} config
- * @param {string} config.rtspUrl - URL RTSP của camera
- * @param {string} config.snapshotDir - Thư mục lưu ảnh snapshot
- * @param {string} [config.sdkPath] - Đường dẫn tới thư mục chứa SDK DLLs + SunellWrapper.cs
- * @param {string} [config.cameraIp] - IP camera (cho SDK)
- * @param {number} [config.cameraPort=30001] - Port SDK camera
- * @param {string} [config.cameraUser] - Username camera
- * @param {string} [config.cameraPass] - Password camera
- * @param {Function} [config.logger] - Hàm log tùy chỉnh: (direction, label, data) => void
- */
-function init(config = {}) {
-    state.rtspUrl = config.rtspUrl || state.rtspUrl;
-    state.snapshotDir = config.snapshotDir || state.snapshotDir;
-    state.sdkPath = config.sdkPath || state.sdkPath;
-    state.cameraIp = config.cameraIp || state.cameraIp;
-    state.cameraPort = config.cameraPort || state.cameraPort;
-    state.cameraUser = config.cameraUser || state.cameraUser;
-    state.cameraPass = config.cameraPass || state.cameraPass;
-    state.logger = config.logger || state.logger;
-
-    // Tạo thư mục snapshot nếu chưa có
-    if (state.snapshotDir && !fs.existsSync(state.snapshotDir)) {
-        fs.mkdirSync(state.snapshotDir, { recursive: true });
+            connectFn(sdkPayload, (error, result) => {
+                if (error) {
+                    this.cameraConnected = false;
+                    this.cameraError = error.message;
+                    this.log('IN', '[SDK] Lỗi kết nối', error.message);
+                    resolve({ online: false, error: error.message });
+                } else {
+                    if (result.online) {
+                        this.cameraConnected = true;
+                        this.cameraHandle = result.handle;
+                        this.cameraError = null;
+                        this.log('IN', 'SDK kết nối thành công', `handle: ${this.cameraHandle}`);
+                    } else {
+                        this.cameraConnected = false;
+                        this.cameraError = result.message;
+                        this.log('IN', 'SDK lỗi đăng nhập', result.message);
+                    }
+                    resolve(result);
+                }
+            });
+        });
     }
 
-    state.initialized = true;
-    console.log('[CameraModule] Đã khởi tạo thành công');
-    console.log(`  RTSP URL: ${state.rtspUrl ? state.rtspUrl.replace(/:[^:@]+@/, ':***@') : '(chưa cấu hình)'}`);
-    console.log(`  Snapshot Dir: ${state.snapshotDir || '(chưa cấu hình)'}`);
-    console.log(`  Camera IP: ${state.cameraIp || '(chưa cấu hình)'}`);
+    async disconnectCamera() {
+        if (!this.cameraConnected || !this.cameraHandle) {
+            return { success: true, message: 'Camera already disconnected' };
+        }
+
+        return new Promise((resolve, reject) => {
+            if (!this.edgeMethod) {
+                return resolve({ success: false, message: 'Edge method not initialized' });
+            }
+
+            const payload = {
+                action: 'disconnect',
+                handle: this.cameraHandle
+            };
+
+            this.edgeMethod(payload, (error, result) => {
+                if (error) {
+                    this.log('IN', 'SDK lỗi ngắt kết nối', String(error));
+                    return reject(error);
+                }
+
+                this.cameraConnected = false;
+                this.cameraHandle = null;
+                this.log('IN', 'SDK đã ngắt kết nối', result);
+                resolve(result);
+            });
+        });
+    }
+
+    getStatus() {
+        return {
+            id: this.id,
+            initialized: this.initialized,
+            camera: {
+                connected: this.cameraConnected,
+                handle: this.cameraHandle,
+                ip: this.cameraIp,
+                port: this.cameraPort,
+                error: this.cameraError,
+                rtspUrl: this.rtspUrl ? this.rtspUrl.replace(/:[^:@]+@/, ':***@') : null
+            }
+        };
+    }
+
+    /**
+     * Kiểm tra kết nối RTSP nhanh (probe) — dùng FFmpeg chỉ để mở stream, không lưu file.
+     * @param {number} timeoutMs - Thời gian tối đa chờ kết nối (mặc định 5000ms)
+     * @returns {Promise<{online: boolean, error?: string}>}
+     */
+    probeRtsp(timeoutMs = 5000) {
+        const url = this.rtspUrl;
+        if (!url) {
+            return Promise.resolve({ online: false, error: 'RTSP URL chưa được cấu hình' });
+        }
+
+        if (!ffmpegPath) {
+            try {
+                if (process.pkg) {
+                    ffmpegPath = require(path.join(path.dirname(process.execPath), 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
+                } else {
+                    try {
+                        ffmpegPath = require(path.join(__dirname, 'cms-middle-be', 'node_modules', '@ffmpeg-installer', 'ffmpeg')).path;
+                    } catch (err) {
+                        ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+                    }
+                }
+            } catch (e) {
+                return Promise.resolve({ online: false, error: 'FFmpeg không khả dụng' });
+            }
+        }
+
+        return new Promise((resolve) => {
+            const args = [
+                '-rtsp_transport', 'tcp',
+                '-i', url,
+                '-t', '1',         // chỉ đọc 1 giây
+                '-f', 'null',       // không ghi file
+                '-'
+            ];
+
+            let rawStderr = '';
+            let settled = false;
+
+            const proc = spawn(ffmpegPath, args);
+
+            const timer = setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    proc.kill('SIGKILL');
+                    resolve({ online: false, error: 'Timeout kết nối RTSP' });
+                }
+            }, timeoutMs);
+
+            proc.stderr.on('data', (data) => {
+                rawStderr += data.toString();
+
+                // Nếu thấy "Input #0" nghĩa là stream mở thành công → online
+                if (!settled && rawStderr.includes('Input #0')) {
+                    settled = true;
+                    clearTimeout(timer);
+                    proc.kill('SIGKILL');
+                    resolve({ online: true });
+                }
+            });
+
+            proc.on('close', () => {
+                clearTimeout(timer);
+                if (settled) return;
+                settled = true;
+
+                // Phân tích lỗi từ stderr
+                if (rawStderr.includes('401 Unauthorized')) {
+                    resolve({ online: false, error: 'Sai user/password (401)' });
+                } else if (rawStderr.includes('Connection refused')) {
+                    resolve({ online: false, error: 'Bị từ chối kết nối' });
+                } else if (rawStderr.includes('Server returned 404') || rawStderr.includes('Stream not found')) {
+                    resolve({ online: false, error: 'Không tìm thấy luồng (404)' });
+                } else if (rawStderr.includes('No route to host') || rawStderr.includes('Network is unreachable')) {
+                    resolve({ online: false, error: 'Không thể kết nối mạng' });
+                } else {
+                    resolve({ online: false, error: 'Không thể mở luồng RTSP' });
+                }
+            });
+
+            proc.on('error', (err) => {
+                clearTimeout(timer);
+                if (!settled) {
+                    settled = true;
+                    resolve({ online: false, error: err.message });
+                }
+            });
+        });
+    }
 }
 
-// ===== EXPORTS =====
 module.exports = {
-    init,
-    captureSnapshot,
-    triggerSnapshot,
-    getStatus,
-    broadcastMessage,
-    setupWebSocket,
-    connectCamera,
-    registerRoutes,
+    CameraDevice,
     getAlarmName,
     ALARM_NAMES
 };

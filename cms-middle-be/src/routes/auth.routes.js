@@ -17,7 +17,7 @@ router.post('/api/v1/login', async (req, res) => {
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@cms.com';
   const adminPass = process.env.ADMIN_PASSWORD || 'admin1234';
   if (email === adminEmail && password === adminPass) {
-    const accessToken = jwt.sign({ email, role: 'admin' }, JWT_SECRET, { expiresIn: '1h' });
+    const accessToken = jwt.sign({ email, role: 'admin' }, JWT_SECRET, { expiresIn: '365d' });
     return res.status(201).send({ success: true, data: { accessToken } });
   }
 

@@ -53,6 +53,27 @@ function findFreePort(startPort) {
   });
 }
 
+function waitForBackend(port, timeout = 15000) {
+  return new Promise((resolve, reject) => {
+    const net = require('net');
+    const startTime = Date.now();
+    function tryConnect() {
+      const client = net.createConnection({ port, host: '127.0.0.1' }, () => {
+        client.end();
+        resolve();
+      });
+      client.on('error', () => {
+        if (Date.now() - startTime > timeout) {
+          reject(new Error(`Backend did not start within ${timeout}ms`));
+        } else {
+          setTimeout(tryConnect, 300);
+        }
+      });
+    }
+    tryConnect();
+  });
+}
+
 // In dev mode, we assume the backend is started via concurrently or separately.
 // For production mode, we might want to start the backend directly here.
 const isDev = !app.isPackaged;
@@ -60,15 +81,19 @@ let backendProcess = null;
 
 function startBackend(bePort) {
   const osPlatform = os.platform();
-  const beExecutableName = osPlatform === 'win32' ? 'cms-ai-vms-middle.exe' : 'cms-ai-vms-middle';
+  const beExecutableName = osPlatform === 'win32' ? 'node.exe' : 'node';
 
   const binaryPath = isDev
     ? path.join(__dirname, 'build-be', beExecutableName)
     : path.join(process.resourcesPath, 'bin', beExecutableName);
 
   const runtimeIP = getLocalIP();
+  const logPath = path.join(app.getPath('userData'), 'backend.log');
+
   if (fs.existsSync(binaryPath)) {
     console.log(`[Electron] Starting Backend Sidecar on port ${bePort}...`, binaryPath);
+    fs.appendFileSync(logPath, `\n[${new Date().toISOString()}] --- Starting Backend on port ${bePort} ---\n`);
+    
     const executeEnv = { 
       ...process.env, 
       IS_PACKAGED: 'true', 
@@ -76,11 +101,36 @@ function startBackend(bePort) {
       LOCAL_IP: runtimeIP,
       BE_PORT: bePort
     };
+    
     backendProcess = spawn(binaryPath, [], { cwd: path.dirname(binaryPath), env: executeEnv });
-    backendProcess.stdout.on('data', (data) => console.log(`[BE]: ${data}`));
-    backendProcess.stderr.on('data', (data) => console.error(`[BE ERROR]: ${data}`));
+    
+    backendProcess.stdout.on('data', (data) => {
+      const msg = `[BE]: ${data}`;
+      console.log(msg);
+      fs.appendFileSync(logPath, msg);
+    });
+    
+    backendProcess.stderr.on('data', (data) => {
+      const msg = `[BE ERROR]: ${data}`;
+      console.error(msg);
+      fs.appendFileSync(logPath, msg);
+    });
+
+    backendProcess.on('exit', (code, signal) => {
+      const msg = `\n[${new Date().toISOString()}] [BE] Process EXITED — code=${code}, signal=${signal}\n`;
+      console.error(msg);
+      fs.appendFileSync(logPath, msg);
+    });
+
+    backendProcess.on('error', (err) => {
+      const msg = `\n[${new Date().toISOString()}] [BE] Process ERROR — ${err.message}\n`;
+      console.error(msg);
+      fs.appendFileSync(logPath, msg);
+    });
   } else {
-    console.error('[Electron] Backend sidecar not found at', binaryPath);
+    const errorMsg = `[Electron] Backend sidecar not found at ${binaryPath}`;
+    console.error(errorMsg);
+    fs.appendFileSync(logPath, `\n[ERROR] ${errorMsg}\n`);
   }
 }
 
@@ -179,6 +229,13 @@ app.whenReady().then(async () => {
     // Start backend in production
     resolvedBePort = await findFreePort(5050);
     startBackend(resolvedBePort);
+    try {
+      console.log(`[Electron] Waiting for backend to be ready on port ${resolvedBePort}...`);
+      await waitForBackend(resolvedBePort);
+      console.log(`[Electron] Backend is ready!`);
+    } catch (err) {
+      console.error(`[Electron] ${err.message}`);
+    }
   }
 
   createWindow();

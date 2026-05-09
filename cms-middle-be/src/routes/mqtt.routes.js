@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { mqttServers } = require('../socketState');
-const { connectMqttServer, disconnectMqttServer, getMqttServersList, getMqttServerLogs, addMqttDevice, removeMqttDevice, updateMqttDevice, getMqttDevicesList } = require('../services/mqtt.service');
+const { connectMqttServer, disconnectMqttServer, getMqttServersList, getMqttServerLogs, publishDownlink, controlBuzzer } = require('../services/mqtt.service');
 const authMiddleware = require('../middleware/auth.middleware');
 
 const router = express.Router();
@@ -20,7 +20,7 @@ router.get('/api/v1/mqtt-servers/:id/logs', (req, res) => {
 
 // ─── POST /api/v1/mqtt-servers — Add new MQTT server & connect ───────────────
 router.post('/api/v1/mqtt-servers', (req, res) => {
-  const { brokerHost, brokerPort, protocol, topic, defaultTopic } = req.body;
+  const { name, brokerHost, brokerPort, protocol, topic, defaultTopic, cameraId } = req.body;
 
   if (!brokerHost || !brokerPort) {
     return res.status(400).json({ success: false, message: 'Missing brokerHost or brokerPort' });
@@ -37,12 +37,14 @@ router.post('/api/v1/mqtt-servers', (req, res) => {
   const id = crypto.randomUUID().slice(0, 8);
   const serverConfig = {
     id,
-    brokerHost,
-    brokerPort: String(brokerPort),
+    name: name ? name.trim() : '',
+    brokerHost: brokerHost.trim(),
+    brokerPort: String(brokerPort).trim(),
     protocol: protocol || 'mqtt',
-    topic: topic || '',
-    defaultTopic: defaultTopic || 'application/{appId}/device/{deviceEui}/event/up',
+    topic: topic ? topic.trim() : '',
+    defaultTopic: defaultTopic || 'application/32dc910f-33ae-4526-ac0b-6344e378f00f/device/24e124806e515126/event/up',
     status: 'connecting',
+    cameraId: cameraId || null,
     logs: [],
   };
 
@@ -60,7 +62,7 @@ router.put('/api/v1/mqtt-servers/:id', (req, res) => {
     return res.status(404).json({ success: false, message: 'MQTT server not found' });
   }
 
-  const { brokerHost, brokerPort, protocol, topic, defaultTopic } = req.body;
+  const { name, brokerHost, brokerPort, protocol, topic, defaultTopic, cameraId } = req.body;
 
   // Disconnect old
   disconnectMqttServer(id);
@@ -68,11 +70,13 @@ router.put('/api/v1/mqtt-servers/:id', (req, res) => {
   // Update config
   const updated = {
     ...mqttServers[idx],
-    brokerHost: brokerHost || mqttServers[idx].brokerHost,
-    brokerPort: String(brokerPort || mqttServers[idx].brokerPort),
+    name: name !== undefined ? (name ? name.trim() : '') : (mqttServers[idx].name || ''),
+    brokerHost: brokerHost ? brokerHost.trim() : mqttServers[idx].brokerHost,
+    brokerPort: brokerPort ? String(brokerPort).trim() : mqttServers[idx].brokerPort,
     protocol: protocol || mqttServers[idx].protocol,
-    topic: topic !== undefined ? topic : mqttServers[idx].topic,
+    topic: topic !== undefined ? topic.trim() : mqttServers[idx].topic,
     defaultTopic: defaultTopic || mqttServers[idx].defaultTopic,
+    cameraId: cameraId !== undefined ? cameraId : mqttServers[idx].cameraId,
     status: 'connecting',
     logs: mqttServers[idx].logs || [], // preserve logs
   };
@@ -82,6 +86,30 @@ router.put('/api/v1/mqtt-servers/:id', (req, res) => {
   connectMqttServer(updated);
 
   res.json({ success: true, message: `MQTT server '${id}' updated and reconnecting`, server: { ...updated, logs: undefined } });
+});
+
+// ─── PATCH /api/v1/mqtt-servers/:id — Partially update MQTT server config ─────
+router.patch('/api/v1/mqtt-servers/:id', (req, res) => {
+  const { id } = req.params;
+  const idx = mqttServers.findIndex(s => s.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, message: 'MQTT server not found' });
+  }
+
+  const { cameraId } = req.body;
+
+  if (cameraId !== undefined) {
+    mqttServers[idx].cameraId = cameraId;
+  }
+
+  // Emit updated list to FE
+  const { getClientSockets } = require('../socketState');
+  const clientSockets = getClientSockets();
+  if (clientSockets) {
+    clientSockets.emit('update-mqtt-servers', getMqttServersList());
+  }
+
+  res.json({ success: true, message: `MQTT server '${id}' partially updated`, server: { ...mqttServers[idx], logs: undefined } });
 });
 
 // ─── DELETE /api/v1/mqtt-servers/:id — Remove MQTT server ────────────────────
@@ -105,49 +133,55 @@ router.delete('/api/v1/mqtt-servers/:id', (req, res) => {
   res.json({ success: true, message: `MQTT server '${id}' removed` });
 });
 
-// ─── MQTT Device Routes ──────────────────────────────────────────────────────
+// ─── POST /api/v1/mqtt-servers/:id/downlink — Publish generic downlink ────────
+// Body: { applicationId, devEui, fPort, dataBase64, confirmed? }
+router.post('/api/v1/mqtt-servers/:id/downlink', (req, res) => {
+  const { id } = req.params;
+  const { applicationId, devEui, fPort, dataBase64, confirmed } = req.body;
 
-// POST /api/v1/mqtt-devices — Add camera device linked to MQTT server
-router.post('/api/v1/mqtt-devices', async (req, res) => {
-  const { mqttServerId, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl } = req.body;
-
-  if (!mqttServerId) {
-    return res.status(400).json({ success: false, message: 'Missing mqttServerId' });
-  }
-  if (!cameraIp) {
-    return res.status(400).json({ success: false, message: 'Missing cameraIp' });
+  if (!applicationId || !devEui || !fPort || !dataBase64) {
+    return res.status(400).json({ success: false, message: 'Missing required fields: applicationId, devEui, fPort, dataBase64' });
   }
 
-  try {
-    const result = await addMqttDevice({ mqttServerId, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl });
-    res.status(201).json(result);
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message || String(err) });
-  }
-});
+  const result = publishDownlink(id, { applicationId, devEui, fPort: Number(fPort), dataBase64, confirmed });
 
-// GET /api/v1/mqtt-devices — List all mqtt devices (optional ?mqttServerId=xxx)
-router.get('/api/v1/mqtt-devices', (req, res) => {
-  const list = getMqttDevicesList(req.query.mqttServerId);
-  res.json({ success: true, devices: list });
-});
-
-// DELETE /api/v1/mqtt-devices/:id — Remove device
-router.delete('/api/v1/mqtt-devices/:id', (req, res) => {
-  const result = removeMqttDevice(req.params.id);
   if (!result.success) {
-    return res.status(404).json(result);
+    return res.status(503).json({ success: false, message: result.error });
   }
-  res.json(result);
+
+  res.json({ success: true, message: 'Downlink published', topic: result.topic });
 });
 
-// PATCH /api/v1/mqtt-devices/:id — Update device fields (rtspUrl, etc.)
-router.patch('/api/v1/mqtt-devices/:id', (req, res) => {
-  const result = updateMqttDevice(req.params.id, req.body);
-  if (!result.success) {
-    return res.status(404).json(result);
+// ─── POST /api/v1/mqtt-servers/:id/buzzer — Control VS373 Buzzer ─────────────
+// Body: { applicationId, devEui, enable: boolean, fPort? }
+// enable=true  → Bật còi (ff3e01 → /z4B)
+// enable=false → Tắt còi (ff3e00 → /z4A)
+router.post('/api/v1/mqtt-servers/:id/buzzer', (req, res) => {
+  const { id } = req.params;
+  const { applicationId, devEui, enable, fPort } = req.body;
+
+  if (!applicationId || !devEui || enable === undefined) {
+    return res.status(400).json({ success: false, message: 'Missing required fields: applicationId, devEui, enable' });
   }
-  res.json(result);
+
+  const result = controlBuzzer(id, {
+    applicationId,
+    devEui,
+    enable: Boolean(enable),
+    fPort: fPort ? Number(fPort) : 85,
+  });
+
+  if (!result.success) {
+    return res.status(503).json({ success: false, message: result.error });
+  }
+
+  res.json({
+    success: true,
+    message: `Buzzer ${Boolean(enable) ? 'ON' : 'OFF'} command sent`,
+    topic: result.topic,
+    devEui,
+    command: Boolean(enable) ? 'ff3e01' : 'ff3e00',
+  });
 });
 
 module.exports = router;

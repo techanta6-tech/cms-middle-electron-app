@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   Button,
@@ -16,10 +17,11 @@ import {
 import { Lock, Mail, Eye, EyeOff, ShieldCheck, ChevronDown, Server, CheckCircle2, XCircle } from 'lucide-react';
 import { authApi } from '../api/authApi';
 import { updateApiClientBaseUrl } from '../api/apiClient';
-import { socket, updateSocketUrlAsync } from '../socket';
+import { socket, updateSocketUrlAsync, getBeHost, getBePort } from '../socket';
 import { useNavigate } from 'react-router-dom';
 
 const LoginPage: React.FC = () => {
+  const { t } = useTranslation();
   const [email, setEmail] = useState(import.meta.env.VITE_DEV_ACCOUNT || '');
   const [password, setPassword] = useState(import.meta.env.VITE_DEV_PASSWORD || '');
   const [showPassword, setShowPassword] = useState(false);
@@ -27,8 +29,8 @@ const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const [beHost, setBeHost] = useState(localStorage.getItem('BE_HOST') || import.meta.env.VITE_BE_HOST || 'localhost');
-  const [bePort, setBePort] = useState(localStorage.getItem('BE_PORT') || import.meta.env.VITE_BE_PORT || '5050');
+  const [beHost, setBeHost] = useState(getBeHost());
+  const [bePort, setBePort] = useState(getBePort());
   const [beStatus, setBeStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [appVersion, setAppVersion] = useState('');
 
@@ -73,7 +75,7 @@ const LoginPage: React.FC = () => {
       }
       navigate('/dashboard');
     } else {
-      setError(result.message || 'Login failed');
+      setError(result.message || t('app.login.error'));
     }
     setLoading(false);
   };
@@ -135,7 +137,7 @@ const LoginPage: React.FC = () => {
           </Box>
 
           <Typography component="h1" variant="h4" sx={{ mb: 1, fontWeight: 800, color: '#f8fafc', letterSpacing: -0.5 }}>
-            CMS Middle
+            {t('app.login.title')}
           </Typography>
           <Typography variant="body2" sx={{ mb: 4, color: '#94a3b8', textAlign: 'center' }}>
             Authorized Personnel Only
@@ -154,7 +156,7 @@ const LoginPage: React.FC = () => {
               required
               fullWidth
               id="email"
-              label="Email Address"
+              label={t('app.login.username')}
               name="email"
               autoComplete="email"
               autoFocus
@@ -183,7 +185,7 @@ const LoginPage: React.FC = () => {
               required
               fullWidth
               name="password"
-              label="Password"
+              label={t('app.login.password')}
               type={showPassword ? 'text' : 'password'}
               id="password"
               autoComplete="current-password"
@@ -234,7 +236,7 @@ const LoginPage: React.FC = () => {
                 }
               }}
             >
-              {loading ? 'Authenticating...' : 'Sign In'}
+              {loading ? t('app.login.authenticating') : t('app.login.login_btn')}
             </Button>
           </Box>
 
@@ -258,7 +260,7 @@ const LoginPage: React.FC = () => {
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
                 <Server size={18} />
-                <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>Backend Connection</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>{t('app.login.connection_settings')}</Typography>
                 {beStatus === 'checking' && <Typography variant="caption" sx={{ color: '#cbd5e1' }}>Checking...</Typography>}
                 {beStatus === 'connected' && <CheckCircle2 size={16} color="#22c55e" />}
                 {beStatus === 'disconnected' && <XCircle size={16} color="#ef4444" />}

@@ -71,6 +71,12 @@ public class Startup
     private static UInt32 _deviceHandle = 0;
     private static UInt32 _mdHandle = 0; // media handle cho live stream (dùng để capture)
     private static string _snapshotDir = "";
+    
+    // Cache ảnh (giải quyết xung đột Race Condition giữa Motion và LPR)
+    private static string _cachedSnapshotBase64 = "";
+    private static string _cachedSnapshotPath = "";
+    private static DateTime _lastCaptureTime = DateTime.MinValue;
+    private static readonly object _captureLock = new object();
 
     // Giữ reference delegate tránh GC
     private static SDK_DISCONN_CB _disconnCb = new SDK_DISCONN_CB(disconn_cb);
@@ -97,6 +103,125 @@ public class Startup
 
         Console.WriteLine("[C# DETECT] Nhan Face/LPR stream tu camera (handle: " + handle + ")");
 
+        string snapshotBase64 = "";
+        string snapshotPath = "";
+
+        // === CÁCH 1 (ƯU TIÊN): Đọc ảnh trực tiếp từ p_data pointer ===
+        // Camera Sunell gửi kèm binary ảnh JPEG trong p_data, kích thước = PictureLen trong JSON
+        try
+        {
+            if (p_data != IntPtr.Zero)
+            {
+                // Parse PictureLen từ JSON metadata
+                int pictureLen = 0;
+                try
+                {
+                    string searchKey = "\"PictureLen\":";
+                    int idx = json.IndexOf(searchKey);
+                    if (idx >= 0)
+                    {
+                        int start = idx + searchKey.Length;
+                        int end = json.IndexOfAny(new char[] { ',', '}', ' ' }, start);
+                        if (end > start)
+                        {
+                            string numStr = json.Substring(start, end - start).Trim();
+                            int.TryParse(numStr, out pictureLen);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("[SNAP DETECT p_data] Error parsing PictureLen: " + ex.Message);
+                }
+
+                if (pictureLen > 0 && pictureLen < 50 * 1024 * 1024) // Safety: max 50MB
+                {
+                    byte[] imgBytes = new byte[pictureLen];
+                    Marshal.Copy(p_data, imgBytes, 0, pictureLen);
+
+                    // Kiểm tra JPEG header (FF D8 FF)
+                    bool isJpeg = imgBytes.Length >= 3 && imgBytes[0] == 0xFF && imgBytes[1] == 0xD8 && imgBytes[2] == 0xFF;
+
+                    if (isJpeg)
+                    {
+                        snapshotBase64 = Convert.ToBase64String(imgBytes);
+                        Console.WriteLine("[SNAP DETECT] ✅ Extracted JPEG from p_data! Size = " + imgBytes.Length + " bytes");
+                    }
+                    else
+                    {
+                        // Log header bytes để debug
+                        string headerHex = BitConverter.ToString(imgBytes, 0, Math.Min(16, imgBytes.Length));
+                        Console.WriteLine("[SNAP DETECT] p_data header (not JPEG): " + headerHex);
+
+                        // Thử tìm JPEG header trong data (có thể có offset header trước ảnh)
+                        int jpegStart = -1;
+                        int searchLimit = Math.Min(1024, imgBytes.Length - 3); // Tìm trong 1KB đầu
+                        for (int i = 0; i < searchLimit; i++)
+                        {
+                            if (imgBytes[i] == 0xFF && imgBytes[i + 1] == 0xD8 && imgBytes[i + 2] == 0xFF)
+                            {
+                                jpegStart = i;
+                                break;
+                            }
+                        }
+
+                        if (jpegStart >= 0)
+                        {
+                            int jpegLen = imgBytes.Length - jpegStart;
+                            byte[] jpegBytes = new byte[jpegLen];
+                            Array.Copy(imgBytes, jpegStart, jpegBytes, 0, jpegLen);
+                            snapshotBase64 = Convert.ToBase64String(jpegBytes);
+                            Console.WriteLine("[SNAP DETECT] ✅ Found JPEG at offset " + jpegStart + "! Size = " + jpegLen + " bytes");
+                        }
+                        else
+                        {
+                            // Fallback: convert nguyên khối (có thể là format khác)
+                            snapshotBase64 = Convert.ToBase64String(imgBytes);
+                            Console.WriteLine("[SNAP DETECT] ⚠️ No JPEG header found, raw base64 size = " + imgBytes.Length + " bytes");
+                        }
+                    }
+
+                    // Lưu file ảnh để debug (tùy chọn)
+                    if (!string.IsNullOrEmpty(_snapshotDir) && !string.IsNullOrEmpty(snapshotBase64))
+                    {
+                        try
+                        {
+                            string filename = "snap_detect_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".jpg";
+                            snapshotPath = Path.Combine(_snapshotDir, filename);
+                            File.WriteAllBytes(snapshotPath, imgBytes);
+                            Console.WriteLine("[SNAP DETECT] Saved to: " + snapshotPath);
+                        }
+                        catch {}
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("[SNAP DETECT] PictureLen = " + pictureLen + " (invalid or not found in JSON)");
+                }
+            }
+            else
+            {
+                Console.WriteLine("[SNAP DETECT] p_data is NULL — no image data from camera");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("[SNAP DETECT p_data] Error: " + ex.Message);
+        }
+
+        // === CÁCH 2 (FALLBACK): Chụp qua SDK nếu chưa extract được ảnh từ p_data ===
+        if (string.IsNullOrEmpty(snapshotBase64))
+        {
+            try
+            {
+                CaptureSnapshotWithCache(out snapshotBase64, out snapshotPath, "snap_detect_sdk");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[SNAP DETECT SDK FALLBACK] " + ex.Message);
+            }
+        }
+
         if (globalNodeCallback != null)
         {
             var payload = new Dictionary<string, object>
@@ -104,7 +229,9 @@ public class Startup
                 { "handle", handle },
                 { "rawJson", json },
                 { "timestamp", DateTime.UtcNow.ToString("o") },
-                { "source", "FACE_DETECT_STREAM" }
+                { "source", "FACE_DETECT_STREAM" },
+                { "snapshotBase64", snapshotBase64 },
+                { "snapshotPath", snapshotPath }
             };
 
             Task.Run(async () => {
@@ -115,6 +242,133 @@ public class Startup
         }
     }
 
+    private static void CaptureSnapshotWithCache(out string base64, out string path, string prefix)
+    {
+        base64 = "";
+        path = "";
+
+        lock (_captureLock)
+        {
+            // Kiểm tra cache xem có ảnh nào vừa chụp trong vòng 1.5 giây không (giải quyết Race Condition)
+            if ((DateTime.Now - _lastCaptureTime).TotalSeconds <= 1.5 && !string.IsNullOrEmpty(_cachedSnapshotBase64))
+            {
+                base64 = _cachedSnapshotBase64;
+                path = _cachedSnapshotPath;
+                Console.WriteLine("[SNAP CACHE] Reused cached image (" + (DateTime.Now - _lastCaptureTime).TotalMilliseconds.ToString("F0") + "ms ago) for " + prefix);
+                return;
+            }
+
+            // --- DEBUG: Trạng thái handle trước khi capture ---
+            Console.WriteLine("[SNAP DEBUG] prefix=" + prefix
+                + " | _deviceHandle=" + _deviceHandle
+                + " | _mdHandle=" + _mdHandle
+                + " | _snapshotDir=" + (_snapshotDir ?? "(null)"));
+
+            if (_deviceHandle <= 0)
+            {
+                Console.WriteLine("[SNAP DEBUG] ABORT: _deviceHandle <= 0, camera chua ket noi hoac da disconnect");
+                return;
+            }
+            if (string.IsNullOrEmpty(_snapshotDir))
+            {
+                Console.WriteLine("[SNAP DEBUG] ABORT: _snapshotDir rong, chua set snapshotDir");
+                return;
+            }
+
+            string filename = prefix + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".jpg";
+            string tempPath = Path.Combine(_snapshotDir, filename);
+            Int32 snapResult = -1;
+
+            // === BƯỚC 1: Thử chụp qua live stream handle (ưu tiên) ===
+            if (_mdHandle > 0)
+            {
+                snapResult = sdk_md_capture(_mdHandle, tempPath);
+                Console.WriteLine("[SNAP] sdk_md_capture result = " + snapResult + " | path = " + tempPath);
+
+                if (snapResult != 0)
+                {
+                    Console.WriteLine("[SNAP] sdk_md_capture FAILED (result=" + snapResult + ") — se thu sdk_open_snap");
+                }
+            }
+            else
+            {
+                Console.WriteLine("[SNAP] _mdHandle = 0 — bo qua sdk_md_capture, dung sdk_open_snap");
+            }
+
+            // === BƯỚC 2: Fallback dùng sdk_open_snap nếu md_capture thất bại ===
+            if (snapResult != 0)
+            {
+                // Thử tối đa 2 lần với sdk_open_snap (có thể SDK cần chút thời gian ổn định)
+                for (int attempt = 1; attempt <= 2 && snapResult != 0; attempt++)
+                {
+                    if (attempt > 1) System.Threading.Thread.Sleep(300); // Chờ thêm trước retry
+                    snapResult = sdk_open_snap(_deviceHandle, 0, tempPath);
+                    Console.WriteLine("[SNAP] sdk_open_snap attempt #" + attempt + " result = " + snapResult + " | path = " + tempPath);
+                }
+
+                if (snapResult != 0)
+                {
+                    Console.WriteLine("[SNAP] sdk_open_snap FAILED sau 2 lan thu (result=" + snapResult + ") — SDK co the chua san sang");
+                }
+            }
+
+            // === BƯỚC 3: Polling loop chờ file được ghi (SDK ghi bất đồng bộ) ===
+            // Thay thế Thread.Sleep(200) cố định bằng polling tối đa 2 giây
+            bool fileReady = false;
+            int totalWaitedMs = 0;
+            const int pollIntervalMs = 100;
+            const int maxWaitMs = 2000;
+
+            while (totalWaitedMs < maxWaitMs)
+            {
+                System.Threading.Thread.Sleep(pollIntervalMs);
+                totalWaitedMs += pollIntervalMs;
+
+                if (File.Exists(tempPath))
+                {
+                    long fileSize = new FileInfo(tempPath).Length;
+                    if (fileSize > 0)
+                    {
+                        Console.WriteLine("[SNAP] File da san sang sau " + totalWaitedMs + "ms, size = " + fileSize + " bytes");
+                        fileReady = true;
+                        break;
+                    }
+                    // File tồn tại nhưng vẫn đang ghi (size = 0) → tiếp tục chờ
+                    Console.WriteLine("[SNAP] File ton tai nhung size = 0 (dang ghi), tiep tuc cho... (" + totalWaitedMs + "ms)");
+                }
+            }
+
+            if (!fileReady)
+            {
+                Console.WriteLine("[SNAP CAPTURE FAIL] Timeout sau " + maxWaitMs + "ms: file khong xuat hien hoac rong"
+                    + " | snapResult=" + snapResult
+                    + " | path=" + tempPath
+                    + " | snapshotDir exists=" + Directory.Exists(_snapshotDir));
+                return;
+            }
+
+            // === BƯỚC 4: Đọc file và encode Base64 ===
+            try
+            {
+                byte[] imgBytes = File.ReadAllBytes(tempPath);
+                base64 = Convert.ToBase64String(imgBytes);
+                path = tempPath;
+
+                // Cập nhật cache
+                _cachedSnapshotBase64 = base64;
+                _cachedSnapshotPath = path;
+                _lastCaptureTime = DateTime.Now;
+
+                Console.WriteLine("[SNAP CAPTURE] OK! Size = " + imgBytes.Length + " bytes | waited = " + totalWaitedMs + "ms | path = " + path);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[SNAP CAPTURE] Loi doc file: " + ex.Message);
+            }
+        }
+    }
+
+
     public static void alarm_cb(UInt32 handle, ref IntPtr p_data, IntPtr p_obj)
     {
         if (p_data == IntPtr.Zero) return;
@@ -122,54 +376,55 @@ public class Startup
         string json = Marshal.PtrToStringAnsi(p_data);
         if (string.IsNullOrEmpty(json)) return;
 
-        Console.WriteLine("[C# ALARM] Nhan data tu camera (handle: " + handle + ")");
-
-        // Thử chụp snapshot khi có alarm
-        string snapshotBase64 = "";
-        string snapshotPath = "";
+        // --- DEBUG: Parse main_type/sub_type/alarm_flag ngay tại đây để log rõ ---
+        string alarmInfo = "";
         try
         {
-            if (_deviceHandle > 0 && !string.IsNullOrEmpty(_snapshotDir))
+            // Extract main_type, sub_type, alarm_flag từ JSON (không cần full parse)
+            string mainTypeStr = ExtractJsonInt(json, "main_type");
+            string subTypeStr  = ExtractJsonInt(json, "sub_type");
+            string flagStr     = ExtractJsonInt(json, "alarm_flag");
+            alarmInfo = "main_type=" + mainTypeStr + " sub_type=" + subTypeStr + " alarm_flag=" + flagStr;
+        }
+        catch { alarmInfo = "(parse error)"; }
+
+        Console.WriteLine("[C# ALARM] Nhan data tu camera | handle=" + handle
+            + " | " + alarmInfo
+            + " | _deviceHandle=" + _deviceHandle
+            + " | _mdHandle=" + _mdHandle);
+
+        // Chỉ chụp ảnh khi alarm_flag = 1 (bắt đầu báo động), bỏ qua flag=0 (kết thúc)
+        string snapshotBase64 = "";
+        string snapshotPath = "";
+
+        bool shouldCapture = true;
+        try
+        {
+            string flagVal = ExtractJsonInt(json, "alarm_flag");
+            if (flagVal == "0")
             {
-                string filename = "snap_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".jpg";
-                snapshotPath = Path.Combine(_snapshotDir, filename);
-
-                Int32 snapResult = -1;
-
-                // Cách 1: Dùng sdk_md_capture nếu đang có live stream
-                if (_mdHandle > 0)
-                {
-                    snapResult = sdk_md_capture(_mdHandle, snapshotPath);
-                    Console.WriteLine("[SNAP] sdk_md_capture result = " + snapResult + " -> " + snapshotPath);
-                }
-
-                // Cách 2: Fallback về sdk_open_snap
-                if (snapResult != 0)
-                {
-                    snapResult = sdk_open_snap(_deviceHandle, 0, snapshotPath);
-                    Console.WriteLine("[SNAP] sdk_open_snap result = " + snapResult + " -> " + snapshotPath);
-                }
-
-                // Chờ một chút để file được ghi xong
-                System.Threading.Thread.Sleep(200);
-
-                // Đọc file ảnh thành base64 nếu tồn tại
-                if (File.Exists(snapshotPath) && new FileInfo(snapshotPath).Length > 0)
-                {
-                    byte[] imgBytes = File.ReadAllBytes(snapshotPath);
-                    snapshotBase64 = Convert.ToBase64String(imgBytes);
-                    Console.WriteLine("[SNAP] OK! Size = " + imgBytes.Length + " bytes");
-                }
-                else
-                {
-                    Console.WriteLine("[SNAP] File khong ton tai hoac rong");
-                    snapshotPath = "";
-                }
+                shouldCapture = false;
+                Console.WriteLine("[C# ALARM] alarm_flag=0 (alarm ended) — bo qua chup anh");
             }
         }
-        catch (Exception ex)
+        catch { /* Nếu không parse được flag thì vẫn chụp */ }
+
+        if (shouldCapture)
         {
-            Console.WriteLine("[SNAP ERROR] " + ex.Message);
+            try
+            {
+                Console.WriteLine("[C# ALARM] Bat dau chup snapshot cho alarm...");
+                CaptureSnapshotWithCache(out snapshotBase64, out snapshotPath, "snap_alarm");
+
+                if (!string.IsNullOrEmpty(snapshotBase64))
+                    Console.WriteLine("[C# ALARM] ✅ Snapshot OK! base64 length = " + snapshotBase64.Length);
+                else
+                    Console.WriteLine("[C# ALARM] ❌ Snapshot EMPTY sau CaptureSnapshotWithCache");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[C# ALARM SNAP ERROR] " + ex.Message + "\n" + ex.StackTrace);
+            }
         }
 
         // Gửi sang Node.js
@@ -194,6 +449,23 @@ public class Startup
         }
     }
 
+    /// <summary>
+    /// Helper: Extract giá trị integer từ JSON string thô (không cần full parse)
+    /// Ví dụ: ExtractJsonInt(json, "main_type") → "6"
+    /// </summary>
+    private static string ExtractJsonInt(string json, string key)
+    {
+        string searchKey = "\"" + key + "\":";
+        int idx = json.IndexOf(searchKey);
+        if (idx < 0) return "?";
+        int start = idx + searchKey.Length;
+        // Bỏ qua khoảng trắng
+        while (start < json.Length && json[start] == ' ') start++;
+        int end = start;
+        while (end < json.Length && (char.IsDigit(json[end]) || json[end] == '-')) end++;
+        return end > start ? json.Substring(start, end - start) : "?";
+    }
+
     // Edge-js entry point: Kết nối camera
     public async Task<object> Invoke(object input)
     {
@@ -201,6 +473,22 @@ public class Startup
         try
         {
             var data = (IDictionary<string, object>)input;
+
+            if (data.ContainsKey("action") && (string)data["action"] == "disconnect")
+            {
+                if (data.ContainsKey("handle"))
+                {
+                    UInt32 h = Convert.ToUInt32(data["handle"]);
+                    if (h > 0)
+                    {
+                        sdk_dev_conn_close(h);
+                        Console.WriteLine("[SDK] Da dong ket noi handle: " + h);
+                        if (_deviceHandle == h) _deviceHandle = 0;
+                        return new Dictionary<string, object> { { "success", true } };
+                    }
+                }
+                return new Dictionary<string, object> { { "success", false }, { "error", "Invalid handle" } };
+            }
 
             if (data.ContainsKey("onEvent")) {
                 globalNodeCallback = (Func<object, Task<object>>)data["onEvent"];
@@ -255,7 +543,19 @@ public class Startup
                 Int32 detectResult = sdks_dev_face_detect_start(handle, 1, 1, 4, _detectCb, IntPtr.Zero);
                 Console.WriteLine("[SDK] sdks_dev_face_detect_start result = " + detectResult);
 
-                // Lưu ý: sdk_md_live_start xung đột với alarm listener nên không mở ở đây
+                // Mở live stream để có thể dùng sdk_md_capture chụp ảnh (alarm không gửi kèm ảnh)
+                // Delay 500ms để tránh xung đột khi alarm listener vừa khởi động xong
+                System.Threading.Thread.Sleep(500);
+                UInt32 mdHandle = sdk_md_live_start(handle, 1, 0, _liveCb, IntPtr.Zero);
+                if (mdHandle > 0)
+                {
+                    _mdHandle = mdHandle;
+                    Console.WriteLine("[SDK] sdk_md_live_start OK, md_handle = " + mdHandle);
+                }
+                else
+                {
+                    Console.WriteLine("[SDK] sdk_md_live_start FAILED (md_handle = 0) — alarm snapshot se dung sdk_open_snap fallback");
+                }
 
                 response["online"] = true;
                 response["status"] = "Online";

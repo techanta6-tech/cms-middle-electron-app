@@ -30,7 +30,7 @@ export interface LogData {
   ip: string;
   raw?: any;
   cameraIp?: string;
-  source?: 'svms' | 'mqtt';
+  source?: 'svms' | 'mqtt' | 'sunell-camera';
   mqttServerId?: string;
 }
 
@@ -41,6 +41,7 @@ export interface AddExternalServerProps {
   initialIp?: string;
   initialPort?: string;
   initialMode?: 'receive' | 'send';
+  initialConnectionType?: 'svms' | 'mqtt';
 }
 
 export interface ServerData {
@@ -86,6 +87,7 @@ export interface DeviceData {
 
 export interface MqttServerConfig {
   id: string;
+  name?: string;
   brokerHost: string;
   brokerPort: string;
   protocol: 'mqtt' | 'mqtts';
@@ -93,18 +95,39 @@ export interface MqttServerConfig {
   defaultTopic: string;
   status?: 'connecting' | 'connected' | 'disconnected' | 'error';
   logCount?: number;
+  cameraId?: string;
 }
 
-export interface MqttDeviceConfig {
+export interface CameraFeatures {
+  enableMotion: boolean;
+  enableLPR: boolean;
+  enableFace?: boolean;
+  enableIVA?: boolean;
+  enableSystem?: boolean;
+}
+
+/** Camera device added manually (independent of MQTT/SVMS). */
+export interface ManualAddedCamera {
   id: string;
-  mqttServerId: string;
-  type: 'sunell';
+  name?: string;
+  type: 'sunell' | 'other';
   cameraIp: string;
   cameraPort: number;
   cameraUser: string;
   rtspUrl: string | null;
-  status: 'connecting' | 'connected' | 'error' | 'disconnected';
+  status: 'connecting' | 'connected' | 'error' | 'disconnected' | 'ready';
   handle: number | null;
+  features?: CameraFeatures;
+}
+
+/** Backward compat alias — gradually replace usages */
+export type MqttDeviceConfig = ManualAddedCamera;
+
+/** Links a specific MQTT sensor device to a manually added camera. */
+export interface DeviceCameraLink {
+  devEui: string;
+  mqttServerId: string;
+  cameraId: string;
 }
 
 // ─── MQTT Log Types ──────────────────────────────────────────────────────────

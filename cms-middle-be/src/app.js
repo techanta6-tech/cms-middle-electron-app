@@ -13,12 +13,15 @@ const logsRoutes = require('./routes/logs.routes');
 const connectionsRoutes = require('./routes/connections.routes');
 const serverRoutes = require('./routes/server.routes');
 const mqttRoutes = require('./routes/mqtt.routes');
+const camerasRoutes = require('./routes/cameras.routes');
+const deviceCameraLinkRoutes = require('./routes/device-camera-link.routes');
+const gridLayoutRoutes = require('./routes/grid-layout.routes');
 const { getClientSockets } = require('./socketState');
 
 const app = express();
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: '*', credentials: true }));
 app.use(cookieParser());
 app.use(express.json({ limit: '50mb' }));
 
@@ -155,5 +158,29 @@ app.use(logsRoutes);
 app.use(connectionsRoutes);
 app.use(serverRoutes.router);
 app.use(mqttRoutes);
+app.use(camerasRoutes);
+app.use(deviceCameraLinkRoutes);
+app.use(gridLayoutRoutes);
+// ─── Debug: dump toàn bộ in-memory state ─────────────────────────────────────
+const socketState = require('./socketState');
+
+app.get('/api/v1/debug/state', (req, res) => {
+  const serversObj = {};
+  socketState.servers.forEach((v, k) => { serversObj[k] = v; });
+
+  const devicesObj = {};
+  socketState.devices.forEach((v, k) => { devicesObj[k] = v; });
+
+  res.json({
+    _export_time: new Date().toISOString(),
+    connections: socketState.connections,
+    servers: serversObj,
+    devices: devicesObj,
+    mqttServers: socketState.mqttServers,
+    cameraDevices: socketState.cameraDevices,
+    deviceCameraLinks: socketState.deviceCameraLinks,
+    gridLayout: socketState.gridLayout,
+  });
+});
 
 module.exports = app;

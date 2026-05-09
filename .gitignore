@@ -10,3 +10,15 @@ vs373-api-documentation-en.pdf
 /snapshots
 /build-be
 /.understand-anything
+info.txt
+pdf_extracted.txt
+pdf_readable.txt
+pdf_text.txt
+/.understand-anything
+scripts/update-map.js
+*.txt
+/build-be
+.env.generated
+/snapshots
+/docs
+/build-be

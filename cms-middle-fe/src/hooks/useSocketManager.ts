@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { socket, updateSocketUrlAsync } from '../socket';
-import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig } from '../types';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { socket, updateSocketUrlAsync, getBeHost, getBePort } from '../socket';
+import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
 import apiClient from '../api/apiClient';
 import axios from 'axios';
 
@@ -11,6 +11,141 @@ const env = {
 
 console.log('[DEBUG_ENV] VITE_MAX_LOGS_LIST:', import.meta.env.VITE_MAX_LOGS_LIST, '->', env.MAX_LOGS_LIST);
 
+const DEFAULT_EVENT_TYPES = [
+  // ─── VMS / SVMS ───
+  // Chỉ dùng GROUP KEY ở đây. Alias (vd: 'ai.alarm.crosswire.all') đã được map trong LOG_TYPE_GROUPS.
+  'crosswire',                       // SVMS: Vượt hàng rào (alias: ai.alarm.crosswire.all)
+  'direction',                        // SVMS: Hướng di chuyển (alias: ai.alarm.direction.all)
+
+  // ─── Sunell SDK (receive-sunell-log → cameras.service.js onAlarm callback) ───
+  // 'lpr_event',                       // Sunell: phát hiện biển số (TargetDetectList Type=3)
+  // 'face_event',                      // Sunell: phát hiện khuôn mặt (TargetDetectList Type=0)
+  // 'motion_event',                    // Sunell: phát hiện chuyển động (main_type=1, sub_type=2)
+  // ⚠️ system_event: BE emit `system_event_${mainType}_${subType}` — tự add runtime qua eventTypeBufferRef
+
+  // ─── Sunell SDK — IVA sub_type mapping (main_type=6 hoặc 9, cameras.service.js IVA_SUBTYPE_MAP) ───
+  // ⚠️ IVA sub_type không nằm trong map: BE emit `iva_event_${subType}` — tự add runtime
+  // 'iva_trip_wire',                   // Sunell IVA: vượt hàng rào ảo (sub_type=21)
+  // 'iva_perimeter_intrusion',         // Sunell IVA: xâm nhập vùng cấm (sub_type=24)
+  // 'iva_double_trip_wire',            // Sunell IVA: hàng rào ảo kép (sub_type=25)
+  // 'iva_retrograde',                  // Sunell IVA: đi ngược chiều (sub_type=31)
+  // 'iva_smd',                         // Sunell IVA: phát hiện đối tượng di chuyển SMD (sub_type=22)
+  // 'iva_occlusion',                   // Sunell IVA: phân tích che khuất (sub_type=23)
+  // 'iva_loitering',                   // Sunell IVA: lảng vảng (sub_type=26)
+  // 'iva_crowd_loitering',             // Sunell IVA: đám đông lảng vảng (sub_type=27)
+  // 'iva_object_left',                 // Sunell IVA: bỏ quên đồ vật (sub_type=28)
+  // 'iva_object_removed',              // Sunell IVA: mất cắp đồ vật (sub_type=29)
+  // 'iva_abnormal_speed',              // Sunell IVA: đi quá tốc độ (sub_type=30)
+  // 'iva_illegal_parking',             // Sunell IVA: đậu xe trái phép (sub_type=32)
+  // 'iva_camera_shift',                // Sunell IVA: camera bị dời góc (sub_type=33)
+  // 'iva_signal_bad',                  // Sunell IVA: lỗi tín hiệu video AI (sub_type=34)
+
+  // ─── MQTT Radar/Sensor (receive-mqtt-log → mqtt.service.js, log_type = raw.type) ───
+  // 'data',                            // MQTT: dữ liệu cảm biến (có object.events)
+  // 'raw',                             // MQTT: payload thô (không có object.events)
+  'fall',                 // VS373: Té ngã
+  'out_of_bed',              // VS373: Rời khỏi giường
+  'dwell',                // VS373: Ở lại quá lâu
+  'motionless',               // VS373: Bất động bất thường
+  'vacant',               // VS373: Phòng trống
+  'occupied',               // VS373: Có người
+  'bradynea',               // VS373: Thở chậm bất thường
+  'tachypnea',              // VS373: Thở nhanh bất thường
+  'lying'                 // VS373: Đang nằm
+];
+
+/**
+ * ─── LOG_TYP  E_GROUPS ─────────────────────────────────────────────────────────
+ * Map từ "tên nhóm hiển thị trên Filter UI" → danh sách tất cả các giá trị
+ * log_type thực tế có thể đến từ các nguồn khác nhau (SVMS, MQTT, Sunell...).
+ *
+ * ✅ CÁCH SỬ DỤNG:
+ *
+ * 1. THÊM LOẠI SỰ KIỆN MỚI HOÀN TOÀN:
+ *    - Tạo một key mới trong object bên dưới.
+ *    - Thêm key đó vào mảng DEFAULT_EVENT_TYPES ở trên.
+ *    - Thêm key đó vào `app.logtype` trong file `i18n.ts` (cả vi và en).
+ *    Ví dụ — thêm loại "Phát hiện cháy":
+ *      'fire_alarm': ['fire_alarm', 'fire.alarm.all', 'FireDetected']
+ *
+ * 2. THÊM ALIAS MỚI CHO LOẠI SỰ KIỆN ĐÃ CÓ:
+ *    - Chỉ cần bổ sung chuỗi mới vào mảng của group tương ứng.
+ *    Ví dụ — SVMS version mới gửi 'ai.alarm.crosswire.v2':
+ *      'crosswire': ['crosswire', 'ai.alarm.crosswire.all', 'ai.alarm.crosswire.v2']
+ *
+ * ⚠️ LƯU Ý:
+ *    - log_type thực tế trong LogData KHÔNG bị ghi đè, giữ nguyên giá trị
+ *      gốc từ thiết bị gửi về (ví dụ: 'ai.alarm.crosswire.all').
+ *    - Key của group (ví dụ: 'crosswire') chỉ dùng để:
+ *      a) Hiển thị tên đẹp trên Filter UI (qua i18n).
+ *      b) Kiểm tra log có khớp với filter đang chọn không (qua isTypeMatched).
+ *      c) Làm fallback để lấy tên hiển thị (qua getLogTypeDisplayName).
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+const LOG_TYPE_GROUPS: Record<string, string[]> = {
+  'motion_event': ['motion', 'motion_event', 'a_motion_has_been_detected', 'phát_hiện_chuyển_động_(motion)'],
+  'lpr_event': ['lpr_event', 'phát_hiện_biển_số_(lpr)'],
+  'face_event': ['face_event', 'phát_hiện_khuôn_mặt_(face)'],
+  'iva_event': ['iva_event', 'phân_tích_ai_(ivs/iva)'],
+  // SVMS AI: giữ giá trị gốc từ thiết bị, alias được map vào đây
+  'crosswire': ['crosswire', 'ai.alarm.crosswire.all', 'iva_trip_wire'],
+  'direction': ['direction', 'ai.alarm.direction.all'],
+};
+
+/**
+ * Resolve raw log_type về group key nếu nó là alias trong LOG_TYPE_GROUPS.
+ * Dùng khi add vào eventTypeBufferRef để tránh tạo mục filter riêng cho alias.
+ * Ví dụ: 'ai.alarm.direction.all' → 'direction'
+ */
+const resolveToGroupKey = (logType: string): string => {
+  for (const [groupKey, members] of Object.entries(LOG_TYPE_GROUPS)) {
+    if (members.includes(logType)) return groupKey;
+  }
+  return logType;
+};
+
+/**
+ * Kiểm tra log có thuộc filter đang chọn không (có hỗ trợ group alias).
+ */
+const isTypeMatched = (logType: string, filterType: string | null) => {
+  if (!filterType) return true;
+  const matched = logType === filterType || (LOG_TYPE_GROUPS[filterType]?.includes(logType) ?? false);
+  console.log(`[FILTER] "${logType}" vs "${filterType}" → ${matched ? '✅ matched' : '❌ not matched'}`);
+  return matched;
+};
+
+/**
+ * Lấy tên hiển thị (đã dịch) cho một log_type bất kỳ.
+ *
+ * Thứ tự ưu tiên:
+ *  1. Tra trực tiếp key trong i18n (ví dụ: 'crosswire', 'lpr_event').
+ *  2. Tìm group chứa logType, lấy tên của group đó từ i18n
+ *     (ví dụ: 'ai.alarm.crosswire.all' → group 'crosswire' → 'Hàng rào ảo').
+ *  3. Fallback: trả về chính logType đó.
+ *
+ * @param logType - Giá trị log_type thực tế từ LogData (ví dụ: 'ai.alarm.crosswire.all')
+ * @param t       - Hàm dịch từ useTranslation()
+ * @returns Chuỗi tên hiển thị đã được dịch
+ */
+export const getLogTypeDisplayName = (logType: string, t: (key: string) => string): string => {
+  // Bước 1: Thử tra trực tiếp (ví dụ: 'crosswire', 'lpr_event' đã có key i18n riêng)
+  const directKey = `app.logtype.${logType}`;
+  const directResult = t(directKey);
+  if (directResult !== directKey) return directResult;
+
+  // Bước 2: Tìm group chứa logType này, rồi dùng tên group để tra i18n
+  for (const [groupKey, members] of Object.entries(LOG_TYPE_GROUPS)) {
+    if (members.includes(logType)) {
+      const groupI18nKey = `app.logtype.${groupKey}`;
+      const groupResult = t(groupI18nKey);
+      if (groupResult !== groupI18nKey) return groupResult;
+    }
+  }
+
+  // Bước 3: Fallback — trả về chính logType
+  return logType;
+};
+
 export function useSocketManager() {
   const [isConnected, setIsConnected] = useState(socket.connected);
   useEffect(() => {
@@ -19,9 +154,13 @@ export function useSocketManager() {
 
   const [logs, setLogs] = useState<LogData[]>([]);
   const [totalLogCount, setTotalLogCount] = useState(0);
-  const [eventTypes, setEventTypes] = useState<string[]>([]);
+  const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
+
+  const [eventTypes, setEventTypes] = useState<string[]>(DEFAULT_EVENT_TYPES);
   const [mqttLogs, setMqttLogs] = useState<MqttLogEntry[]>([]);
-  const [mqttCameraDevices, setMqttCameraDevices] = useState<MqttDeviceConfig[]>([]);
+  const [cameraDevices, setCameraDevices] = useState<MqttDeviceConfig[]>([]);
+  const [deviceCameraLinks, setDeviceCameraLinks] = useState<DeviceCameraLink[]>([]);
+  const [gridLayout, setGridLayout] = useState<{ grids: any[]; gridCols: number }>({ grids: [], gridCols: 3 });
 
   // ─── Log Batching: buffer incoming logs and flush every 500ms ───────────────
   const logBufferRef = useRef<LogData[]>([]);
@@ -62,8 +201,8 @@ export function useSocketManager() {
       port: import.meta.env.VITE_PORT
     },
     be: {
-      ip: localStorage.getItem('BE_HOST') || import.meta.env.VITE_BE_HOST || 'localhost',
-      port: localStorage.getItem('BE_PORT') || import.meta.env.VITE_BE_PORT || '5050'
+      ip: getBeHost(),
+      port: getBePort()
     }
   });
 
@@ -129,6 +268,102 @@ export function useSocketManager() {
       console.error('[FETCH_MQTT_SERVERS] Failed:', err);
     }
   }, [systemConfig.be.ip, systemConfig.be.port]);
+
+  const fetchCameras = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get('/api/v1/cameras');
+      setCameraDevices(data.cameras || []);
+      console.log('[FETCH_CAMERAS] Synced from BE:', data.cameras);
+    } catch (err) {
+      console.error('[FETCH_CAMERAS] Failed:', err);
+    }
+  }, [systemConfig.be.ip, systemConfig.be.port]);
+
+  // ─── Fetch device-camera links from BE ──────────────────────────────────────
+  const fetchDeviceCameraLinks = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get('/api/v1/device-camera-links');
+      setDeviceCameraLinks(data.links || []);
+      console.log('[FETCH_DEVICE_CAMERA_LINKS] Synced from BE:', data.links);
+    } catch (err) {
+      console.error('[FETCH_DEVICE_CAMERA_LINKS] Failed:', err);
+    }
+  }, [systemConfig.be.ip, systemConfig.be.port]);
+
+  // ─── Fetch grid layout from BE ──────────────────────────────────────────────
+  const fetchGridLayout = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get('/api/v1/grid-layout');
+      if (data.grids || data.gridCols) {
+        setGridLayout({ grids: data.grids || [], gridCols: data.gridCols || 3 });
+        console.log('[FETCH_GRID_LAYOUT] Synced from BE:', data);
+      }
+    } catch (err) {
+      console.error('[FETCH_GRID_LAYOUT] Failed:', err);
+    }
+  }, [systemConfig.be.ip, systemConfig.be.port]);
+
+  // ─── Save grid layout to BE ─────────────────────────────────────────────────
+  const saveGridLayout = useCallback(async (grids: any[], gridCols: number) => {
+    try {
+      await apiClient.put('/api/v1/grid-layout', { grids, gridCols });
+      console.log('[SAVE_GRID_LAYOUT] Saved to BE');
+    } catch (err) {
+      console.error('[SAVE_GRID_LAYOUT] Failed:', err);
+    }
+  }, []);
+
+  // ─── Link/unlink MQTT device to camera ──────────────────────────────────────
+  const handleLinkDeviceCamera = useCallback(async (devEui: string, mqttServerId: string, cameraId: string | null) => {
+    // Optimistic Update: update local state instantly for 0ms lag
+    setDeviceCameraLinks((prev) => {
+      const filtered = prev.filter(l => !(l.devEui === devEui && l.mqttServerId === mqttServerId));
+      if (cameraId) {
+        return [...filtered, { devEui, mqttServerId, cameraId }];
+      }
+      return filtered;
+    });
+
+    try {
+      const { data } = await apiClient.patch('/api/v1/mqtt-device-camera-link', { devEui, mqttServerId, cameraId });
+      setDeviceCameraLinks(data.links || []);
+      console.log('[LINK_DEVICE_CAMERA] Updated:', { devEui, mqttServerId, cameraId });
+    } catch (err) {
+      console.error('[LINK_DEVICE_CAMERA] Failed:', err);
+      fetchDeviceCameraLinks();
+    }
+  }, [fetchDeviceCameraLinks]);
+
+  // ─── Link/unlink MQTT server to camera ──────────────────────────────────────
+  const handleLinkMqttServerCamera = useCallback(async (serverId: string, cameraId: string | null) => {
+    // Optimistic Update: update local state instantly for 0ms lag
+    setMqttServers((prev) =>
+      prev.map(s => s.id === serverId ? { ...s, cameraId: cameraId || undefined } : s)
+    );
+
+    try {
+      await apiClient.patch(`/api/v1/mqtt-servers/${serverId}`, { cameraId });
+      console.log('[LINK_MQTT_SERVER_CAMERA] Updated:', { serverId, cameraId });
+      fetchMqttServers();
+    } catch (err) {
+      console.error('[LINK_MQTT_SERVER_CAMERA] Failed:', err);
+      fetchMqttServers();
+    }
+  }, [fetchMqttServers]);
+
+  useEffect(() => {
+    fetchCameras();
+    fetchDeviceCameraLinks();
+    fetchGridLayout();
+    socket.on('connect', fetchCameras);
+    socket.on('connect', fetchDeviceCameraLinks);
+    socket.on('connect', fetchGridLayout);
+    return () => {
+      socket.off('connect', fetchCameras);
+      socket.off('connect', fetchDeviceCameraLinks);
+      socket.off('connect', fetchGridLayout);
+    };
+  }, [fetchCameras, fetchDeviceCameraLinks, fetchGridLayout]);
 
   // ─── Delta updates via socket events ────────────────────────────────────────
 
@@ -363,6 +598,11 @@ export function useSocketManager() {
 
       const data = raw?.data || raw;
 
+      // Giữ nguyên log_type gốc từ thiết bị gửi về.
+      // Việc dịch sang tên hiển thị được thực hiện tại UI thông qua getLogTypeDisplayName().
+      // Để nhóm alias vào cùng 1 filter, thêm vào LOG_TYPE_GROUPS phía trên.
+      const parsedLogType = data.body?.log_type || 'event.info';
+
       const newLog: LogData = {
         id: crypto.randomUUID(),
         time: Math.floor(timeNumber),
@@ -370,22 +610,49 @@ export function useSocketManager() {
         device_ip: data.body?.device_ip || '127.0.0.1',
         device_type: data.body?.device_type || 'camera',
         device_name: data.body?.device_name || 'Channel',
-        log_type: data.body?.log_type || 'event.info',
+        log_type: parsedLogType,
         description: data.body?.description || 'Event received',
-        snapshot: data.body?.snapshot,
         server: serverData,
         ip: data.ip,
-        raw: raw,
-        cameraIp: data.body?.device_ip || 'SYSTEM'
+        cameraIp: data.body?.device_ip || 'SYSTEM',
+        raw: data,
+        snapshot: data.body?.snapshot || data.body?.picture || (data.body?.pictures && data.body?.pictures[0]) || undefined
       };
 
       if (data.ip && data.ip !== '127.0.0.1' && data.ip !== '::1') {
         updateReceiveServer(data, true);
       }
 
+
       // Push to buffer instead of direct setState — flushed every 500ms
       logBufferRef.current.push(newLog);
-      eventTypeBufferRef.current.add(newLog.log_type);
+      // Resolve alias → group key để tránh tạo mục filter trùng (vd: 'ai.alarm.direction.all' → 'direction')
+      eventTypeBufferRef.current.add(resolveToGroupKey(newLog.log_type));
+    };
+
+    const onReceiveSunellLog = (raw: any) => {
+      const timeNumber = raw.timestamp ? new Date(raw.timestamp).getTime() / 1000 : Date.now() / 1000;
+
+      const newLog: LogData = {
+        id: raw.id,
+        time: Math.floor(timeNumber),
+        device_index: 0,
+        device_ip: raw.camera_id, // we don't have ip immediately, use camera_id as fallback
+        device_type: 'sunell',
+        device_name: raw.camera_name || 'Sunell Camera',
+        log_type: raw.log_type,
+        description: raw.description,
+        snapshot: raw.image_data,
+        server: { server_id: 'SUNELL-LOCAL', serial: 'SUNELL' },
+        ip: '127.0.0.1',
+        cameraIp: raw.camera_id,
+        source: 'sunell-camera'
+      };
+
+
+      // Push to buffer
+      logBufferRef.current.push(newLog);
+      eventTypeBufferRef.current.add(resolveToGroupKey(newLog.log_type));
     };
 
     // Cập nhật trực tiếp vào, thêm/sửa/xóa đã nằm ở server BE
@@ -461,9 +728,9 @@ export function useSocketManager() {
       setMqttServers(mqttData);
     };
 
-    const onUpdateMqttDevices = (devices: MqttDeviceConfig[]) => {
-      console.log('%c[SOCKET] 📷 update-mqtt-devices — Nhận danh sách camera devices cập nhật', 'color: #06b6d4; font-weight: bold');
-      setMqttCameraDevices(devices);
+    const onUpdateCameras = (devices: MqttDeviceConfig[]) => {
+      console.log('%c[SOCKET] 📷 update-cameras — Nhận danh sách camera devices cập nhật', 'color: #06b6d4; font-weight: bold');
+      setCameraDevices(devices);
     };
 
     const onReceiveMqttLog = (raw: any) => {
@@ -504,6 +771,9 @@ export function useSocketManager() {
       const deviceInfo = raw.payload?.deviceInfo;
       const event = raw.event;
       const eventDesc = event ? `${event.alarm_type}:${event.alarm_status}` : '';
+      const safeRaw = { ...raw };
+      if (safeRaw.snapshot) safeRaw.snapshot = '[BASE64_IMAGE_OMITTED_FROM_RAW]';
+
       const newLog: LogData = {
         id: crypto.randomUUID(),
         time: Math.floor(new Date(raw.time || Date.now()).getTime() / 1000),
@@ -511,18 +781,24 @@ export function useSocketManager() {
         device_ip: raw.brokerHost || '',
         device_type: 'mqtt',
         device_name: deviceInfo?.deviceName || 'MQTT Device',
-        log_type: raw.type || 'data',
+        log_type: event?.alarm_type || raw.type || 'data',
         description: eventDesc || `MQTT - ${raw.type || 'data'}`,
         snapshot: raw.snapshot || undefined,
         server: { server_id: `mqtt-${raw.mqttServerId}`, serial: deviceInfo?.devEui || '' },
         ip: raw.brokerHost || '',
-        raw: raw,
+        raw: safeRaw,
         source: 'mqtt',
         mqttServerId: raw.mqttServerId,
       };
 
+
+      // Nếu là log debug_raw, chúng ta bỏ qua việc thêm vào danh sách hiển thị chính (AlertWall)
+      if (newLog.log_type === 'debug_raw') {
+        return;
+      }
+
       logBufferRef.current.push(newLog);
-      eventTypeBufferRef.current.add(newLog.log_type);
+      eventTypeBufferRef.current.add(resolveToGroupKey(newLog.log_type));
     };
 
     socket.on('external-server-connecting', onConnectingExternalServer);
@@ -530,6 +806,24 @@ export function useSocketManager() {
     socket.on('external-server-disconnect', onDisconnectedExternalServer);
     socket.on('external-server-err-connect', onErrorExternalServer);
     socket.on('receive-log', onReceiveLog);
+    socket.on('receive-sunell-log', onReceiveSunellLog);
+
+    // DEBUG: Log toàn bộ raw data Sunell camera gửi về
+    const onSunellTest = (raw: any) => {
+      console.log('%c[SUNELL-TEST] 📷 Raw data từ Sunell Camera:', 'color: #ff6b6b; font-weight: bold; font-size: 14px; background: #1a1a2e; padding: 4px 8px; border-radius: 4px');
+      console.log('[SUNELL-TEST] Timestamp:', raw._debug_timestamp);
+      console.log('[SUNELL-TEST] Camera:', raw._camera_name, `(${raw._camera_id})`);
+      console.log('[SUNELL-TEST] Is LPR:', raw._is_lpr);
+      console.log(`%c[SUNELL-TEST] 🖼️ Snapshot: ${raw._has_snapshot ? '✅ CÓ ẢNH' : '❌ KHÔNG CÓ ẢNH'} | Length: ${raw._snapshot_length} chars`,
+        `color: ${raw._has_snapshot ? '#22c55e' : '#ef4444'}; font-weight: bold; font-size: 13px`);
+      if (raw._has_snapshot) {
+        console.log('[SUNELL-TEST] Snapshot preview:', raw._snapshot_preview);
+      }
+      console.log('[SUNELL-TEST] Parsed Payload:', raw._parsed_payload);
+      console.log('[SUNELL-TEST] Full object:', raw);
+      console.log('─'.repeat(80));
+    };
+    socket.on('sunell-test', onSunellTest);
     socket.on('update-client', onUpdateClients);
     socket.on('log-dispatched', onLogDispatched);
     socket.on('receive-server-information', onReceiveServerInformation);
@@ -538,8 +832,25 @@ export function useSocketManager() {
     socket.on('server-connection-status', onServerConnectionStatus);
     socket.on('device-connection-status', onDeviceConnectionStatus);
     socket.on('update-mqtt-servers', onUpdateMqttServers);
-    socket.on('update-mqtt-devices', onUpdateMqttDevices);
+    socket.on('update-cameras', onUpdateCameras);
     socket.on('receive-mqtt-log', onReceiveMqttLog);
+
+    const onUpdateDeviceCameraLinks = (links: DeviceCameraLink[]) => {
+      console.log('[SOCKET] update-device-camera-links:', links);
+      setDeviceCameraLinks(links);
+    };
+    const onUpdateGridLayout = (data: { grids: any[]; gridCols: number }) => {
+      console.log('[SOCKET] update-grid-layout:', data);
+      setGridLayout({ grids: data.grids || [], gridCols: data.gridCols || 3 });
+    };
+    socket.on('update-device-camera-links', onUpdateDeviceCameraLinks);
+    socket.on('update-grid-layout', onUpdateGridLayout);
+
+    // DEBUG: Camera snapshot pipeline logs
+    const onDebugCameraSnapshot = (data: { time: string; message: string }) => {
+      console.log(`%c[CAMERA-SNAPSHOT] ${data.message}`, 'color: #ff6b6b; font-weight: bold; background: #1a1a2e; padding: 2px 6px; border-radius: 3px');
+    };
+    socket.on('debug-camera-snapshot', onDebugCameraSnapshot);
 
     return () => {
       socket.off('external-server-connecting', onConnectingExternalServer);
@@ -547,6 +858,8 @@ export function useSocketManager() {
       socket.off('external-server-disconnect', onDisconnectedExternalServer);
       socket.off('external-server-err-connect', onErrorExternalServer);
       socket.off('receive-log', onReceiveLog);
+      socket.off('receive-sunell-log', onReceiveSunellLog);
+      socket.off('sunell-test', onSunellTest);
       socket.off('update-client', onUpdateClients);
       socket.off('log-dispatched', onLogDispatched);
       socket.off('receive-server-information', onReceiveServerInformation);
@@ -555,17 +868,29 @@ export function useSocketManager() {
       socket.off('server-connection-status', onServerConnectionStatus);
       socket.off('device-connection-status', onDeviceConnectionStatus);
       socket.off('update-mqtt-servers', onUpdateMqttServers);
-      socket.off('update-mqtt-devices', onUpdateMqttDevices);
+      socket.off('update-cameras', onUpdateCameras);
       socket.off('receive-mqtt-log', onReceiveMqttLog);
+      socket.off('debug-camera-snapshot', onDebugCameraSnapshot);
+      socket.off('update-device-camera-links', onUpdateDeviceCameraLinks);
+      socket.off('update-grid-layout', onUpdateGridLayout);
     };
   }, []);
 
-  const [selectedEventType, setSelectedEventType] = useState<string | null>(null);
+  // selectedEventType state and ref are declared at the top of useSocketManager
+
+  // ─── Display filter: computed từ toàn bộ logs[], không discard log nào ────────
+  // Tất cả log đều được lưu vào logs[]. filteredLogs chỉ là view computed để render.
+  // Khi user bỏ filter (selectedEventType = null), filteredLogs = toàn bộ lịch sử.
+  const filteredLogs = useMemo(() => {
+    if (selectedEventTypes.length === 0) return logs;
+    return logs.filter(log => selectedEventTypes.some(type => isTypeMatched(log.log_type, type)));
+  }, [logs, selectedEventTypes]);
 
   return {
     socket,
     isConnected,
     logs,
+    filteredLogs,
     servers,
     devices,
     systemConfig,
@@ -575,15 +900,22 @@ export function useSocketManager() {
     handleAddExternalServer,
     handleRemoveConnection,
     eventTypes,
-    selectedEventType,
-    setSelectedEventType,
+    selectedEventTypes,
+    setSelectedEventTypes,
     totalLogCount,
     KEEP_TOTAL_LOG_COUNT: env.KEEP_TOTAL_LOG_COUNT,
     mqttServers,
     mqttLogs,
-    mqttCameraDevices,
+    cameraDevices,
     handleAddMqttServer,
     handleRemoveMqttServer,
     handleUpdateMqttServer,
+    fetchCameras,
+    deviceCameraLinks,
+    handleLinkDeviceCamera,
+    handleLinkMqttServerCamera,
+    gridLayout,
+    saveGridLayout,
+    fetchGridLayout
   };
 }

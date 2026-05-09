@@ -1,23 +1,57 @@
 import type { LogData } from '../types';
+import { useTranslation } from 'react-i18next';
 import { TriangleAlert, Info, AlertCircle } from 'lucide-react';
 
-export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }) {
-  let Icon = Info;
-  let colorClass = 'text-primary';
-  let bgBorderClass = 'bg-primary';
+export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick: () => void, mqttServers?: any[] }) {
+  const { t } = useTranslation();
 
-  let logType = typeof log.log_type === 'string' ? log.log_type.toLowerCase() : 'info';
+  let serverName = log.server.server_id;
+  if (log.source === 'mqtt' || log.mqttServerId || serverName.startsWith('mqtt-')) {
+    const cleanId = (log.mqttServerId || serverName.replace('mqtt-', '')).toLowerCase();
+    const mqttSrv = (mqttServers || []).find(s => s.id?.toLowerCase() === cleanId);
+    if (mqttSrv) {
+      serverName = mqttSrv.name || `${mqttSrv.brokerHost}:${mqttSrv.brokerPort}`;
+    } else if (log.raw?.brokerHost) {
+      serverName = log.raw.brokerPort ? `${log.raw.brokerHost}:${log.raw.brokerPort}` : log.raw.brokerHost;
+    }
+  }
+  let Icon = Info;
+  const colorClass = 'text-primary';
+  const bgBorderClass = 'bg-primary';
+
+  const logType = typeof log.log_type === 'string' ? log.log_type.toLowerCase() : 'info';
 
   if (logType.includes('event') || logType.includes('error')) {
     Icon = AlertCircle;
-    colorClass = 'text-tertiary';
-    bgBorderClass = 'bg-tertiary';
   } else if (logType.includes('warning')) {
     Icon = TriangleAlert;
-    colorClass = 'text-amber-400';
-    bgBorderClass = 'bg-amber-400';
   }
 
+  let displayDesc = log.description;
+  if (displayDesc) {
+    const descKey = displayDesc.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+    displayDesc = t(`app.logtype.${descKey}`, {
+      defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
+    });
+  }
+
+  if (log.source === 'mqtt') {
+    let evt = log.raw?.event;
+    if (!evt && log.raw?.payload?.object?.events?.length > 0) {
+      evt = log.raw.payload.object.events[0];
+    }
+    if (evt) {
+      const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
+      if (typeVal !== undefined) {
+        const lowerVal = String(typeVal).toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
+        displayDesc = t(`app.mqtt_alarm_type.${lowerVal}`, {
+          defaultValue: t(`app.logtype.${lowerVal}`, { defaultValue: String(typeVal) })
+        });
+      }
+    }
+  }
+
+  let displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`);
   const timeStr = new Date(log.time * 1000).toLocaleTimeString();
 
   return (
@@ -30,13 +64,13 @@ export function LogEntry({ log, onClick }: { log: LogData, onClick: () => void }
       <div className='h-full flex flex-col pl-3 flex-1 min-w-0'>
         <div className={`log-entry-indicator absolute left-0 top-0 bottom-0 w-1 ${bgBorderClass}`}></div>
         <div className="flex items-start mb-1 gap-4">
-          <span className={`log-entry-type text-[10px] font-bold ${colorClass} uppercase flex items-center gap-1.5 shrink-0`}>
-            <Icon className="w-3.5 h-3.5" />
-            {typeof log.log_type === 'string' ? log.log_type.toUpperCase() : 'INFO'}
+          <span className={`log-entry-type text-[10px] font-bold ${colorClass} uppercase flex items-center gap-1.5  shrink-0`}>
+            <Icon className="displayType w-3.5 h-3.5" />
+            {displayType}
           </span>
         </div>
-        <p className="text-[11px] text-on-surface mb-1 font-medium leading-relaxed truncate">{log.description}</p>
-        <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{log.server.server_id} // {log.device_name} // {timeStr}</div>
+        <p className="displayDesc text-[11px] text-on-surface mb-1 font-medium leading-relaxed truncate uppercase">{displayDesc}</p>
+        <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{serverName} // {log.device_name} // {timeStr}</div>
       </div>
       {log.snapshot && (
         <div className="rounded-sm overflow-hidden border border-outline-variant/20 shrink-0 w-24 mr-2">
