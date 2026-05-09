@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
 import {
@@ -118,30 +118,49 @@ export function DevicesManager({
     }
   };
 
+  const handleSaveSvms = useCallback((ip: string, port: string, mode: 'receive' | 'send') => {
+    handleAddExternalServer(ip, port, mode);
+    setAddingForm(null);
+  }, [handleAddExternalServer]);
+
+  const handleSaveMqtt = useCallback((cfg: MqttServerConfig) => {
+    handleAddMqttServer(cfg);
+    setAddingForm(null);
+  }, [handleAddMqttServer]);
+
+  const handleCloseForm = useCallback(() => {
+    setAddingForm(null);
+  }, []);
+
+  const handleSaveCameraSuccess = useCallback(() => {
+    setAddingForm(null);
+    fetchCameras();
+  }, [fetchCameras]);
+
   return (
     <div className="DevicesManager flex-1 overflow-hidden flex flex-col h-full">
       {/* Add forms (modals) */}
       {addingForm === 'svms' && (
         <AddExternalServer
-          onSave={(ip, port, mode) => { handleAddExternalServer(ip, port, mode); setAddingForm(null); }}
+          onSave={handleSaveSvms}
           onSaveMqtt={() => { }}
           initialIp="192.168.1." initialPort="5050" initialMode="receive"
-          onClose={() => setAddingForm(null)}
+          onClose={handleCloseForm}
         />
       )}
       {addingForm === 'mqtt' && (
         <AddExternalServer
           onSave={() => { }}
-          onSaveMqtt={(cfg) => { handleAddMqttServer(cfg); setAddingForm(null); }}
+          onSaveMqtt={handleSaveMqtt}
           initialIp="" initialPort="" initialMode="receive"
           initialConnectionType="mqtt"
-          onClose={() => setAddingForm(null)}
+          onClose={handleCloseForm}
         />
       )}
       {(addingForm === 'camera' || addingForm === 'sunell_camera') && (
         <CameraForm
-          onCancel={() => setAddingForm(null)}
-          onSuccess={() => { setAddingForm(null); fetchCameras(); }}
+          onCancel={handleCloseForm}
+          onSuccess={handleSaveCameraSuccess}
           initialType={addingForm === 'sunell_camera' ? 'sunell' : 'other'}
         />
       )}

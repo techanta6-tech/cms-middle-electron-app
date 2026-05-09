@@ -441,7 +441,7 @@ export function useSocketManager() {
     });
   };
 
-  const handleAddExternalServer = async (ip: string, port: string, mode: 'receive' | 'send') => {
+  const handleAddExternalServer = useCallback(async (ip: string, port: string, mode: 'receive' | 'send') => {
     console.log(`[SYNC_INIT] Requesting local BE to connect to http://${ip}:${port} (${mode})`);
 
     if (mode === 'send') {
@@ -466,10 +466,10 @@ export function useSocketManager() {
         })
         .catch((err: any) => console.error(`[SYNC_ERROR] Failed to initiate sync on target:`, err));
     }
-  };
+  }, [systemConfig.be.ip, systemConfig.be.port, fetchConnections]);
 
   // ─── MQTT Server Handlers ───────────────────────────────────────────────────
-  const handleAddMqttServer = async (config: MqttServerConfig) => {
+  const handleAddMqttServer = useCallback(async (config: MqttServerConfig) => {
     console.log('%c[MQTT_ADD] ▶ Đang gửi yêu cầu tạo MQTT server...', 'color: #06b6d4; font-weight: bold');
     console.log('[MQTT_ADD] Config gửi lên BE:', JSON.stringify(config, null, 2));
     console.log(`[MQTT_ADD] Broker: ${config.protocol || 'mqtt'}://${config.brokerHost}:${config.brokerPort}`);
@@ -486,9 +486,9 @@ export function useSocketManager() {
       console.error('[MQTT_ADD] Error:', err?.response?.data || err?.message || err);
       console.error(`[MQTT_ADD] HTTP Status: ${err?.response?.status || 'N/A'}`);
     }
-  };
+  }, [fetchMqttServers]);
 
-  const handleRemoveMqttServer = async (id: string) => {
+  const handleRemoveMqttServer = useCallback(async (id: string) => {
     console.log('%c[MQTT_REMOVE] ▶ Đang xóa MQTT server...', 'color: #f59e0b; font-weight: bold');
     console.log(`[MQTT_REMOVE] ID: ${id}`);
     try {
@@ -499,9 +499,9 @@ export function useSocketManager() {
       console.error('%c[MQTT_REMOVE] ❌ Xóa thất bại!', 'color: #ef4444; font-weight: bold');
       console.error('[MQTT_REMOVE] Error:', err?.response?.data || err?.message || err);
     }
-  };
+  }, [fetchMqttServers]);
 
-  const handleUpdateMqttServer = async (id: string, config: Partial<MqttServerConfig>) => {
+  const handleUpdateMqttServer = useCallback(async (id: string, config: Partial<MqttServerConfig>) => {
     console.log('%c[MQTT_UPDATE] ▶ Đang cập nhật MQTT server...', 'color: #06b6d4; font-weight: bold');
     console.log(`[MQTT_UPDATE] ID: ${id}`);
     console.log('[MQTT_UPDATE] Config mới:', JSON.stringify(config, null, 2));
@@ -514,7 +514,7 @@ export function useSocketManager() {
       console.error('%c[MQTT_UPDATE] ❌ Cập nhật thất bại!', 'color: #ef4444; font-weight: bold');
       console.error('[MQTT_UPDATE] Error:', err?.response?.data || err?.message || err);
     }
-  };
+  }, [fetchMqttServers]);
 
   const handleRemoveConnection = useCallback((ip: string, port: string, mode: 'receive' | 'send') => {
     if (mode === 'send') {

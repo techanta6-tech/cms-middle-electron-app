@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../api/apiClient';
 import { Camera, X, Eye, EyeOff } from 'lucide-react';
@@ -26,18 +26,31 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
   });
 
 
-
   const [isCustomRtsp, setIsCustomRtsp] = useState(false);
 
-  useEffect(() => {
-    if (!isCustomRtsp) {
-      const { type, cameraIp, cameraUser, cameraPass, rtspPort } = addDeviceForm;
-      let generatedUrl = '';
-      generatedUrl = `rtsp://${cameraUser}:${cameraPass}@${cameraIp}:${rtspPort}/snl/live/1/1`;
+  // Unified state update to avoid double re-renders from useEffect
+  const updateForm = (updates: Partial<typeof addDeviceForm>) => {
+    setAddDeviceForm(prev => {
+      const next = { ...prev, ...updates };
+      // Sync RTSP URL if not in custom mode
+      if (!isCustomRtsp) {
+        next.rtspUrl = `rtsp://${next.cameraUser}:${next.cameraPass}@${next.cameraIp}:${next.rtspPort}/snl/live/1/1`;
+      }
+      return next;
+    });
+  };
 
-      setAddDeviceForm(f => ({ ...f, rtspUrl: generatedUrl }));
+  // Special handler for custom RTSP toggle
+  const handleCustomRtspToggle = (checked: boolean) => {
+    setIsCustomRtsp(checked);
+    if (!checked) {
+      // Re-sync URL immediately when switching back to auto
+      setAddDeviceForm(prev => ({
+        ...prev,
+        rtspUrl: `rtsp://${prev.cameraUser}:${prev.cameraPass}@${prev.cameraIp}:${prev.rtspPort}/snl/live/1/1`
+      }));
     }
-  }, [isCustomRtsp, addDeviceForm.type, addDeviceForm.cameraIp, addDeviceForm.cameraUser, addDeviceForm.cameraPass, addDeviceForm.rtspPort]);
+  };
 
   const handleSubmitDevice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,7 +114,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.type')}</label>
                 <select
                   value={addDeviceForm.type}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, type: e.target.value as 'sunell' | 'other' }))}
+                  onChange={e => updateForm({ type: e.target.value as 'sunell' | 'other' })}
                   className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all"
                 >
                   <option value="sunell">{t('app.camera_form.sunell')}</option>
@@ -113,7 +126,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">{t('app.camera_form.name_optional')}</label>
                 <input
                   value={addDeviceForm.name}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, name: e.target.value }))}
+                  onChange={e => updateForm({ name: e.target.value })}
                   className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                   placeholder={t('app.camera_form.name_placeholder')}
                 />
@@ -123,7 +136,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">Camera IP (*)</label>
                 <input
                   value={addDeviceForm.cameraIp}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, cameraIp: e.target.value }))}
+                  onChange={e => updateForm({ cameraIp: e.target.value })}
                   className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                   placeholder="192.168.1.xxx"
                 />
@@ -134,7 +147,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                   <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">Control Port (*)</label>
                   <input
                     value={addDeviceForm.controlPort}
-                    onChange={e => setAddDeviceForm(f => ({ ...f, controlPort: e.target.value }))}
+                    onChange={e => updateForm({ controlPort: e.target.value })}
                     className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                     placeholder="30001"
                   />
@@ -145,7 +158,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">RTSP Port (*)</label>
                 <input
                   value={addDeviceForm.rtspPort}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, rtspPort: e.target.value }))}
+                  onChange={e => updateForm({ rtspPort: e.target.value })}
                   className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                   placeholder="554"
                 />
@@ -155,7 +168,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest block ml-1">Username (*)</label>
                 <input
                   value={addDeviceForm.cameraUser}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, cameraUser: e.target.value }))}
+                  onChange={e => updateForm({ cameraUser: e.target.value })}
                   className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                   placeholder="admin"
                 />
@@ -166,7 +179,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 <div className="relative flex items-center">
                   <input
                     value={addDeviceForm.cameraPass}
-                    onChange={e => setAddDeviceForm(f => ({ ...f, cameraPass: e.target.value }))}
+                    onChange={e => updateForm({ cameraPass: e.target.value })}
                     className="w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm pl-4 pr-10 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20"
                     placeholder="admin1234"
                     type={showPassword ? "text" : "password"}
@@ -190,13 +203,13 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                       type="checkbox"
                       className="accent-cyan-500 w-3 h-3 cursor-pointer"
                       checked={isCustomRtsp}
-                      onChange={(e) => setIsCustomRtsp(e.target.checked)}
+                      onChange={(e) => handleCustomRtspToggle(e.target.checked)}
                     />
                   </label>
                 </div>
                 <input
                   value={addDeviceForm.rtspUrl}
-                  onChange={e => setAddDeviceForm(f => ({ ...f, rtspUrl: e.target.value }))}
+                  onChange={e => isCustomRtsp && updateForm({ rtspUrl: e.target.value })}
                   disabled={!isCustomRtsp}
                   className={`w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20 ${!isCustomRtsp ? 'opacity-50 cursor-not-allowed' : ''}`}
                   placeholder="rtsp://..."
