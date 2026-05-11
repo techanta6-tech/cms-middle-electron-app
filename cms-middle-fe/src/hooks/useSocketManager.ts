@@ -4,6 +4,11 @@ import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, M
 import apiClient from '../api/apiClient';
 import axios from 'axios';
 
+export interface SvmsKnownEvent {
+  event_type: string;
+  event_description: string;
+}
+
 const env = {
   MAX_LOGS_LIST: Number(import.meta.env.VITE_MAX_LOGS_LIST) || 5000,
   KEEP_TOTAL_LOG_COUNT: import.meta.env.VITE_KEEP_TOTAL_LOG_COUNT === 'true'
@@ -161,6 +166,19 @@ export function useSocketManager() {
   const [cameraDevices, setCameraDevices] = useState<MqttDeviceConfig[]>([]);
   const [deviceCameraLinks, setDeviceCameraLinks] = useState<DeviceCameraLink[]>([]);
   const [gridLayout, setGridLayout] = useState<{ grids: any[]; gridCols: number }>({ grids: [], gridCols: 3 });
+  // SVMS per-device event feature config
+  const [svmsDeviceFeatures, setSvmsDeviceFeatures] = useState<{ serverId: string; deviceIndex: string; features: Record<string, boolean> }[]>([]);
+
+  // ─── SVMS Known Events (from registry file on BE) ──────────────────────────
+  // Seed mặc định để UI hiển thị ngay trước khi BE gửi danh sách qua socket.
+  const DEFAULT_SVMS_KNOWN_EVENTS: SvmsKnownEvent[] = [
+    { event_type: 'motion',                event_description: '' },
+    { event_type: 'ai.alarm.crosswire.all', event_description: '' },
+    { event_type: 'ai.alarm.direction.all', event_description: '' },
+    { event_type: 'ai.alarm.missing.all',   event_description: '' },
+    { event_type: 'videoloss',             event_description: '' },
+  ];
+  const [svmsKnownEvents, setSvmsKnownEvents] = useState<SvmsKnownEvent[]>(DEFAULT_SVMS_KNOWN_EVENTS);
 
   // ─── Log Batching: buffer incoming logs and flush every 500ms ───────────────
   const logBufferRef = useRef<LogData[]>([]);
@@ -842,7 +860,9 @@ export function useSocketManager() {
     socket.on('update-mqtt-servers', onUpdateMqttServers);
     socket.on('update-cameras', onUpdateCameras);
     socket.on('receive-mqtt-log', onReceiveMqttLog);
-
+    socket.on('test', (data) => {
+      console.log('[TEST] test:', data);
+    });
     const onUpdateDeviceCameraLinks = (links: DeviceCameraLink[]) => {
       console.log('[SOCKET] update-device-camera-links:', links);
       setDeviceCameraLinks(links);
@@ -854,11 +874,25 @@ export function useSocketManager() {
     socket.on('update-device-camera-links', onUpdateDeviceCameraLinks);
     socket.on('update-grid-layout', onUpdateGridLayout);
 
+    const onUpdateSvmsDeviceFeatures = (data: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[]) => {
+      console.log('[SOCKET] update-svms-device-features:', data);
+      setSvmsDeviceFeatures(data);
+    };
+    socket.on('update-svms-device-features', onUpdateSvmsDeviceFeatures);
+
     // DEBUG: Camera snapshot pipeline logs
     const onDebugCameraSnapshot = (data: { time: string; message: string }) => {
       console.log(`%c[CAMERA-SNAPSHOT] ${data.message}`, 'color: #ff6b6b; font-weight: bold; background: #1a1a2e; padding: 2px 6px; border-radius: 3px');
     };
     socket.on('debug-camera-snapshot', onDebugCameraSnapshot);
+
+    const onUpdateSvmsKnownEvents = (events: SvmsKnownEvent[]) => {
+      console.log('[SOCKET] update-svms-known-events:', events.length, 'events');
+      if (Array.isArray(events) && events.length > 0) {
+        setSvmsKnownEvents(events);
+      }
+    };
+    socket.on('update-svms-known-events', onUpdateSvmsKnownEvents);
 
     return () => {
       socket.off('external-server-connecting', onConnectingExternalServer);
@@ -881,6 +915,8 @@ export function useSocketManager() {
       socket.off('debug-camera-snapshot', onDebugCameraSnapshot);
       socket.off('update-device-camera-links', onUpdateDeviceCameraLinks);
       socket.off('update-grid-layout', onUpdateGridLayout);
+      socket.off('update-svms-device-features', onUpdateSvmsDeviceFeatures);
+      socket.off('update-svms-known-events', onUpdateSvmsKnownEvents);
     };
   }, []);
 
@@ -924,6 +960,8 @@ export function useSocketManager() {
     handleLinkMqttServerCamera,
     gridLayout,
     saveGridLayout,
-    fetchGridLayout
+    fetchGridLayout,
+    svmsDeviceFeatures,
+    svmsKnownEvents,
   };
 }

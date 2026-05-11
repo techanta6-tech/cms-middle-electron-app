@@ -54,6 +54,13 @@ const deviceCameraLinks = [];
 const gridLayout = { grids: [], gridCols: 3 };
 
 /**
+ * In-memory store for per-device event feature config for SVMS devices.
+ * Structure: [{ serverId: string, deviceIndex: string, features: Record<string, boolean> }]
+ * features key = log_type (e.g. 'crosswire', 'motion'), value = boolean enabled
+ */
+const svmsDeviceFeatures = [];
+
+/**
  * Global variable to hold the Socket.IO server instance.
  */
 let clientSockets = null;
@@ -74,4 +81,4 @@ const init = (httpServer) => {
  */
 const getClientSockets = () => clientSockets;
 
-module.exports = { init, getClientSockets, connections, servers, devices, mqttServers, cameraDevices, deviceCameraLinks, gridLayout };
+module.exports = { init, getClientSockets, connections, servers, devices, mqttServers, cameraDevices, deviceCameraLinks, gridLayout, svmsDeviceFeatures };

@@ -22,6 +22,11 @@ const socketState = require('./src/socketState');
 const setupSocketEvents = require('./src/socketEvents');
 const { startMonitoring } = require('./src/services/check-server.service');
 const connectivityMonitor = require('./src/services/connectivity-monitor.service');
+const svmsEventRegistry = require('./src/services/svmsEventRegistry.service');
+
+// Load SVMS event registry từ file vào memory
+svmsEventRegistry.loadRegistry();
+
 
 const httpServer = createServer(app);
 

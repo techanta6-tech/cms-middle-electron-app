@@ -169,7 +169,23 @@ const connectMqttServer = (serverConfig) => {
             // Event Filtering + Per-event Camera Resolution
             const alarmType = (event.alarm_type || '').toLowerCase();
             const linkFeatures = deviceLink?.features || {};
-            const feat = normalizeFeature(linkFeatures[alarmType]);
+
+            // Danh sách event quen thuộc (whitelist)
+            const KNOWN_EVENT_CODES = ['fall', 'lying', 'occupied', 'vacant', 'dwell', 'motionless', 'out_of_bed', 'bradynea', 'tachypnea'];
+            const isKnownEvent = KNOWN_EVENT_CODES.includes(alarmType);
+
+            let feat;
+            if (isKnownEvent) {
+              feat = normalizeFeature(linkFeatures[alarmType], alarmType);
+            } else {
+              // Event lạ: dùng feature __other_events__ để quyết định, mặc định tắt
+              const otherFeat = normalizeFeature(linkFeatures['__other_events__'], '__other_events__');
+              if (!otherFeat.enabled) {
+                console.log(`[MQTT][${id}] Skipped unknown event (other_events disabled): ${alarmType} for devEui: ${devEui}`);
+                continue;
+              }
+              feat = { enabled: true, cameraId: otherFeat.cameraId };
+            }
 
             if (!feat.enabled) {
               console.log(`[MQTT][${id}] Skipped disabled event: ${alarmType} for devEui: ${devEui}`);

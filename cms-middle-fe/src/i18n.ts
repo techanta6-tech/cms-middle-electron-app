@@ -173,7 +173,9 @@ const resources = {
             sub_dwell: 'Cảnh báo Ở quá lâu trong khu vực',
             sub_bradynea: 'Cảnh báo Nhịp thở chậm',
             sub_tachypnea: 'Cảnh báo Nhịp thở nhanh',
-            sub_motionless: 'Cảnh báo Bất động'
+            sub_motionless: 'Cảnh báo Bất động',
+            other_events: 'Sự kiện khác',
+            other_events_hint: 'Nhận tất cả event không thuộc danh sách trên'
           },
           sunell_categories: {
             motion: 'Motion / Chuyển động',
@@ -287,6 +289,7 @@ const resources = {
           ai_alarm_crosswire_all: 'Hàng rào ảo',
           direction: 'Hướng di chuyển',
           ai_alarm_direction_all: 'Hướng di chuyển',
+          ai_alarm_missing_all: 'Missing object - Không tìm thấy vật thể',
           an_alarm_has_been_detected: 'SVMS phát cảnh báo',
           videoloss: 'Mất tín hiệu camera',
           motion: 'Chuyển động',
@@ -623,7 +626,9 @@ const resources = {
             sub_dwell: 'Dwell / Stay Alarm',
             sub_bradynea: 'Bradynea Alarm',
             sub_tachypnea: 'Tachypnea Alarm',
-            sub_motionless: 'Abnormal Static Alarm'
+            sub_motionless: 'Abnormal Static Alarm',
+            other_events: 'Other Events',
+            other_events_hint: 'Accept any event type not listed above'
           },
           sunell_categories: {
             motion: 'Motion Detection',
@@ -738,6 +743,7 @@ const resources = {
           ai_alarm_crosswire_all: 'Crosswire',
           direction: 'Direction',
           ai_alarm_direction_all: 'Direction',
+          ai_alarm_missing_all: 'Missing object',
           an_alarm_has_been_detected: 'SVMS Alarm',
           videoloss: 'Video Signal Loss',
 

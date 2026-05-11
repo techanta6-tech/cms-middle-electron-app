@@ -1,6 +1,7 @@
-// ─── SOCKET SERVER EVENTS (BE↔FE only) ───────────────────────────────────────
-const { getClientSockets, servers, devices } = require('./socketState');
+// ─── SOCKET SERVER EVENTS (BE↔FE only) ─────────────────────────────────────────────
+const { getClientSockets, servers, devices, svmsDeviceFeatures } = require('./socketState');
 const { syncClientsToFrontend, syncConnectionsToFrontend } = require('./helpers/notify');
+const svmsEventRegistry = require('./services/svmsEventRegistry.service');
 
 /**
  * Sets up Socket.IO event listeners for the client server.
@@ -20,6 +21,8 @@ const setupSocketEvents = () => {
       socket.emit('receive-devices-information', {
         allDevices: Object.fromEntries(devices)
       });
+      // Sync danh sách event đã biết tới FE mới kết nối
+      socket.emit('update-svms-known-events', svmsEventRegistry.getEvents());
     });
 
     // Khởi tạo sentCount cho socket này
@@ -76,6 +79,23 @@ const setupSocketEvents = () => {
 
       console.log(`[SOCKET] Updated features for device ${devEui}:`, link.features);
       clientSockets.emit('update-device-camera-links', [...deviceCameraLinks]);
+    });
+
+    socket.on('update-svms-device-features', ({ serverId, deviceIndex, features }) => {
+      if (!serverId || deviceIndex == null) return;
+      const key = `${serverId}::${deviceIndex}`;
+      let entry = svmsDeviceFeatures.find(e => e.serverId === serverId && String(e.deviceIndex) === String(deviceIndex));
+      if (!entry) {
+        entry = { serverId, deviceIndex: String(deviceIndex), features: {} };
+        svmsDeviceFeatures.push(entry);
+      }
+      if (!entry.features) entry.features = {};
+      // Merge: value là boolean
+      for (const [code, value] of Object.entries(features)) {
+        entry.features[code] = !!value;
+      }
+      console.log(`[SOCKET] Updated SVMS device features for ${key}:`, entry.features);
+      clientSockets.emit('update-svms-device-features', [...svmsDeviceFeatures]);
     });
 
     socket.on('disconnect', () => {

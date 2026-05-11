@@ -354,7 +354,9 @@ function Dashboard() {
     handleLinkDeviceCamera,
     handleLinkMqttServerCamera,
     gridLayout,
-    saveGridLayout
+    saveGridLayout,
+    svmsDeviceFeatures,
+    svmsKnownEvents,
   } = useSocketManager();
 
   // Grid state synced from BE
@@ -600,6 +602,8 @@ function Dashboard() {
                 fetchCameras={fetchCameras}
                 handleAddMqttServer={handleAddMqttServer}
                 handleAddExternalServer={handleAddExternalServer}
+                svmsDeviceFeatures={svmsDeviceFeatures}
+                svmsKnownEvents={svmsKnownEvents}
               />
             )}
           </div>

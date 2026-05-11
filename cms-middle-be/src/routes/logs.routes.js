@@ -1,9 +1,14 @@
 const express = require('express');
 const axios = require('axios');
-const { getClientSockets, connections, servers, devices } = require('../socketState');
+const { getClientSockets, connections, servers, devices, svmsDeviceFeatures } = require('../socketState');
 const { notifyStatusToClients } = require('../helpers/notify');
 const authMiddleware = require('../middleware/auth.middleware');
 const connectivityMonitor = require('../services/connectivity-monitor.service');
+const svmsEventRegistry = require('../services/svmsEventRegistry.service');
+
+// Event mặc định bật (khi chưa có cấu hình): chỉ motion + __other_events__
+// Đây là chính sách lọc — không phụ thuộc vào registry file.
+const SVMS_DEFAULT_ON_CODES = ['motion'];
 
 const router = express.Router();
 
@@ -62,7 +67,6 @@ async function forwardWithRetry(conn, logData) {
  */
 router.post('/api/v1/logs', async (req, res) => {
   // console.log('received requets from :', req.originalUrl)  
-
   const clientSockets = getClientSockets();
 
   if (req.body && !req.body.sender_ip) {
@@ -114,6 +118,48 @@ router.post('/api/v1/logs', async (req, res) => {
 
     // Reset 30s timer
     connectivityMonitor.onLogReceived(serverId, deviceIndex);
+  }
+
+  // ─── SVMS Event Filtering + Auto-discovery ──────────────────────────────────
+  // Luôn áp dụng lọc, kể cả khi chưa có cấu hình trong svmsDeviceFeatures.
+  // Mặc định: cho phép SVMS_DEFAULT_ON_CODES + event lạ (__other_events__).
+  if (serverId && deviceIndex != null) {
+    const logType = (logBodyForFrontend.log_type || '').toLowerCase();
+    if (logType) {
+      // Auto-discover: nếu event chưa có trong registry → bổ sung và notify FE
+      const isNewEvent = svmsEventRegistry.discoverEvent(logType, logBodyForFrontend.description || '');
+      if (isNewEvent) {
+        const clientSockets = getClientSockets();
+        if (clientSockets) {
+          clientSockets.emit('update-svms-known-events', svmsEventRegistry.getEvents());
+        }
+      }
+
+      const deviceEntry = svmsDeviceFeatures.find(
+        e => e.serverId === serverId && String(e.deviceIndex) === String(deviceIndex)
+      );
+      const feats = deviceEntry ? (deviceEntry.features || {}) : {};
+
+      // isKnown = event nằm trong registry file (đã biết trước hoặc vừa được discover)
+      const knownTypesSet = svmsEventRegistry.getKnownTypesSet();
+      const isKnown = knownTypesSet.has(logType);
+
+      if (isKnown) {
+        // Event quen thuộc: ưu tiên cấu hình của user, fallback về SVMS_DEFAULT_ON_CODES
+        const enabled = feats[logType] !== undefined ? !!feats[logType] : SVMS_DEFAULT_ON_CODES.includes(logType);
+        if (!enabled) {
+          console.log(`[SVMS] Filtered event '${logType}' for device ${serverId}::${deviceIndex}`);
+          return res.status(200).send({ success: true });
+        }
+      } else {
+        // Event lạ (chưa trong registry): kiểm tra __other_events__, mặc định true (cho phép)
+        const otherEnabled = feats['__other_events__'] !== undefined ? !!feats['__other_events__'] : true;
+        if (!otherEnabled) {
+          console.log(`[SVMS] Filtered unknown event '${logType}' (__other_events__ disabled) for ${serverId}::${deviceIndex}`);
+          return res.status(200).send({ success: true });
+        }
+      }
+    }
   }
 
   // 1. Phát dữ liệu cho các Client của mình (Frontend) qua Socket.IO

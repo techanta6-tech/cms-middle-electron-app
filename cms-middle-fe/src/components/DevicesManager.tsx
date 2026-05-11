@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
+import type { SvmsKnownEvent } from '../hooks/useSocketManager';
 import {
   ChevronRight, ChevronDown, Plus, Cpu, Radio, Camera,
   Server, Wifi, WifiOff, MonitorSmartphone, Info, X, Trash2, Edit2
@@ -40,13 +41,16 @@ interface DevicesManagerProps {
   fetchCameras: () => void;
   handleAddMqttServer: (config: MqttServerConfig) => void;
   handleAddExternalServer: (ip: string, port: string, mode: 'receive' | 'send') => void;
+  svmsDeviceFeatures: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[];
+  svmsKnownEvents: SvmsKnownEvent[];
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export function DevicesManager({
   servers, devices, mqttServers, mqttLogs, cameraDevices,
   deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera,
-  fetchCameras, handleAddMqttServer, handleAddExternalServer
+  fetchCameras, handleAddMqttServer, handleAddExternalServer,
+  svmsDeviceFeatures, svmsKnownEvents
 }: DevicesManagerProps) {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<SelectedItemType | null>(null);
@@ -340,6 +344,8 @@ export function DevicesManager({
               deviceCameraLinks={deviceCameraLinks}
               onLinkDeviceCamera={onLinkDeviceCamera}
               onLinkMqttServerCamera={onLinkMqttServerCamera}
+              svmsDeviceFeatures={svmsDeviceFeatures}
+              svmsKnownEvents={svmsKnownEvents}
               onEdit={(item) => {
                 if (item.kind === 'mqtt-server') {
                   setEditingMqtt(item.data);
@@ -454,7 +460,18 @@ function EmptyHint({ text }: { text: string }) {
 }
 
 // ── Detail Panel ─────────────────────────────────────────────────────────────
-function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera, onEdit }: { item: SelectedItemType; onClose: () => void; cameraDevices: MqttDeviceConfig[]; mqttServers: MqttServerConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void; onEdit?: (item: SelectedItemType) => void; }) {
+function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera, svmsDeviceFeatures, svmsKnownEvents, onEdit }: {
+  item: SelectedItemType;
+  onClose: () => void;
+  cameraDevices: MqttDeviceConfig[];
+  mqttServers: MqttServerConfig[];
+  deviceCameraLinks: DeviceCameraLink[];
+  onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
+  onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void;
+  svmsDeviceFeatures: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[];
+  svmsKnownEvents: SvmsKnownEvent[];
+  onEdit?: (item: SelectedItemType) => void;
+}) {
   const { t } = useTranslation();
 
   const isSunell = item.kind === 'camera' && item.data.type === 'sunell';
@@ -492,7 +509,7 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
     <div className="animate-in fade-in duration-300">
       {/* Content */}
       {item.kind === 'svms-server' && <SvmsServerDetail srv={item.data} devices={item.devices} />}
-      {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} />}
+      {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} svmsDeviceFeatures={svmsDeviceFeatures} svmsKnownEvents={svmsKnownEvents} />}
       {item.kind === 'mqtt-server' && latestMqttServer && <MqttServerDetail srv={latestMqttServer} devices={item.mqttDevices} allCameras={cameraDevices} onLinkMqttServerCamera={onLinkMqttServerCamera} onEdit={() => onEdit?.(item)} />}
       {item.kind === 'mqtt-device' && latestMqttDeviceServer && <MqttDeviceDetail dev={item.data} srv={latestMqttDeviceServer} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} />}
       {item.kind === 'camera' && latestCam && <CameraDetail cam={latestCam} onEdit={() => onEdit?.(item)} />}
@@ -553,8 +570,52 @@ function SvmsServerDetail({ srv, devices }: { srv: ServerData; devices?: DeviceD
   );
 }
 
-function SvmsDeviceDetail({ dev, srv }: { dev: any; srv: ServerData }) {
+function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
+  dev: any;
+  srv: ServerData;
+  svmsDeviceFeatures: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[];
+  svmsKnownEvents: SvmsKnownEvent[];
+}) {
   const { t } = useTranslation();
+
+  // Build SVMS_EVENTS dynamically from registry, with i18n label fallback
+  const SVMS_EVENTS = svmsKnownEvents.map(evt => {
+    // Ưu tiên: i18n key có (dạng app.logtype.motion, app.logtype.ai_alarm_crosswire_all)
+    const i18nKey = `app.logtype.${evt.event_type.replace(/\./g, '_')}`;
+    const i18nLabel = t(i18nKey);
+    const label = (i18nLabel && i18nLabel !== i18nKey)
+      ? i18nLabel
+      : (evt.event_description || evt.event_type);
+    return { code: evt.event_type, label };
+  });
+  const OTHER_EVENTS_CODE = '__other_events__';
+
+  const serverId = srv.id || srv.serial;
+  const deviceIndex = String(dev.index);
+  const featureEntry = svmsDeviceFeatures.find(
+    e => e.serverId === serverId && e.deviceIndex === deviceIndex
+  );
+  const features = featureEntry?.features || {};
+
+  // Mặc định: chỉ event chuyển động và __other_events__ được bật
+  const SVMS_DEFAULT_ON = ['motion', 'a_motion_has_been_detected', '__other_events__'];
+  const getEnabled = (code: string) => {
+    if (features[code] !== undefined) return !!features[code];
+    return SVMS_DEFAULT_ON.includes(code);
+  };
+
+  const handleToggle = (code: string, value: boolean) => {
+    socket.emit('update-svms-device-features', {
+      serverId,
+      deviceIndex,
+      features: { [code]: value }
+    });
+  };
+
+  const otherEventsEnabled = getEnabled(OTHER_EVENTS_CODE);
+  const enabledCount = SVMS_EVENTS.filter(e => getEnabled(e.code)).length + (otherEventsEnabled ? 1 : 0);
+  const totalCount = SVMS_EVENTS.length + 1;
+
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">{dev.name}</h3>
@@ -568,6 +629,64 @@ function SvmsDeviceDetail({ dev, srv }: { dev: any; srv: ServerData }) {
         <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.parent_server')}</span>
         <InfoRow label={t('app.monitor.server_name')} value={srv.server_name || srv.id} />
         <InfoRow label={t('app.monitor.server_ip')} value={srv.svms_ipv4_ip || srv.server_ip} mono />
+      </div>
+
+      {/* Event Filter Section */}
+      <div className="mt-5 pt-4 border-t border-outline-variant/10">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">🎛 Event Filter</span>
+          <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
+            {enabledCount}/{totalCount} {t('app.devices.radar_categories.enabled_count')}
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          {SVMS_EVENTS.map(evt => {
+            const enabled = getEnabled(evt.code);
+            return (
+              <div key={evt.code} className="flex items-center justify-between gap-3 py-1.5 border-b border-outline-variant/5 last:border-0">
+                <div className="flex items-center gap-2">
+                  <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? 'bg-secondary' : 'bg-on-surface-variant/30'}`} />
+                  <span className={`text-[11px] font-medium transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'}`}>
+                    {evt.label}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleToggle(evt.code, !enabled)}
+                  className={`flex items-center w-7 h-4 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
+                    ${enabled ? 'bg-secondary justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
+                  title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
+                >
+                  <span className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Other Events toggle */}
+        <div className="mt-3 rounded-md border bg-surface-container/20 border-outline-variant/10 p-3 flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+              ✦ {t('app.devices.radar_categories.other_events') || 'Sự kiện khác'}
+            </span>
+            <span className="text-[9px] text-on-surface-variant/40 leading-relaxed">
+              {t('app.devices.radar_categories.other_events_hint') || 'Nhận tất cả event không thuộc danh sách trên'}
+            </span>
+          </div>
+          <button
+            onClick={() => handleToggle(OTHER_EVENTS_CODE, !otherEventsEnabled)}
+            className={`flex items-center w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
+              ${otherEventsEnabled ? 'bg-secondary justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
+            title={otherEventsEnabled ? 'Đang nhận sự kiện khác — Click để tắt' : 'Không nhận sự kiện khác — Click để bật'}
+          >
+            <span className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200" />
+          </button>
+        </div>
+
+        <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
+          {t('app.devices.radar_categories.hint')}
+        </p>
       </div>
     </div>
   );
@@ -666,10 +785,16 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
   // Normalize feature: hỗ trợ cả boolean cũ và object { enabled, cameraId } mới
   const getFeature = (code: string): { enabled: boolean; cameraId: string | null } => {
     const raw = features[code];
-    if (raw === undefined || raw === null) return { enabled: true, cameraId: null };
+    // Mặc định tắt tất cả, trừ té ngã (fall); __other_events__ mặc định cũng tắt
+    const defaultEnabled = code === 'fall';
+
+    if (raw === undefined || raw === null) return { enabled: defaultEnabled, cameraId: null };
     if (typeof raw === 'boolean') return { enabled: raw, cameraId: null };
-    return { enabled: (raw as any).enabled ?? true, cameraId: (raw as any).cameraId || null };
+    return { enabled: (raw as any).enabled ?? defaultEnabled, cameraId: (raw as any).cameraId || null };
   };
+
+  const OTHER_EVENTS_CODE = '__other_events__';
+  const otherEventsEnabled = getFeature(OTHER_EVENTS_CODE).enabled;
 
   const handleToggle = (code: string, value: boolean) => {
     socket.emit('update-device-features', {
@@ -689,8 +814,8 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
   const totalEnabled = RADAR_CATEGORIES.reduce((acc, cat) => {
     return acc + cat.subEvents.filter(sub => getFeature(sub.code).enabled).length;
-  }, 0);
-  const totalEvents = RADAR_CATEGORIES.reduce((acc, cat) => acc + cat.subEvents.length, 0);
+  }, 0) + (otherEventsEnabled ? 1 : 0);
+  const totalEvents = RADAR_CATEGORIES.reduce((acc, cat) => acc + cat.subEvents.length, 0) + 1; // +1 cho Sự kiện khác
 
   const activeCameraId = link?.cameraId === 'none' ? null : (link?.cameraId || srv.cameraId);
   const activeCamera = activeCameraId ? allCameras.find(c => c.id === activeCameraId) : null;
@@ -874,6 +999,26 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Other Events toggle */}
+        <div className="mt-3 rounded-md border bg-surface-container/20 border-outline-variant/10 p-3 flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+              ✦ {t('app.devices.radar_categories.other_events') || 'Sự kiện khác'}
+            </span>
+            <span className="text-[9px] text-on-surface-variant/40 leading-relaxed">
+              {t('app.devices.radar_categories.other_events_hint') || 'Nhận tất cả event không nằm trong danh sách trên'}
+            </span>
+          </div>
+          <button
+            onClick={() => handleToggle(OTHER_EVENTS_CODE, !otherEventsEnabled)}
+            className={`flex items-center w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
+              ${otherEventsEnabled ? 'bg-cyan-400 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
+            title={otherEventsEnabled ? 'Đang nhận sự kiện khác — Click để tắt' : 'Không nhận sự kiện khác — Click để bật'}
+          >
+            <span className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200" />
+          </button>
         </div>
 
         {/* Footer hint */}

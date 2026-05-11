@@ -1,0 +1,22 @@
+[
+  {
+    "event_type": "videoloss",
+    "event_description": "Unknown face detected"
+  },
+  {
+    "event_type": "ai.alarm.direction.all",
+    "event_description": "Intrusion alert triggered"
+  },
+  {
+    "event_type": "ai.alarm.crosswire.all",
+    "event_description": "28"
+  },
+  {
+    "event_type": "ai.alarm.missing.all",
+    "event_description": "Camera reconnected after brief offline"
+  },
+  {
+    "event_type": "motion",
+    "event_description": "28"
+  }
+]
