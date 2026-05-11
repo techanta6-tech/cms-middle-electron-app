@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
+import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
 import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight, Radio, Camera, Search, Filter, Bell, BellRing } from 'lucide-react';
 import { AddExternalServer } from './AddExternalServer';
 import { ConfigSystem } from './ConfigSystem';
@@ -223,7 +223,7 @@ export function ConnectionsMonitor({
   servers: Record<string, ServerData>;
   devices: Record<string, DeviceData>;
   mqttServers: MqttServerConfig[];
-  mqttLogs: MqttLogEntry[];
+  mqttLogs: MQTT_Milesight_LogEntry[];
   cameraDevices: MqttDeviceConfig[];
   deviceCameraLinks: DeviceCameraLink[];
   onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;

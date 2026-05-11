@@ -1,10 +1,10 @@
 const express = require('express');
 const axios = require('axios');
-const { getClientSockets, servers, devices, connections } = require('../socketState');
-const { getCMSBackendURL } = require('../config');
-const { notifyStatusToClients } = require('../helpers/notify');
-const authMiddleware = require('../middleware/auth.middleware');
-const connectivityMonitor = require('../services/connectivity-monitor.service');
+const { getClientSockets, servers, devices, connections, svmsServers, svmsDevices } = require('../../socketState');
+const { getCMSBackendURL } = require('../../config');
+const { notifyStatusToClients } = require('../../helpers/notify');
+const authMiddleware = require('../../middleware/auth.middleware');
+const connectivityMonitor = require('../../services/connectivity-monitor.service');
 
 
 const router = express.Router();
@@ -78,9 +78,13 @@ async function forwardToSendTargets(endpoint, data, extraHeaders = {}) {
  */
 router.post('/api/v1/server', async (req, res) => {
   const clientSockets = getClientSockets();
+  clientSockets.emit('test', {
+    message: 'new server',
+    data: req.body
+  })
   const senderIp = (req.ip || '').replace('::ffff:', '');
   const dataArr = Array.isArray(req.body) ? req.body : [req.body];
-
+  clientSockets.emit('new-server', dataArr);
   // TODO: BOOKMARK — logic phân biệt direct/forwarded, có thể sửa sau
   const isForwarded = req.headers['x-sync-forwarded'] === 'true';
   const serverType = isForwarded ? 'forwarded' : 'direct';
@@ -111,8 +115,22 @@ router.post('/api/v1/server', async (req, res) => {
     // Đăng ký vào connectivity monitor
     connectivityMonitor.registerServer(serverId);
   }
+  // ─── Lưu raw req.body vào svmsServers ─────────────────────────────────────────────────
+  const svmsServerPayload = Array.isArray(req.body) ? req.body : [req.body];
+  svmsServerPayload.forEach(item => {
+    if (!item) return;
+    const existing = svmsServers.findIndex(s => (s.id || s.serial) === (item.id || item.serial));
+    const entry = { ...item, _receivedAt: new Date().toISOString() };
+    if (existing !== -1) {
+      svmsServers[existing] = entry;
+    } else {
+      svmsServers.push(entry);
+      if (svmsServers.length > 200) svmsServers.shift();
+    }
+  });
+  clientSockets.emit('new-svms-servers', svmsServers);
 
-  // Emit toàn bộ servers hiện tại tới FE một lần thay vì nhiều lần
+
   clientSockets.emit('receive-server-information', {
     allServers: Object.fromEntries(servers)
   });
@@ -144,7 +162,10 @@ router.post('/api/v1/devices', async (req, res) => {
   const clientSockets = getClientSockets();
   const senderIp = (req.ip || '').replace('::ffff:', '');
   const dataArr = Array.isArray(req.body) ? req.body : [req.body];
-
+  clientSockets.emit('test', {
+    message: 'new device',
+    data: req.body
+  });
   for (const item of dataArr) {
     if (!item) continue;
     const { server, devices: deviceList } = item;
@@ -195,6 +216,22 @@ router.post('/api/v1/devices', async (req, res) => {
     // Đăng ký devices vào connectivity monitor (chỉ cho direct servers)
     connectivityMonitor.registerDevices(serverId, parsedDevices);
   }
+
+  // ─── Lưu raw req.body vào svmsDevices ────────────────────────────────────────────────
+  const svmsDevicesPayload = Array.isArray(req.body) ? req.body : [req.body];
+  svmsDevicesPayload.forEach(item => {
+    if (!item) return;
+    const itemServerId = item.server?.server_id || item.server?.serial || senderIp;
+    const existing = svmsDevices.findIndex(d => (d.server?.server_id || d.server?.serial) === itemServerId);
+    const entry = { ...item, _receivedAt: new Date().toISOString() };
+    if (existing !== -1) {
+      svmsDevices[existing] = entry;
+    } else {
+      svmsDevices.push(entry);
+      if (svmsDevices.length > 200) svmsDevices.shift();
+    }
+  });
+  clientSockets.emit('new-svms-devices', svmsDevices);
 
   // Emit toàn bộ devices hiện tại tới FE một lần
   clientSockets.emit('receive-devices-information', {

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
+import type { ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
 import {
   ChevronRight, ChevronDown, Plus, Cpu, Radio, Camera,
   Server, Wifi, WifiOff, MonitorSmartphone, Info, X, Trash2, Edit2
@@ -16,11 +16,11 @@ const NOOP = () => { };
 type SelectedItemType =
   | { kind: 'svms-server'; data: ServerData; devices?: DeviceData }
   | { kind: 'svms-device'; data: any; server: ServerData }
-  | { kind: 'mqtt-server'; data: MqttServerConfig; mqttDevices: MqttDeviceInfo[] }
-  | { kind: 'mqtt-device'; data: MqttDeviceInfo; server: MqttServerConfig }
+  | { kind: 'mqtt-server'; data: MqttServerConfig; mqttDevices: MQTT_Milesight_DeviceInfo[] }
+  | { kind: 'mqtt-device'; data: MQTT_Milesight_DeviceInfo; server: MqttServerConfig }
   | { kind: 'camera'; data: MqttDeviceConfig };
 
-interface MqttDeviceInfo {
+interface MQTT_Milesight_DeviceInfo {
   devEui: string;
   deviceName: string;
   deviceProfileName: string;
@@ -32,7 +32,7 @@ interface DevicesManagerProps {
   servers: Record<string, ServerData>;
   devices: Record<string, DeviceData>;
   mqttServers: MqttServerConfig[];
-  mqttLogs: MqttLogEntry[];
+  mqttLogs: MQTT_Milesight_LogEntry[];
   cameraDevices: MqttDeviceConfig[];
   deviceCameraLinks: DeviceCameraLink[];
   onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
@@ -65,7 +65,7 @@ export function DevicesManager({
 
   // Extract MQTT devices per server from logs
   const mqttDevicesByServer = useMemo(() => {
-    const map: Record<string, MqttDeviceInfo[]> = {};
+    const map: Record<string, MQTT_Milesight_DeviceInfo[]> = {};
     (mqttLogs || []).forEach(log => {
       const sid = log.mqttServerId;
       const di = log.payload?.deviceInfo;
@@ -266,7 +266,7 @@ export function DevicesManager({
                         label={d.deviceName} sublabel={d.devEui} indent
                         icon={<MonitorSmartphone className="w-3 h-3 text-on-surface-variant/60" />}
                         onClick={() => setSelected({ kind: 'mqtt-device', data: d, server: ms })}
-                        isSelected={selected?.kind === 'mqtt-device' && (selected.data as MqttDeviceInfo).devEui === d.devEui}
+                        isSelected={selected?.kind === 'mqtt-device' && (selected.data as MQTT_Milesight_DeviceInfo).devEui === d.devEui}
                       />
                     ))}
                   </div>
@@ -573,7 +573,7 @@ function SvmsDeviceDetail({ dev, srv }: { dev: any; srv: ServerData }) {
   );
 }
 
-function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera, onEdit }: { srv: MqttServerConfig; devices: MqttDeviceInfo[]; allCameras: MqttDeviceConfig[]; onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void; onEdit?: () => void; }) {
+function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera, onEdit }: { srv: MqttServerConfig; devices: MQTT_Milesight_DeviceInfo[]; allCameras: MqttDeviceConfig[]; onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void; onEdit?: () => void; }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
@@ -613,7 +613,7 @@ function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera, on
   );
 }
 
-function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDeviceCamera }: { dev: MqttDeviceInfo; srv: MqttServerConfig; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; }) {
+function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDeviceCamera }: { dev: MQTT_Milesight_DeviceInfo; srv: MqttServerConfig; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; }) {
   const { t } = useTranslation();
   const [dragOverCatId, setDragOverCatId] = useState<string | null>(null);
 

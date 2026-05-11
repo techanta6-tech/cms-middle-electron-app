@@ -3,7 +3,7 @@ const axios = require('axios');
 const { connections } = require('../socketState');
 const { notifyStatusToClients, getActiveClients, removeConnection, disconnectClientSocket, syncConnectionsToFrontend, pingUrl } = require('../helpers/notify');
 const authMiddleware = require('../middleware/auth.middleware');
-const { syncDataToTarget } = require('./server.routes');
+const { syncDataToTarget } = require('./svms/server.routes');
 
 
 const router = express.Router();

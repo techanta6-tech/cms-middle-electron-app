@@ -35,7 +35,6 @@ const pingServer = (ip, port) => {
       socket.destroy();
       resolve({ online: false, port });
     });
-
     socket.connect(port, ip);
   });
 };

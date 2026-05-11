@@ -1,5 +1,5 @@
 // ─── SOCKET SERVER EVENTS (BE↔FE only) ───────────────────────────────────────
-const { getClientSockets, servers, devices } = require('./socketState');
+const { getClientSockets, servers, devices, allLogs, svmsServers, svmsDevices, mqttDeviceList } = require('./socketState');
 const { syncClientsToFrontend, syncConnectionsToFrontend } = require('./helpers/notify');
 
 /**
@@ -28,6 +28,15 @@ const setupSocketEvents = () => {
     // Sync client list to all connected frontends
     syncClientsToFrontend();
     syncConnectionsToFrontend();
+
+    // ─── Sync New System Data với FE client vừa connect ──────────────────────────────────
+    socket.emit('sync-new-system-data', {
+      allLogs,
+      svmsServers,
+      svmsDevices,
+      mqttDeviceList,
+    });
+
 
     socket.on('message', (data) => {
       console.log(`[MESSAGE] Received message from client ${socket.id} — broadcasting`);

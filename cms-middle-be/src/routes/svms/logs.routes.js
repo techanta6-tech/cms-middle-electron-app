@@ -1,9 +1,9 @@
 const express = require('express');
 const axios = require('axios');
-const { getClientSockets, connections, servers, devices } = require('../socketState');
-const { notifyStatusToClients } = require('../helpers/notify');
-const authMiddleware = require('../middleware/auth.middleware');
-const connectivityMonitor = require('../services/connectivity-monitor.service');
+const { getClientSockets, connections, servers, devices, allLogs, ALL_LOGS_MAX } = require('../../socketState');
+const { notifyStatusToClients } = require('../../helpers/notify');
+const authMiddleware = require('../../middleware/auth.middleware');
+const connectivityMonitor = require('../../services/connectivity-monitor.service');
 
 const router = express.Router();
 
@@ -62,7 +62,6 @@ async function forwardWithRetry(conn, logData) {
  */
 router.post('/api/v1/logs', async (req, res) => {
   // console.log('received requets from :', req.originalUrl)  
-
   const clientSockets = getClientSockets();
 
   if (req.body && !req.body.sender_ip) {
@@ -78,6 +77,49 @@ router.post('/api/v1/logs', async (req, res) => {
     ip: req.ip,
     body: logBodyForFrontend,
   };
+
+  // export interface New_LogData {
+  //   id?: string;
+  //   receive_time: number;
+  //   log_type: string;
+  //   log_description: string;
+  //   snapshot?: string;
+  //   log_source: 'svms' | 'milesight-radar' | 'sunell-camera';
+  //   // device_info: {
+  //   //   name: string;
+  //   //   ip: string;
+  //   //   index: number;
+  //   // }
+  //   // server_info: {
+
+  //   // }
+  //   device_info: {
+  //     name: string;
+  //     ip: string;
+  //   }
+  //   server_unique_id: string;
+  //   raw: any;
+  // }
+
+  const newLogData = {
+    id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+    time: logBodyForFrontend.time,
+    log_type: logBodyForFrontend.log_type,
+    log_description: logBodyForFrontend.description,
+    snapshot: logBodyForFrontend.snapshot,
+    log_source: 'svms',
+    device_info: {
+      name: logBodyForFrontend.device_name,
+      id: logBodyForFrontend.device_index,
+    },
+    server_unique_id: logBodyForFrontend.server.serial + '-' + logBodyForFrontend.server.server_id,
+    raw: logBodyForFrontend
+  }
+
+  // ─── Ghi vào allLogs tổng (New_LogData shape) + emit lên FE ─────────────────
+  allLogs.push(newLogData);
+  if (allLogs.length > ALL_LOGS_MAX) allLogs.shift();
+  clientSockets.emit('new-svms-log', newLogData);
 
   // ─── CONNECTIVITY: AUTO-RECONNECT & TIMER RESET ────────────────────────────
   const logBody = logBodyForFrontend;
@@ -118,7 +160,6 @@ router.post('/api/v1/logs', async (req, res) => {
 
   // 1. Phát dữ liệu cho các Client của mình (Frontend) qua Socket.IO
   clientSockets.emit('receive-log', logData);
-
   // Track receivedCount và server_id
   const senderIp = (req.ip || '').replace('::ffff:', '');
   connections.forEach(entry => {

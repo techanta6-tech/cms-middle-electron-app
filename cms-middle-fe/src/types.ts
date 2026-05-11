@@ -13,6 +13,21 @@ export interface SystemConfig {
   be: { ip: string; port: string };
 }
 
+export interface New_LogData {
+  id?: string;
+  receive_time: number;
+  log_type: string;
+  log_description: string;
+  snapshot?: string;
+  log_source: 'svms' | 'milesight-radar' | 'sunell-camera';
+  device_info: {
+    name: string;
+    id: string;
+  }
+  server_unique_id: string;
+  raw: any;
+}
+
 export interface LogData {
   id?: string;
   time: number;
@@ -45,6 +60,41 @@ export interface AddExternalServerProps {
   mqttToEdit?: MqttServerConfig;
 }
 
+export interface NewServerData {
+  server_id: string;
+  server_name: string;
+  type: 'svms' | 'milesight-radar';
+  custom_server_name: string;
+  svms_server_info?: SVMSServerData;
+  milesight_server_info?: MqttServerConfig;
+  raw: any;
+}
+
+export interface SVMSServer {
+  id: string;
+  serial: string;
+  server_ip: string;
+  server_name: string;
+  version: string;
+  location: string;
+  day: number;
+  month: number;
+  year: number;
+}
+
+export interface SVMSServerData {
+  // og log datas
+  id: string;
+  serial: string;
+  server_ip: string;
+  server_name: string;
+  version: string;
+  location: string;
+  day: number;
+  month: number;
+  year: number;
+}
+
 export interface ServerData {
   // og log datas
   id: string;
@@ -72,6 +122,18 @@ export interface DeviceItem {
   ip: string;
   type: string;
   index: number;
+}
+
+export interface SMVSDevices {
+  server: { serial: string; server_id: string, server_name?: string };
+  devices: DeviceItem[];
+}
+
+export interface DeviceItem {
+  name: string;
+  ip: string;
+  type: string;
+  index: number;
   // connectivity monitor fields
   device_ip?: string;
   device_port?: number;
@@ -84,6 +146,19 @@ export interface DeviceData {
   devices: DeviceItem[];
   sender_ip?: string;
   lastSeen?: string;
+}
+
+export interface MQTT_Milesight_Radar {
+  tenantId: string;
+  tenantName: string;
+  applicationId: string;
+  applicationName: string;
+  deviceProfileId: string;
+  deviceProfileName: string; // VD: 'Radar_LivingRoom'
+  deviceName: string;        // VD: 'Radar_test'
+  devEui: string;            // Unique device ID — dùng để đối chiếu
+  deviceClassEnabled: string;
+  tags: Record<string, string>;
 }
 
 export interface MqttServerConfig {
@@ -135,14 +210,14 @@ export interface DeviceCameraLink {
 // ─── MQTT Log Types ──────────────────────────────────────────────────────────
 
 /** Một alarm event trong trường object.events */
-export interface MqttLogEvent {
+export interface MQTT_Milesight_LogEvent {
   alarm_type: string;   // VD: 'dwell', 'fall', 'stay', ...
   alarm_id: number;
   alarm_status: string; // VD: 'alarm_triggered', 'alarm_canceled'
 }
 
-/** Thông tin thiết bị gửi data (deviceInfo) — dùng để định danh device */
-export interface MqttDeviceInfo {
+/** Thông tin thiết bị/gửi data (deviceInfo) — dùng để định danh device */
+export interface MQTT_Milesight_DeviceInfo {
   tenantId: string;
   tenantName: string;
   applicationId: string;
@@ -156,10 +231,10 @@ export interface MqttDeviceInfo {
 }
 
 /** Toàn bộ raw payload nhận từ MQTT (ChirpStack uplink format) */
-export interface MqttLogPayload {
+export interface MQTT_Milesight_LogPayload {
   deduplicationId: string;
   time: string;
-  deviceInfo: MqttDeviceInfo;
+  deviceInfo: MQTT_Milesight_DeviceInfo;
   devAddr: string;
   adr: boolean;
   dr: number;
@@ -168,7 +243,7 @@ export interface MqttLogPayload {
   confirmed: boolean;
   data: string;             // Base64-encoded raw LoRa payload
   object: {
-    events: MqttLogEvent[];
+    events: MQTT_Milesight_LogEvent[];
     [key: string]: any;     // Các trường khác trong object (region, respiratory, ...)
   };
   rxInfo: Array<{
@@ -196,11 +271,11 @@ export interface MqttLogPayload {
 }
 
 /** Log entry được BE emit qua socket — bao gồm metadata để đối chiếu MQTT server */
-export interface MqttLogEntry {
+export interface MQTT_Milesight_LogEntry {
   time: string;
   type: 'data' | 'system';
   topic: string;            // MQTT topic nhận message
-  payload: MqttLogPayload;  // Raw payload gốc
+  payload: MQTT_Milesight_LogPayload;  // Raw payload gốc
   snapshot?: string;        // Base64 image snapshot (nếu có)
   mqttServerId: string;     // ID của MqttServerConfig — key để đối chiếu
   brokerHost?: string;

@@ -1,6 +1,6 @@
 const mqtt = require('mqtt');
 const path = require('path');
-const { mqttServers, servers, deviceCameraLinks, getClientSockets } = require('../socketState');
+const { mqttServers, servers, deviceCameraLinks, getClientSockets, allLogs, ALL_LOGS_MAX, mqttDeviceList } = require('../socketState');
 let cameraModule;
 try {
   cameraModule = require('./cameraModule');
@@ -126,26 +126,15 @@ const connectMqttServer = (serverConfig) => {
         const parsedBody = JSON.parse(message.toString());
         const dataTarget = parsedBody.payload || parsedBody;
 
-        // ── DEBUG: In cấu trúc payload để chuẩn đoán ──
-        console.log(`[MQTT][${id}] Payload keys:`, Object.keys(parsedBody));
-        if (parsedBody.object) {
-          console.log(`[MQTT][${id}] object keys:`, Object.keys(parsedBody.object));
-          console.log(`[MQTT][${id}] object.events:`, JSON.stringify(parsedBody.object.events)?.substring(0, 300));
-        } else {
-          console.log(`[MQTT][${id}] ⚠️  parsedBody.object is MISSING`);
-        }
-        // ── END DEBUG ──
-
-        // ── Device-level snapshot: tìm camera theo devEui của device gửi log ──
-        const devEui = (dataTarget?.deviceInfo?.devEui) || (parsedBody?.deviceInfo?.devEui) || '';
-        const deviceLink = devEui
-          ? deviceCameraLinks.find(l => l.devEui === devEui && l.mqttServerId === id)
-          : null;
-        // Fallback: dùng server-level cameraId nếu không tìm thấy device-level link
-        const resolvedCameraId = deviceLink?.cameraId || (entry && entry.cameraId) || null;
 
         if (dataTarget && dataTarget.object && dataTarget.object.events) {
-          const events = dataTarget.object.events;
+          // ── Device-level snapshot: tìm camera theo devEui của device gửi log ──
+          const devEui = (dataTarget?.deviceInfo?.devEui) || (parsedBody?.deviceInfo?.devEui) || '';
+          const deviceLink = devEui
+            ? deviceCameraLinks.find(l => l.devEui === devEui && l.mqttServerId === id)
+            : null;
+          // Fallback: dùng server-level cameraId nếu không tìm thấy device-level link
+          const resolvedCameraId = deviceLink?.cameraId || (entry && entry.cameraId) || null;
 
           // Snapshot cache per-message: tránh chụp trùng cùng 1 camera trong cùng 1 message
           const snapshotCache = new Map();
@@ -158,7 +147,7 @@ const connectMqttServer = (serverConfig) => {
           };
 
           // Tạo 1 log entry riêng cho mỗi event trong mảng
-          for (const event of events) {
+          for (const event of dataTarget.object.events) {
             // Lọc bỏ các sự kiện có trạng thái deactivated hoặc ignored
             const status = (event.alarm_status || '').toLowerCase();
             if (status.includes('deactivated') || status.includes('ignored')) {
@@ -195,6 +184,30 @@ const connectMqttServer = (serverConfig) => {
               }
             };
 
+            // export interface New_LogData {
+            //   id?: string;
+            //   receive_time: number;
+            //   log_type: string;
+            //   log_description: string;
+            //   snapshot?: string;
+            //   log_source: 'svms' | 'milesight-radar' | 'sunell-camera';
+            //   // device_info: {
+            //   //   name: string;
+            //   //   ip: string;
+            //   //   index: number;
+            //   // }
+            //   // server_info: {
+
+            //   // }
+            //   device_info: {
+            //     name: string;
+            //     ip: string;
+            //   }
+            //   server_unique_id: string;
+            //   raw: any;
+            // }
+
+
             const logEntry = {
               time: new Date().toISOString(),
               type: 'data',
@@ -206,6 +219,58 @@ const connectMqttServer = (serverConfig) => {
             };
             _pushDataLog(id, logEntry);
             _emitMqttLog(id, logEntry);
+
+            // ─── Ghi vào allLogs tổng (New_LogData shape) ──────────────────────────
+
+            allLogs.push(MQTT_Milesight_LogEntry);
+            if (allLogs.length > ALL_LOGS_MAX) allLogs.shift();
+
+            // ─── Upsert MQTT device vào mqttDeviceList (logic giống FE) ────────────────────
+            if (devEui) {
+              const existing = mqttDeviceList.findIndex(
+                d => d.devEui === devEui && d.mqttServerId === id
+              );
+              const newLogData = {
+                id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+                // "receive_time": "2026-04-28T09:39:59.953452708+00:00",
+                receive_time: dataTarget.time,
+                log_type: event.event_type,
+                log_description: event.event_type,
+                snapshot: snapshot || null,
+                log_source: 'milesight-radar',
+                device_info: {
+                  name: target.deviceInfo.deviceName || 'Milesight Device',
+                  id: target.deviceInfo.devEui,
+                },
+                // id dùng applicationID
+                server_unique_id: target.deviceInfoApplicationId,
+                raw: isolatedPayload,
+              }
+              // clientSockets.emit('test', {
+              //   message: 'milesight-radar new log',
+              //   newLogData
+              // })
+              const deviceEntry = {
+                devEui,
+                mqttServerId: id,
+                deviceName: dataTarget?.deviceInfo?.deviceName || '',
+                deviceProfileName: dataTarget?.deviceInfo?.deviceProfileName || '',
+                applicationId: dataTarget?.deviceInfo?.applicationId || '',
+                applicationName: dataTarget?.deviceInfo?.applicationName || '',
+                lastSeen: new Date().toISOString(),
+                raw: dataTarget?.deviceInfo || {},
+              };
+              if (existing !== -1) {
+                mqttDeviceList[existing] = deviceEntry;
+              } else {
+                mqttDeviceList.push(deviceEntry);
+              }
+              // Emit danh sách MQTT devices cập nhật lên FE
+              const clientSockets = getClientSockets();
+              if (clientSockets) {
+                clientSockets.emit('update-mqtt-milesight-devices', mqttDeviceList);
+              }
+            }
           }
         } else {
           // Valid JSON nhưng không có object.events — vẫn tạo log + yêu cầu snapshot
@@ -440,7 +505,9 @@ function _emitMqttLog(serverId, logEntry) {
 function _emitMqttServersUpdate() {
   const clientSockets = getClientSockets();
   if (clientSockets) {
-    clientSockets.emit('update-mqtt-servers', getMqttServersList());
+    const list = getMqttServersList();
+    clientSockets.emit('update-mqtt-servers', list);
+    clientSockets.emit('update-mqtt-milesight-servers', list);
   }
 }
 

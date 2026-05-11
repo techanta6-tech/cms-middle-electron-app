@@ -354,7 +354,13 @@ function Dashboard() {
     handleLinkDeviceCamera,
     handleLinkMqttServerCamera,
     gridLayout,
-    saveGridLayout
+    saveGridLayout,
+    // ─── New System Data ───
+    newSvmsLogs,
+    svmsServers: newSvmsServers,
+    svmsDevices: newSvmsDevices,
+    mqttMilesightServers,
+    mqttMilesightDevices,
   } = useSocketManager();
 
   // Grid state synced from BE
@@ -993,6 +999,12 @@ function Dashboard() {
               console.log("10. Socket Connected:", isConnected);
               console.log("11. Event Types:", eventTypes);
               console.log("12. Total Log Count:", totalLogCount);
+              console.log("=== NEW SYSTEM DATA ===");
+              console.log("13. [NEW] SVMS Logs (New_LogData):", newSvmsLogs);
+              console.log("14. [NEW] SVMS Servers (raw):", newSvmsServers);
+              console.log("15. [NEW] SVMS Devices (raw):", newSvmsDevices);
+              console.log("16. [NEW] MQTT Milesight Servers:", mqttMilesightServers);
+              console.log("17. [NEW] MQTT Milesight Devices:", mqttMilesightDevices);
 
               // === Lấy data từ BE ===
               let backendState = null;
@@ -1019,6 +1031,12 @@ function Dashboard() {
                   totalReceiveConnections: receiveServers.length,
                   socketConnected: isConnected,
                   totalLogCount,
+                  // ─── New System Data ───
+                  new_svmsLogs: newSvmsLogs.length,
+                  new_svmsServers: newSvmsServers.length,
+                  new_svmsDevices: newSvmsDevices.length,
+                  new_mqttMilesightServers: mqttMilesightServers.length,
+                  new_mqttMilesightDevices: mqttMilesightDevices.length,
                 },
                 // --- FE State ---
                 frontend: {
@@ -1032,6 +1050,12 @@ function Dashboard() {
                   receiveConnections: receiveServers,
                   systemConfig,
                   eventTypes,
+                  // ─── New System Data ───
+                  new_svmsLogs: newSvmsLogs,
+                  new_svmsServers: newSvmsServers,
+                  new_svmsDevices: newSvmsDevices,
+                  new_mqttMilesightServers: mqttMilesightServers,
+                  new_mqttMilesightDevices: mqttMilesightDevices,
                 },
                 // --- BE State (in-memory) ---
                 backend: backendState,

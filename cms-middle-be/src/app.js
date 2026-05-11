@@ -9,10 +9,10 @@ const { getCMSBackendURL } = require('./config');
 // Route imports
 const healthRoutes = require('./routes/health.routes');
 const authRoutes = require('./routes/auth.routes');
-const logsRoutes = require('./routes/logs.routes');
+const logsRoutes = require('./routes/svms/logs.routes');
 const connectionsRoutes = require('./routes/connections.routes');
-const serverRoutes = require('./routes/server.routes');
-const mqttRoutes = require('./routes/mqtt.routes');
+const serverRoutes = require('./routes/svms/server.routes');
+const mqttRoutes = require('./routes/mqtt_milesight/mqtt.routes');
 const camerasRoutes = require('./routes/cameras.routes');
 const deviceCameraLinkRoutes = require('./routes/device-camera-link.routes');
 const gridLayoutRoutes = require('./routes/grid-layout.routes');
@@ -31,8 +31,8 @@ app.post('/api/v1/config/log-saving', (req, res) => {
   if (req.body.enabled !== undefined) {
     isLogSavingEnabled = !!req.body.enabled;
   }
-  const logDir = process.env.USER_DATA_PATH 
-    ? path.join(process.env.USER_DATA_PATH, 'request_logs') 
+  const logDir = process.env.USER_DATA_PATH
+    ? path.join(process.env.USER_DATA_PATH, 'request_logs')
     : path.join(__dirname, '..', 'request_logs');
   res.json({ success: true, enabled: isLogSavingEnabled, path: logDir });
 });
@@ -101,7 +101,7 @@ app.use((req, res, next) => {
         } else {
           logDir = path.join(__dirname, '..', 'request_logs');
         }
-        
+
         if (!fs.existsSync(logDir)) {
           fs.mkdirSync(logDir, { recursive: true });
         }

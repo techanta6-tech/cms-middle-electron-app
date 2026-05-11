@@ -5,7 +5,7 @@ const { cameraDevices, getClientSockets } = require('../socketState');
 // Trong môi trường pkg, __dirname nằm trong virtual snapshot (read-only).
 // Phải dùng đường dẫn thực tế ngoài snapshot để có thể ghi file.
 const _writableBase = process.env.USER_DATA_PATH || process.cwd();
-const sampleLogsDir = path.join(_writableBase, 'sunell_logs_samples');
+const sampleLogsDir = path.join(_writableBase, '/log_samples/sunell_logs_samples');
 if (!fs.existsSync(sampleLogsDir)) {
   fs.mkdirSync(sampleLogsDir, { recursive: true });
 }

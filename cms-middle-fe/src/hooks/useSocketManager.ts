@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { socket, updateSocketUrlAsync, getBeHost, getBePort } from '../socket';
-import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
+import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink, New_LogData, SVMSServer, SMVSDevices, MQTT_Milesight_DeviceInfo } from '../types';
 import apiClient from '../api/apiClient';
 import axios from 'axios';
 
@@ -157,7 +157,7 @@ export function useSocketManager() {
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
 
   const [eventTypes, setEventTypes] = useState<string[]>(DEFAULT_EVENT_TYPES);
-  const [mqttLogs, setMqttLogs] = useState<MqttLogEntry[]>([]);
+  const [mqttLogs, setMqttLogs] = useState<MQTT_Milesight_LogEntry[]>([]);
   const [cameraDevices, setCameraDevices] = useState<MqttDeviceConfig[]>([]);
   const [deviceCameraLinks, setDeviceCameraLinks] = useState<DeviceCameraLink[]>([]);
   const [gridLayout, setGridLayout] = useState<{ grids: any[]; gridCols: number }>({ grids: [], gridCols: 3 });
@@ -165,7 +165,7 @@ export function useSocketManager() {
   // ─── Log Batching: buffer incoming logs and flush every 500ms ───────────────
   const logBufferRef = useRef<LogData[]>([]);
   const eventTypeBufferRef = useRef<Set<string>>(new Set());
-  const mqttLogBufferRef = useRef<MqttLogEntry[]>([]);
+  const mqttLogBufferRef = useRef<MQTT_Milesight_LogEntry[]>([]);
 
   useEffect(() => {
     const flushInterval = setInterval(() => {
@@ -218,6 +218,18 @@ export function useSocketManager() {
   const [sendServers, setSendServers] = useState<SystemConnection[]>([]);
   const [receiveServers, setReceiveServers] = useState<SystemConnection[]>([]);
   const [mqttServers, setMqttServers] = useState<MqttServerConfig[]>([]);
+
+  // ─── New System Data State ────────────────────────────────────────────────────────
+  /** Log tổng từ tất cả nguồn (SVMS + MQTT) theo schema New_LogData */
+  const [newSvmsLogs, setNewSvmsLogs] = useState<New_LogData[]>([]);
+  /** Danh sách SVMS server raw (full payload từ BE) */
+  const [svmsServers, setSvmsServers] = useState<SVMSServer[]>([]);
+  /** Danh sách SVMS device raw (full payload từ BE) */
+  const [svmsDevices, setSvmsDevices] = useState<SMVSDevices[]>([]);
+  /** Danh sách MQTT Milesight server config */
+  const [mqttMilesightServers, setMqttMilesightServers] = useState<MqttServerConfig[]>([]);
+  /** Danh sách MQTT Milesight device (tổng hợp từ log) */
+  const [mqttMilesightDevices, setMqttMilesightDevices] = useState<MQTT_Milesight_DeviceInfo[]>([]);
 
   useEffect(() => {
     const newBeURL = `http://${systemConfig.be.ip}:${systemConfig.be.port}`;
@@ -760,9 +772,9 @@ export function useSocketManager() {
         }
       }
 
-      // Store raw MqttLogEntry for device extraction (only data logs with payload)
+      // Store raw MQTT_Milesight_LogEntry for device extraction (only data logs with payload)
       if (!isSystem && raw.payload) {
-        const mqttLogEntry: MqttLogEntry = {
+        const MQTT_Milesight_LogEntry: MQTT_Milesight_LogEntry = {
           time: raw.time || new Date().toISOString(),
           type: raw.type || 'data',
           topic: raw.topic || '',
@@ -772,7 +784,7 @@ export function useSocketManager() {
           brokerHost: raw.brokerHost,
           brokerPort: raw.brokerPort,
         };
-        mqttLogBufferRef.current.push(mqttLogEntry);
+        mqttLogBufferRef.current.push(MQTT_Milesight_LogEntry);
       }
 
       // Use individual event (1 log = 1 event now)
@@ -815,7 +827,9 @@ export function useSocketManager() {
     socket.on('external-server-err-connect', onErrorExternalServer);
     socket.on('receive-log', onReceiveLog);
     socket.on('receive-sunell-log', onReceiveSunellLog);
-
+    socket.on('test', (data) => {
+      console.log('test data', data)
+    })
     // DEBUG: Log toàn bộ raw data Sunell camera gửi về
     const onSunellTest = (raw: any) => {
       console.log('%c[SUNELL-TEST] 📷 Raw data từ Sunell Camera:', 'color: #ff6b6b; font-weight: bold; font-size: 14px; background: #1a1a2e; padding: 4px 8px; border-radius: 4px');
@@ -860,6 +874,52 @@ export function useSocketManager() {
     };
     socket.on('debug-camera-snapshot', onDebugCameraSnapshot);
 
+    // ─── Sync initial New System Data khi socket vừa connect ─────────────────────────────────
+    const onSyncNewSystemData = (data: {
+      allLogs: New_LogData[];
+      svmsServers: SVMSServer[];
+      svmsDevices: SMVSDevices[];
+      mqttDeviceList: MQTT_Milesight_DeviceInfo[];
+    }) => {
+      console.log('%c[SOCKET] 🔄 sync-new-system-data — nhận dữ liệu khởi tạo từ BE', 'color: #a78bfa; font-weight: bold');
+      if (data.allLogs?.length) {
+        setNewSvmsLogs(prev => {
+          const merged = [...prev, ...data.allLogs];
+          return merged.length > env.MAX_LOGS_LIST ? merged.slice(-env.MAX_LOGS_LIST) : merged;
+        });
+      }
+      if (data.svmsServers?.length) setSvmsServers(data.svmsServers);
+      if (data.svmsDevices?.length) setSvmsDevices(data.svmsDevices);
+      if (data.mqttDeviceList?.length) setMqttMilesightDevices(data.mqttDeviceList);
+    };
+    socket.on('sync-new-system-data', onSyncNewSystemData);
+
+    // ─── New System Data listeners ────────────────────────────────────────────────────────
+    const onNewSvmsLog = (data: New_LogData) => {
+      setNewSvmsLogs(prev => {
+        const next = [...prev, data];
+        return next.length > env.MAX_LOGS_LIST ? next.slice(-env.MAX_LOGS_LIST) : next;
+      });
+    };
+    const onNewSvmsServers = (data: SVMSServer[]) => {
+      setSvmsServers(data);
+    };
+    const onNewSvmsDevices = (data: SMVSDevices[]) => {
+      setSvmsDevices(data);
+    };
+    const onUpdateMqttMilesightServers = (data: MqttServerConfig[]) => {
+      setMqttMilesightServers(data);
+    };
+    const onUpdateMqttMilesightDevices = (data: MQTT_Milesight_DeviceInfo[]) => {
+      setMqttMilesightDevices(data);
+    };
+
+    socket.on('new-svms-log', onNewSvmsLog);
+    socket.on('new-svms-servers', onNewSvmsServers);
+    socket.on('new-svms-devices', onNewSvmsDevices);
+    socket.on('update-mqtt-milesight-servers', onUpdateMqttMilesightServers);
+    socket.on('update-mqtt-milesight-devices', onUpdateMqttMilesightDevices);
+
     return () => {
       socket.off('external-server-connecting', onConnectingExternalServer);
       socket.off('external-server-connect', onConnectedExternalServer);
@@ -881,6 +941,12 @@ export function useSocketManager() {
       socket.off('debug-camera-snapshot', onDebugCameraSnapshot);
       socket.off('update-device-camera-links', onUpdateDeviceCameraLinks);
       socket.off('update-grid-layout', onUpdateGridLayout);
+      socket.off('new-svms-log', onNewSvmsLog);
+      socket.off('new-svms-servers', onNewSvmsServers);
+      socket.off('new-svms-devices', onNewSvmsDevices);
+      socket.off('update-mqtt-milesight-servers', onUpdateMqttMilesightServers);
+      socket.off('update-mqtt-milesight-devices', onUpdateMqttMilesightDevices);
+      socket.off('sync-new-system-data', onSyncNewSystemData);
     };
   }, []);
 
@@ -924,6 +990,12 @@ export function useSocketManager() {
     handleLinkMqttServerCamera,
     gridLayout,
     saveGridLayout,
-    fetchGridLayout
+    fetchGridLayout,
+    // ─── New System Data ───
+    newSvmsLogs,
+    svmsServers,
+    svmsDevices,
+    mqttMilesightServers,
+    mqttMilesightDevices,
   };
 }

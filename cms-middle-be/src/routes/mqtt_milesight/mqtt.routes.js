@@ -1,8 +1,8 @@
 const express = require('express');
 const crypto = require('crypto');
-const { mqttServers } = require('../socketState');
-const { connectMqttServer, disconnectMqttServer, getMqttServersList, getMqttServerLogs, publishDownlink, controlBuzzer } = require('../services/mqtt.service');
-const authMiddleware = require('../middleware/auth.middleware');
+const { mqttServers } = require('../../socketState');
+const { connectMqttServer, disconnectMqttServer, getMqttServersList, getMqttServerLogs, publishDownlink, controlBuzzer } = require('../../services/mqtt.service');
+const authMiddleware = require('../../middleware/auth.middleware');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -103,7 +103,7 @@ router.patch('/api/v1/mqtt-servers/:id', (req, res) => {
   }
 
   // Emit updated list to FE
-  const { getClientSockets } = require('../socketState');
+  const { getClientSockets } = require('../../socketState');
   const clientSockets = getClientSockets();
   if (clientSockets) {
     clientSockets.emit('update-mqtt-servers', getMqttServersList());
@@ -124,7 +124,7 @@ router.delete('/api/v1/mqtt-servers/:id', (req, res) => {
   mqttServers.splice(idx, 1);
 
   // Emit updated list to FE
-  const { getClientSockets } = require('../socketState');
+  const { getClientSockets } = require('../../socketState');
   const clientSockets = getClientSockets();
   if (clientSockets) {
     clientSockets.emit('update-mqtt-servers', getMqttServersList());

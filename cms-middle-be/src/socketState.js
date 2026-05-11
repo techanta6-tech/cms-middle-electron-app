@@ -1,5 +1,6 @@
 // ─── SHARED SOCKET STATE ──────────────────────────────────────────────────────
- const { Server } = require('socket.io');
+const { Server } = require('socket.io');
+const { allLogs, ALL_LOGS_MAX, svmsServers, svmsDevices, mqttDeviceList } = require('./newSystemDataState');
 
 /**
  * Global array to store metadata for registered external connections.
@@ -74,4 +75,21 @@ const init = (httpServer) => {
  */
 const getClientSockets = () => clientSockets;
 
-module.exports = { init, getClientSockets, connections, servers, devices, mqttServers, cameraDevices, deviceCameraLinks, gridLayout };
+module.exports = {
+  init,
+  getClientSockets,
+  // ─── Core stores ───
+  connections,
+  servers,
+  devices,
+  mqttServers,
+  cameraDevices,
+  deviceCameraLinks,
+  gridLayout,
+  // ─── Aggregated stores (re-exported from aggregatedState.js) ───
+  allLogs,
+  ALL_LOGS_MAX,
+  svmsServers,
+  svmsDevices,
+  mqttDeviceList,
+};

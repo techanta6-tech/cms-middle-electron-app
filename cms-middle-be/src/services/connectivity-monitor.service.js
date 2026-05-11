@@ -136,7 +136,7 @@ function resetServerTimer(serverId) {
         console.log(`[CONNECTIVITY] ❌ Forwarded server ${serverId} DISCONNECTED (sender removed connection or unreachable)`);
         serverEntry.connectionStatus = 'disconnected';
         emitServerStatus(serverId, 'disconnected');
-        
+
         // Disconnect TẤT CẢ devices thuộc forwarded server này
         const deviceEntry = devices.get(serverId);
         if (deviceEntry && deviceEntry.devices) {
@@ -311,7 +311,7 @@ function emitDeviceStatus(serverId, deviceIndex, status) {
  */
 async function forwardStatusUpdate(serverId) {
   // Lazy import
-  const { forwardToSendTargets } = require('../routes/server.routes');
+  const { forwardToSendTargets } = require('../routes/svms/server.routes');
 
   const serverEntry = servers.get(serverId);
   const deviceEntry = devices.get(serverId);
