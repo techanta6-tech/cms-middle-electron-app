@@ -583,6 +583,7 @@ function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
   svmsKnownEvents: SvmsKnownEvent[];
 }) {
   const { t, i18n } = useTranslation();
+  const [showEventList, setShowEventList] = useState(true);
 
   // Build SVMS_EVENTS dynamically từ registry.
   // Label: thử i18n key "app.logtype.{type_với_underscore}", nếu không có → fallback đa ngôn ngữ.
@@ -640,14 +641,22 @@ function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
 
       {/* Event Filter Section */}
       <div className="mt-5 pt-4 border-t border-outline-variant/10">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">🎛 Event Filter</span>
-          <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
-            {enabledCount}/{totalCount} {t('app.devices.radar_categories.enabled_count')}
-          </span>
-        </div>
+        <button 
+          onClick={() => setShowEventList(!showEventList)}
+          className="flex items-center justify-between w-full mb-3 p-1 rounded-md transition-colors hover:bg-white/5"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">🎛 Event Filter</span>
+            <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
+              {enabledCount}/{totalCount} {t('app.devices.radar_categories.enabled_count')}
+            </span>
+          </div>
+          <ChevronDown className={`w-3.5 h-3.5 text-on-surface-variant/50 transition-transform duration-300 ${showEventList ? 'rotate-180' : ''}`} />
+        </button>
 
-        <div className="flex flex-col gap-1.5">
+        {showEventList && (
+          <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="flex flex-col gap-1.5">
           {SVMS_EVENTS.map(evt => {
             const enabled = getEnabled(evt.code);
             return (
@@ -694,6 +703,8 @@ function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
         <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
           {t('app.devices.radar_categories.hint')}
         </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -723,13 +734,13 @@ function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera, on
       <InfoRow label={t('app.monitor.camera_id')} value={srv.cameraId || '(none)'} mono />
       <InfoRow label={t('app.monitor.devices_seen')} value={devices.length} />
       <div className="mt-4 pt-3 border-t border-outline-variant/10 flex items-center gap-3">
-        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest shrink-0">📷 {t('app.monitor.default_camera') || 'Bound Camera'}</span>
+        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest shrink-0">{t('app.monitor.default_camera') || 'Bound Camera'}</span>
         <select
           value={srv.cameraId || ''}
           onChange={(e) => onLinkMqttServerCamera(srv.id, e.target.value || null)}
           className="flex-1 text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors"
         >
-          <option value="">{t('app.monitor.no_camera_disabled')}</option>
+          <option value="">📷 {t('app.monitor.no_camera_disabled')}</option>
           {allCameras.map(cam => (
             <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
           ))}
@@ -742,6 +753,7 @@ function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera, on
 function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDeviceCamera, milesightKnownEvents }: { dev: MqttDeviceInfo; srv: MqttServerConfig; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; milesightKnownEvents: any[]; }) {
   const { t, i18n } = useTranslation();
   const [dragOverCatId, setDragOverCatId] = useState<string | null>(null);
+  const [showEventList, setShowEventList] = useState(true);
 
   const MILESIGHT_EVENTS = milesightKnownEvents.map(evt => {
     const i18nKey = `app.logtype.${evt.event_description || evt.event_type}`;
@@ -831,16 +843,24 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
       <div className="mt-5 pt-4 border-t border-outline-variant/10">
         {/* Section title */}
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
-            🎛 Event
-          </span>
-          <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
-            {totalEnabled}/{totalEvents} {t('app.devices.radar_categories.enabled_count')}
-          </span>
-        </div>
+        <button
+          onClick={() => setShowEventList(!showEventList)}
+          className="flex items-center justify-between w-full mb-3 p-1 rounded-md transition-colors hover:bg-white/5"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
+              🎛 Event
+            </span>
+            <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
+              {totalEnabled}/{totalEvents} {t('app.devices.radar_categories.enabled_count')}
+            </span>
+          </div>
+          <ChevronDown className={`w-3.5 h-3.5 text-on-surface-variant/50 transition-transform duration-300 ${showEventList ? 'rotate-180' : ''}`} />
+        </button>
 
-        <div className="flex flex-col gap-1.5">
+        {showEventList && (
+          <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="flex flex-col gap-1.5">
           {MILESIGHT_EVENTS.map((evt) => {
             const feat = getFeature(evt.code);
             const enabled = feat.enabled;
@@ -916,6 +936,8 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
         <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
           {t('app.devices.radar_categories.hint')}
         </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -925,6 +947,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
 function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfig; sunellKnownEvents: any[]; onEdit?: () => void }) {
   const { t, i18n } = useTranslation();
+  const [showEventList, setShowEventList] = useState(true);
   const features = (cam as any).features || {};
 
   const handleToggle = (code: string, value: boolean) => {
@@ -981,16 +1004,24 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
 
       {isSunell && (
         <div className="mt-5 pt-4 border-t border-outline-variant/10">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
-              🎛 Event Filter — Sunell SDK
-            </span>
-            <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
-              {enabledCount}/{totalCount} {t('app.devices.radar_categories.enabled_count')}
-            </span>
-          </div>
+          <button
+            onClick={() => setShowEventList(!showEventList)}
+            className="flex items-center justify-between w-full mb-3 p-1 rounded-md transition-colors hover:bg-white/5"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
+                🎛 Event Filter — Sunell SDK
+              </span>
+              <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
+                {enabledCount}/{totalCount} {t('app.devices.radar_categories.enabled_count')}
+              </span>
+            </div>
+            <ChevronDown className={`w-3.5 h-3.5 text-on-surface-variant/50 transition-transform duration-300 ${showEventList ? 'rotate-180' : ''}`} />
+          </button>
 
-          <div className="flex flex-col gap-1.5">
+          {showEventList && (
+            <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex flex-col gap-1.5">
             {SUNELL_EVENTS.map(evt => {
               const enabled = getEnabled(evt.code);
               return (
@@ -1017,6 +1048,8 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
           <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
             {t('app.devices.sunell_categories.hint')}
           </p>
+            </div>
+          )}
         </div>
       )}
     </div>

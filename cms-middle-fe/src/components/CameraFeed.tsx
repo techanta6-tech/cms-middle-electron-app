@@ -4,7 +4,7 @@ export function CameraFeed({ cam, onClick }: { cam: LogData, onClick: () => void
   return (
     <div
       onClick={onClick}
-      className="camera-feed-container group relative bg-surface-container-lowest overflow-hidden rounded-sm border border-outline-variant/20 shadow-inner cursor-pointer transition-all duration-300"
+      className="camera-feed-container group relative bg-surface-container-lowest overflow-hidden rounded-sm border border-outline-variant/20 shadow-inner contain h-full cursor-pointer transition-all duration-300"
     >
       <img
         src={cam.snapshot?.startsWith('data:image') ? cam.snapshot : `data:image/jpeg;base64,${cam.snapshot}`}

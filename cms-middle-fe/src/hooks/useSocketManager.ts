@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { socket, updateSocketUrlAsync, getBeHost, getBePort } from '../socket';
-import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
+import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttLogEntry, MqttDeviceConfig, DeviceCameraLink, EventTypeItem } from '../types';
 import apiClient from '../api/apiClient';
 import axios from 'axios';
 
@@ -29,91 +29,33 @@ const env = {
 
 console.log('[DEBUG_ENV] VITE_MAX_LOGS_LIST:', import.meta.env.VITE_MAX_LOGS_LIST, '->', env.MAX_LOGS_LIST);
 
-const DEFAULT_EVENT_TYPES = [
-  // ─── VMS / SVMS ───
-  // Chỉ dùng GROUP KEY ở đây. Alias (vd: 'ai.alarm.crosswire.all') đã được map trong LOG_TYPE_GROUPS.
-  'crosswire',                       // SVMS: Vượt hàng rào (alias: ai.alarm.crosswire.all)
-  'direction',                        // SVMS: Hướng di chuyển (alias: ai.alarm.direction.all)
-
-  // ─── Sunell SDK (receive-sunell-log → cameras.service.js onAlarm callback) ───
-  // 'lpr_event',                       // Sunell: phát hiện biển số (TargetDetectList Type=3)
-  // 'face_event',                      // Sunell: phát hiện khuôn mặt (TargetDetectList Type=0)
-  // 'motion_event',                    // Sunell: phát hiện chuyển động (main_type=1, sub_type=2)
-  // ⚠️ system_event: BE emit `system_event_${mainType}_${subType}` — tự add runtime qua eventTypeBufferRef
-
-  // ─── Sunell SDK — IVA sub_type mapping (main_type=6 hoặc 9, cameras.service.js IVA_SUBTYPE_MAP) ───
-  // ⚠️ IVA sub_type không nằm trong map: BE emit `iva_event_${subType}` — tự add runtime
-  // 'iva_trip_wire',                   // Sunell IVA: vượt hàng rào ảo (sub_type=21)
-  // 'iva_perimeter_intrusion',         // Sunell IVA: xâm nhập vùng cấm (sub_type=24)
-  // 'iva_double_trip_wire',            // Sunell IVA: hàng rào ảo kép (sub_type=25)
-  // 'iva_retrograde',                  // Sunell IVA: đi ngược chiều (sub_type=31)
-  // 'iva_smd',                         // Sunell IVA: phát hiện đối tượng di chuyển SMD (sub_type=22)
-  // 'iva_occlusion',                   // Sunell IVA: phân tích che khuất (sub_type=23)
-  // 'iva_loitering',                   // Sunell IVA: lảng vảng (sub_type=26)
-  // 'iva_crowd_loitering',             // Sunell IVA: đám đông lảng vảng (sub_type=27)
-  // 'iva_object_left',                 // Sunell IVA: bỏ quên đồ vật (sub_type=28)
-  // 'iva_object_removed',              // Sunell IVA: mất cắp đồ vật (sub_type=29)
-  // 'iva_abnormal_speed',              // Sunell IVA: đi quá tốc độ (sub_type=30)
-  // 'iva_illegal_parking',             // Sunell IVA: đậu xe trái phép (sub_type=32)
-  // 'iva_camera_shift',                // Sunell IVA: camera bị dời góc (sub_type=33)
-  // 'iva_signal_bad',                  // Sunell IVA: lỗi tín hiệu video AI (sub_type=34)
-
-  // ─── MQTT Radar/Sensor (receive-mqtt-log → mqtt.service.js, log_type = raw.type) ───
-  // 'data',                            // MQTT: dữ liệu cảm biến (có object.events)
-  // 'raw',                             // MQTT: payload thô (không có object.events)
-  'fall',                 // VS373: Té ngã
-  'out_of_bed',              // VS373: Rời khỏi giường
-  'dwell',                // VS373: Ở lại quá lâu
-  'motionless',               // VS373: Bất động bất thường
-  'vacant',               // VS373: Phòng trống
-  'occupied',               // VS373: Có người
-  'bradynea',               // VS373: Thở chậm bất thường
-  'tachypnea',              // VS373: Thở nhanh bất thường
-  'lying'                 // VS373: Đang nằm
-];
-
 /**
- * ─── LOG_TYP  E_GROUPS ─────────────────────────────────────────────────────────
+ * LOG_TYPE_GROUPS
  * Map từ "tên nhóm hiển thị trên Filter UI" → danh sách tất cả các giá trị
  * log_type thực tế có thể đến từ các nguồn khác nhau (SVMS, MQTT, Sunell...).
  *
- * ✅ CÁCH SỬ DỤNG:
- *
- * 1. THÊM LOẠI SỰ KIỆN MỚI HOÀN TOÀN:
- *    - Tạo một key mới trong object bên dưới.
- *    - Thêm key đó vào mảng DEFAULT_EVENT_TYPES ở trên.
- *    - Thêm key đó vào `app.logtype` trong file `i18n.ts` (cả vi và en).
- *    Ví dụ — thêm loại "Phát hiện cháy":
- *      'fire_alarm': ['fire_alarm', 'fire.alarm.all', 'FireDetected']
- *
- * 2. THÊM ALIAS MỚI CHO LOẠI SỰ KIỆN ĐÃ CÓ:
- *    - Chỉ cần bổ sung chuỗi mới vào mảng của group tương ứng.
- *    Ví dụ — SVMS version mới gửi 'ai.alarm.crosswire.v2':
- *      'crosswire': ['crosswire', 'ai.alarm.crosswire.all', 'ai.alarm.crosswire.v2']
- *
- * ⚠️ LƯU Ý:
- *    - log_type thực tế trong LogData KHÔNG bị ghi đè, giữ nguyên giá trị
- *      gốc từ thiết bị gửi về (ví dụ: 'ai.alarm.crosswire.all').
- *    - Key của group (ví dụ: 'crosswire') chỉ dùng để:
- *      a) Hiển thị tên đẹp trên Filter UI (qua i18n).
- *      b) Kiểm tra log có khớp với filter đang chọn không (qua isTypeMatched).
- *      c) Làm fallback để lấy tên hiển thị (qua getLogTypeDisplayName).
- * ─────────────────────────────────────────────────────────────────────────────
+ * KEY FORMAT: Phải trùng với prefix (bỏ svms_/milesight_/sunell_) hoặc tên nhóm.
+ * Khi nhận log_type mới không có trong group nào, nó sẽ được add thẳng vào filter.
  */
 const LOG_TYPE_GROUPS: Record<string, string[]> = {
-  'motion_event': ['motion', 'motion_event', 'a_motion_has_been_detected', 'phát_hiện_chuyển_động_(motion)'],
+  // SVMS: nhóm sự kiện với alias gốc từ thiết bị
+  'ai_alarm_crosswire_all': ['ai_alarm_crosswire_all', 'crosswire', 'ai.alarm.crosswire.all', 'iva_trip_wire'],
+  'ai_alarm_direction_all': ['ai_alarm_direction_all', 'direction', 'ai.alarm.direction.all'],
+  'ai_alarm_missing_all': ['ai_alarm_missing_all', 'ai.alarm.missing.all'],
+  'motion': ['motion', 'a_motion_has_been_detected', 'phát_hiện_chuyển_động_(motion)'],
+  'videoloss': ['videoloss'],
+  // Sunell
   'lpr_event': ['lpr_event', 'phát_hiện_biển_số_(lpr)'],
   'face_event': ['face_event', 'phát_hiện_khuôn_mặt_(face)'],
+  'motion_event': ['motion_event'],
+  'alarm_event': ['alarm_event'],
   'iva_event': ['iva_event', 'phân_tích_ai_(ivs/iva)'],
-  // SVMS AI: giữ giá trị gốc từ thiết bị, alias được map vào đây
-  'crosswire': ['crosswire', 'ai.alarm.crosswire.all', 'iva_trip_wire'],
-  'direction': ['direction', 'ai.alarm.direction.all'],
 };
 
 /**
  * Resolve raw log_type về group key nếu nó là alias trong LOG_TYPE_GROUPS.
  * Dùng khi add vào eventTypeBufferRef để tránh tạo mục filter riêng cho alias.
- * Ví dụ: 'ai.alarm.direction.all' → 'direction'
+ * Ví dụ: 'ai.alarm.direction.all' → 'ai_alarm_direction_all'
  */
 const resolveToGroupKey = (logType: string): string => {
   for (const [groupKey, members] of Object.entries(LOG_TYPE_GROUPS)) {
@@ -123,12 +65,20 @@ const resolveToGroupKey = (logType: string): string => {
 };
 
 /**
- * Kiểm tra log có thuộc filter đang chọn không (có hỗ trợ group alias).
+ * Kiểm tra log có thuộc filter đang chọn không.
+ * Hỗ trợ:
+ *  - Khớp trực tiếp (log_type === filterType)
+ *  - Khớp qua LOG_TYPE_GROUPS alias
+ *  - Khớp khi filterType là key chuẩn hóa từ registry (dấu chấm → gạch dưới)
  */
 const isTypeMatched = (logType: string, filterType: string | null) => {
   if (!filterType) return true;
-  const matched = logType === filterType || (LOG_TYPE_GROUPS[filterType]?.includes(logType) ?? false);
-  console.log(`[FILTER] "${logType}" vs "${filterType}" → ${matched ? '✅ matched' : '❌ not matched'}`);
+  const normalizedLogType = logType.replace(/\./g, '_');
+  const matched =
+    logType === filterType ||
+    normalizedLogType === filterType ||
+    (LOG_TYPE_GROUPS[filterType]?.includes(logType) ?? false) ||
+    (LOG_TYPE_GROUPS[filterType]?.includes(normalizedLogType) ?? false);
   return matched;
 };
 
@@ -136,31 +86,40 @@ const isTypeMatched = (logType: string, filterType: string | null) => {
  * Lấy tên hiển thị (đã dịch) cho một log_type bất kỳ.
  *
  * Thứ tự ưu tiên:
- *  1. Tra trực tiếp key trong i18n (ví dụ: 'crosswire', 'lpr_event').
- *  2. Tìm group chứa logType, lấy tên của group đó từ i18n
- *     (ví dụ: 'ai.alarm.crosswire.all' → group 'crosswire' → 'Hàng rào ảo').
- *  3. Fallback: trả về chính logType đó.
+ *  1. Tra trực tiếp key có tiền tố source (svms_, milesight_, sunell_).
+ *  2. Tra trực tiếp key trong i18n (ví dụ: 'crosswire', 'lpr_event').
+ *  3. Tìm group chứa logType, lấy tên của group đó từ i18n.
+ *  4. Fallback: trả về chính logType đó.
  *
- * @param logType - Giá trị log_type thực tế từ LogData (ví dụ: 'ai.alarm.crosswire.all')
+ * @param logType - Giá trị filter key từ eventTypes state (đã chuẩn hóa: dấu chấm → gạch dưới)
  * @param t       - Hàm dịch từ useTranslation()
  * @returns Chuỗi tên hiển thị đã được dịch
  */
 export const getLogTypeDisplayName = (logType: string, t: (key: string) => string): string => {
-  // Bước 1: Thử tra trực tiếp (ví dụ: 'crosswire', 'lpr_event' đã có key i18n riêng)
-  const directKey = `app.logtype.${logType}`;
+  const normalized = logType.replace(/\./g, '_');
+
+  // Bước 1: Thử tra key có tiền tố source (registry-based keys)
+  for (const prefix of ['svms_', 'milesight_', 'sunell_']) {
+    const prefixedKey = `app.logtype.${prefix}${normalized}`;
+    const result = t(prefixedKey);
+    if (result !== prefixedKey) return result;
+  }
+
+  // Bước 2: Thử tra trực tiếp
+  const directKey = `app.logtype.${normalized}`;
   const directResult = t(directKey);
   if (directResult !== directKey) return directResult;
 
-  // Bước 2: Tìm group chứa logType này, rồi dùng tên group để tra i18n
+  // Bước 3: Tìm group chứa logType này, rồi dùng tên group để tra i18n
   for (const [groupKey, members] of Object.entries(LOG_TYPE_GROUPS)) {
-    if (members.includes(logType)) {
+    if (members.includes(logType) || members.includes(normalized)) {
       const groupI18nKey = `app.logtype.${groupKey}`;
       const groupResult = t(groupI18nKey);
       if (groupResult !== groupI18nKey) return groupResult;
     }
   }
 
-  // Bước 3: Fallback — trả về chính logType
+  // Bước 4: Fallback — trả về chính logType
   return logType;
 };
 
@@ -174,12 +133,12 @@ export function useSocketManager() {
   const [totalLogCount, setTotalLogCount] = useState(0);
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
 
-  const [eventTypes, setEventTypes] = useState<string[]>(DEFAULT_EVENT_TYPES);
+  const [eventTypes, setEventTypes] = useState<EventTypeItem[]>([]);
   const [mqttLogs, setMqttLogs] = useState<MqttLogEntry[]>([]);
   const [cameraDevices, setCameraDevices] = useState<MqttDeviceConfig[]>([]);
   const [deviceCameraLinks, setDeviceCameraLinks] = useState<DeviceCameraLink[]>([]);
   const [gridLayout, setGridLayout] = useState<{ grids: any[]; gridCols: number }>({ grids: [], gridCols: 3 });
-  
+
   // SVMS per-device event feature config
   const [svmsDeviceFeatures, setSvmsDeviceFeatures] = useState<{ serverId: string; deviceIndex: string; features: Record<string, boolean> }[]>([]);
 
@@ -188,9 +147,41 @@ export function useSocketManager() {
   const [milesightKnownEvents, setMilesightKnownEvents] = useState<MilesightKnownEvent[]>([]);
   const [sunellKnownEvents, setSunellKnownEvents] = useState<SunellKnownEvent[]>([]);
 
+  // ─── Seed eventTypes filter list từ registry khi BE sync ────────────────────
+  // Mỗi lần registry thay đổi, rebuild lại danh sách filter từ JSON, sau đó
+  // merge với các event đã discovered runtime (giữ lại những gì đã tích lũy).
+  useEffect(() => {
+    const fromRegistry: EventTypeItem[] = [
+      // SVMS
+      ...svmsKnownEvents.map(e => ({
+        event_type: e.event_type.replace(/\./g, '_'),
+        log_source: 'svms' as const,
+      })),
+      // Milesight (source = 'mqtt')
+      ...milesightKnownEvents.map(e => ({
+        event_type: e.event_type.replace(/\./g, '_'),
+        log_source: 'mqtt' as const,
+      })),
+      // Sunell
+      ...sunellKnownEvents.map(e => ({
+        event_type: e.event_type.replace(/\./g, '_'),
+        log_source: 'sunell-camera' as const,
+      })),
+    ];
+    if (fromRegistry.length === 0) return;
+    setEventTypes(prev => {
+      // Merge: registry seed + event types đã discovered runtime
+      // Ưu tiên giữ log_source từ registry nếu event_type đã tồn tại
+      const map = new Map<string, EventTypeItem>();
+      prev.forEach(item => map.set(item.event_type, item));
+      fromRegistry.forEach(item => map.set(item.event_type, item)); // registry overwrites
+      return Array.from(map.values());
+    });
+  }, [svmsKnownEvents, milesightKnownEvents, sunellKnownEvents]);
+
   // ─── Log Batching: buffer incoming logs and flush every 500ms ───────────────
   const logBufferRef = useRef<LogData[]>([]);
-  const eventTypeBufferRef = useRef<Set<string>>(new Set());
+  const eventTypeBufferRef = useRef<EventTypeItem[]>([]);
   const mqttLogBufferRef = useRef<MqttLogEntry[]>([]);
 
   useEffect(() => {
@@ -211,10 +202,15 @@ export function useSocketManager() {
           return merged.length > env.MAX_LOGS_LIST ? merged.slice(-env.MAX_LOGS_LIST) : merged;
         });
       }
-      if (eventTypeBufferRef.current.size > 0) {
-        const newTypes = Array.from(eventTypeBufferRef.current);
-        eventTypeBufferRef.current.clear();
-        setEventTypes(prev => Array.from(new Set([...prev, ...newTypes])));
+      if (eventTypeBufferRef.current.length > 0) {
+        const newItems = eventTypeBufferRef.current.splice(0);
+        setEventTypes(prev => {
+          const map = new Map<string, EventTypeItem>(prev.map(item => [item.event_type, item]));
+          newItems.forEach(item => {
+            if (!map.has(item.event_type)) map.set(item.event_type, item);
+          });
+          return Array.from(map.values());
+        });
       }
     }, 500);
     return () => clearInterval(flushInterval);
@@ -672,8 +668,11 @@ export function useSocketManager() {
 
       // Push to buffer instead of direct setState — flushed every 500ms
       logBufferRef.current.push(newLog);
-      // Resolve alias → group key để tránh tạo mục filter trùng (vd: 'ai.alarm.direction.all' → 'direction')
-      eventTypeBufferRef.current.add(resolveToGroupKey(newLog.log_type));
+      // Runtime discovery: event_type mới từ SVMS sẽ có log_source='svms'
+      eventTypeBufferRef.current.push({
+        event_type: resolveToGroupKey(newLog.log_type),
+        log_source: 'svms',
+      });
     };
 
     const onReceiveSunellLog = (raw: any) => {
@@ -698,7 +697,11 @@ export function useSocketManager() {
 
       // Push to buffer
       logBufferRef.current.push(newLog);
-      eventTypeBufferRef.current.add(resolveToGroupKey(newLog.log_type));
+      // Runtime discovery: event_type mới từ Sunell sẽ có log_source='sunell-camera'
+      eventTypeBufferRef.current.push({
+        event_type: resolveToGroupKey(newLog.log_type),
+        log_source: 'sunell-camera',
+      });
     };
 
     // Cập nhật trực tiếp vào, thêm/sửa/xóa đã nằm ở server BE
@@ -844,7 +847,11 @@ export function useSocketManager() {
       }
 
       logBufferRef.current.push(newLog);
-      eventTypeBufferRef.current.add(resolveToGroupKey(newLog.log_type));
+      // Runtime discovery: event_type mới từ MQTT sẽ có log_source='mqtt'
+      eventTypeBufferRef.current.push({
+        event_type: resolveToGroupKey(newLog.log_type),
+        log_source: 'mqtt',
+      });
     };
 
     socket.on('external-server-connecting', onConnectingExternalServer);
