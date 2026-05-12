@@ -27,31 +27,62 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
     Icon = TriangleAlert;
   }
 
-  let displayDesc = log.description;
-  if (displayDesc) {
-    const descKey = displayDesc.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
-    displayDesc = t(`app.logtype.${descKey}`, {
-      defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
-    });
-  }
+  // let displayDesc = log.description;
+  // if (displayDesc) {
+  //   const descKey = displayDesc.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+  //   displayDesc = t(`app.logtype.${descKey}`, {
+  //     defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
+  //   });
+  // }
 
-  if (log.source === 'mqtt') {
-    let evt = log.raw?.event;
-    if (!evt && log.raw?.payload?.object?.events?.length > 0) {
-      evt = log.raw.payload.object.events[0];
+  // if (log.source === 'mqtt') {
+  //   let evt = log.raw?.event;
+  //   if (!evt && log.raw?.payload?.object?.events?.length > 0) {
+  //     evt = log.raw.payload.object.events[0];
+  //   }
+  //   if (evt) {
+  //     const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
+  //     if (typeVal !== undefined) {
+  //       const lowerVal = String(typeVal).toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
+  //       displayDesc = t(`app.mqtt_alarm_type.${lowerVal}`, {
+  //         defaultValue: t(`app.logtype.${lowerVal}`, { defaultValue: String(typeVal) })
+  //       });
+  //     }
+  //   }
+  // }
+
+
+  let displayType;
+  let displayDesc;
+  switch (log.source) {
+    case 'svms': {
+      const normalizedType = log.log_type.replace(/\./g, '_');
+      displayType = t(`app.logtype.svms_${normalizedType}`);
+      displayDesc = t(`app.logtype.svms_${normalizedType}_description`);
+      break;
     }
-    if (evt) {
-      const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
-      if (typeVal !== undefined) {
-        const lowerVal = String(typeVal).toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
-        displayDesc = t(`app.mqtt_alarm_type.${lowerVal}`, {
-          defaultValue: t(`app.logtype.${lowerVal}`, { defaultValue: String(typeVal) })
+    case 'mqtt': {
+      const normalizedType = log.log_type.replace(/\./g, '_');
+      displayType = t(`app.logtype.milesight_${normalizedType}`);
+      displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
+      break;
+    }
+    case 'sunell-camera': {
+      const normalizedType = log.log_type.replace(/\./g, '_');
+      displayType = t(`app.logtype.sunell_${normalizedType}`);
+      displayDesc = t(`app.logtype.sunell_${normalizedType}_description`);
+      break;
+    }
+    default:
+      displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
+      if (log.description) {
+        const descKey = log.description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+        displayDesc = t(`app.logtype.${descKey}`, {
+          defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
         });
       }
-    }
+      console.log("cant find, use: ", displayType, displayDesc, log)
   }
-
-  let displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`);
   const timeStr = new Date(log.time * 1000).toLocaleTimeString();
 
   return (
@@ -65,7 +96,7 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
         <div className={`log-entry-indicator absolute left-0 top-0 bottom-0 w-1 ${bgBorderClass}`}></div>
         <div className="flex items-start mb-1 gap-4">
           <span className={`log-entry-type text-[10px] font-bold ${colorClass} uppercase flex items-center gap-1.5  shrink-0`}>
-            <Icon className="displayType w-3.5 h-3.5" />
+            <Icon className="displayType w-3.5 h-3.5 bg-red" />
             {displayType}
           </span>
         </div>

@@ -14,6 +14,7 @@ try {
 
 const { getSnapshotForCamera } = require('./cameras.service');
 const { normalizeFeature } = require('../helpers/featureNormalizer');
+const milesightEventRegistry = require('./milesightEventRegistry.service');
 
 /** Map of active MQTT client instances, keyed by server config id */
 const mqttClients = new Map();
@@ -166,17 +167,31 @@ const connectMqttServer = (serverConfig) => {
               continue;
             }
 
-            // Event Filtering + Per-event Camera Resolution
+            // Auto-discover if new event
             const alarmType = (event.alarm_type || '').toLowerCase();
+            const isNewEvent = milesightEventRegistry.discoverEvent(alarmType);
+            if (isNewEvent) {
+              const { getClientSockets } = require('../socketState');
+              const clientSockets = getClientSockets();
+              if (clientSockets) {
+                clientSockets.emit('update-milesight-known-events', milesightEventRegistry.getEvents());
+              }
+            }
+
+            // Event Filtering + Per-event Camera Resolution
             const linkFeatures = deviceLink?.features || {};
 
-            // Danh sách event quen thuộc (whitelist)
-            const KNOWN_EVENT_CODES = ['fall', 'lying', 'occupied', 'vacant', 'dwell', 'motionless', 'out_of_bed', 'bradynea', 'tachypnea'];
-            const isKnownEvent = KNOWN_EVENT_CODES.includes(alarmType);
+            // Check if it's a known event from registry
+            const knownTypesSet = milesightEventRegistry.getKnownTypesSet();
+            const isKnownEvent = knownTypesSet.has(alarmType);
 
             let feat;
             if (isKnownEvent) {
+              const defaultEnabled = milesightEventRegistry.getDefaultEnabled(alarmType);
               feat = normalizeFeature(linkFeatures[alarmType], alarmType);
+              if (linkFeatures[alarmType] === undefined) {
+                feat.enabled = defaultEnabled; // Apply registry default if user hasn't overridden
+              }
             } else {
               // Event lạ: dùng feature __other_events__ để quyết định, mặc định tắt
               const otherFeat = normalizeFeature(linkFeatures['__other_events__'], '__other_events__');

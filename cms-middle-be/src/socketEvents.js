@@ -2,6 +2,8 @@
 const { getClientSockets, servers, devices, svmsDeviceFeatures } = require('./socketState');
 const { syncClientsToFrontend, syncConnectionsToFrontend } = require('./helpers/notify');
 const svmsEventRegistry = require('./services/svmsEventRegistry.service');
+const milesightEventRegistry = require('./services/milesightEventRegistry.service');
+const sunellEventRegistry = require('./services/sunellEventRegistry.service');
 
 /**
  * Sets up Socket.IO event listeners for the client server.
@@ -15,14 +17,12 @@ const setupSocketEvents = () => {
 
     socket.on('request-sync', () => {
       console.log(`[REQUEST-SYNC] Socket ${socket.id} requested data sync upon login.`);
-      socket.emit('receive-server-information', {
-        allServers: Object.fromEntries(servers)
-      });
-      socket.emit('receive-devices-information', {
-        allDevices: Object.fromEntries(devices)
-      });
-      // Sync danh sách event đã biết tới FE mới kết nối
+      socket.emit('receive-server-information', { allServers: Object.fromEntries(servers) });
+      socket.emit('receive-devices-information', { allDevices: Object.fromEntries(devices) });
+      socket.emit('update-svms-device-features', svmsDeviceFeatures);
       socket.emit('update-svms-known-events', svmsEventRegistry.getEvents());
+      socket.emit('update-milesight-known-events', milesightEventRegistry.getEvents());
+      socket.emit('update-sunell-known-events', sunellEventRegistry.getEvents());
     });
 
     // Khởi tạo sentCount cho socket này

@@ -23,9 +23,13 @@ const setupSocketEvents = require('./src/socketEvents');
 const { startMonitoring } = require('./src/services/check-server.service');
 const connectivityMonitor = require('./src/services/connectivity-monitor.service');
 const svmsEventRegistry = require('./src/services/svmsEventRegistry.service');
+const milesightEventRegistry = require('./src/services/milesightEventRegistry.service');
+const sunellEventRegistry = require('./src/services/sunellEventRegistry.service');
 
 // Load SVMS event registry từ file vào memory
 svmsEventRegistry.loadRegistry();
+milesightEventRegistry.loadRegistry();
+sunellEventRegistry.loadRegistry();
 
 
 const httpServer = createServer(app);

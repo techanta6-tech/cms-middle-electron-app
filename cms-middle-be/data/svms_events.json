@@ -1,22 +1,27 @@
 [
   {
-    "event_type": "videoloss",
-    "event_description": "Unknown face detected"
-  },
-  {
-    "event_type": "ai.alarm.direction.all",
-    "event_description": "Intrusion alert triggered"
+    "event_type": "motion",
+    "event_description": "motion_description",
+    "default_enabled": true
   },
   {
     "event_type": "ai.alarm.crosswire.all",
-    "event_description": "28"
+    "event_description": "ai_alarm_crosswire_all_description",
+    "default_enabled": true
+  },
+  {
+    "event_type": "ai.alarm.direction.all",
+    "event_description": "ai_alarm_direction_all_description",
+    "default_enabled": true
   },
   {
     "event_type": "ai.alarm.missing.all",
-    "event_description": "Camera reconnected after brief offline"
+    "event_description": "ai_alarm_missing_all_description",
+    "default_enabled": true
   },
   {
-    "event_type": "motion",
-    "event_description": "28"
+    "event_type": "videoloss",
+    "event_description": "videoloss_description",
+    "default_enabled": false
   }
 ]

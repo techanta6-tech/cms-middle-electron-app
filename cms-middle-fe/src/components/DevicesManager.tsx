@@ -43,6 +43,8 @@ interface DevicesManagerProps {
   handleAddExternalServer: (ip: string, port: string, mode: 'receive' | 'send') => void;
   svmsDeviceFeatures: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[];
   svmsKnownEvents: SvmsKnownEvent[];
+  milesightKnownEvents: any[];
+  sunellKnownEvents: any[];
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
@@ -50,7 +52,7 @@ export function DevicesManager({
   servers, devices, mqttServers, mqttLogs, cameraDevices,
   deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera,
   fetchCameras, handleAddMqttServer, handleAddExternalServer,
-  svmsDeviceFeatures, svmsKnownEvents
+  svmsDeviceFeatures, svmsKnownEvents, milesightKnownEvents, sunellKnownEvents
 }: DevicesManagerProps) {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<SelectedItemType | null>(null);
@@ -346,6 +348,8 @@ export function DevicesManager({
               onLinkMqttServerCamera={onLinkMqttServerCamera}
               svmsDeviceFeatures={svmsDeviceFeatures}
               svmsKnownEvents={svmsKnownEvents}
+              milesightKnownEvents={milesightKnownEvents}
+              sunellKnownEvents={sunellKnownEvents}
               onEdit={(item) => {
                 if (item.kind === 'mqtt-server') {
                   setEditingMqtt(item.data);
@@ -460,7 +464,7 @@ function EmptyHint({ text }: { text: string }) {
 }
 
 // ── Detail Panel ─────────────────────────────────────────────────────────────
-function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera, svmsDeviceFeatures, svmsKnownEvents, onEdit }: {
+function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera, svmsDeviceFeatures, svmsKnownEvents, milesightKnownEvents, sunellKnownEvents, onEdit }: {
   item: SelectedItemType;
   onClose: () => void;
   cameraDevices: MqttDeviceConfig[];
@@ -470,6 +474,8 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
   onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void;
   svmsDeviceFeatures: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[];
   svmsKnownEvents: SvmsKnownEvent[];
+  milesightKnownEvents: any[];
+  sunellKnownEvents: any[];
   onEdit?: (item: SelectedItemType) => void;
 }) {
   const { t } = useTranslation();
@@ -511,8 +517,8 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
       {item.kind === 'svms-server' && <SvmsServerDetail srv={item.data} devices={item.devices} />}
       {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} svmsDeviceFeatures={svmsDeviceFeatures} svmsKnownEvents={svmsKnownEvents} />}
       {item.kind === 'mqtt-server' && latestMqttServer && <MqttServerDetail srv={latestMqttServer} devices={item.mqttDevices} allCameras={cameraDevices} onLinkMqttServerCamera={onLinkMqttServerCamera} onEdit={() => onEdit?.(item)} />}
-      {item.kind === 'mqtt-device' && latestMqttDeviceServer && <MqttDeviceDetail dev={item.data} srv={latestMqttDeviceServer} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} />}
-      {item.kind === 'camera' && latestCam && <CameraDetail cam={latestCam} onEdit={() => onEdit?.(item)} />}
+      {item.kind === 'mqtt-device' && latestMqttDeviceServer && <MqttDeviceDetail dev={item.data} srv={latestMqttDeviceServer} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} milesightKnownEvents={milesightKnownEvents} />}
+      {item.kind === 'camera' && latestCam && <CameraDetail cam={latestCam} sunellKnownEvents={sunellKnownEvents} onEdit={() => onEdit?.(item)} />}
     </div>
   );
 }
@@ -576,16 +582,16 @@ function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
   svmsDeviceFeatures: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[];
   svmsKnownEvents: SvmsKnownEvent[];
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
-  // Build SVMS_EVENTS dynamically from registry, with i18n label fallback
+  // Build SVMS_EVENTS dynamically từ registry.
+  // Label: thử i18n key "app.logtype.{type_với_underscore}", nếu không có → fallback đa ngôn ngữ.
   const SVMS_EVENTS = svmsKnownEvents.map(evt => {
-    // Ưu tiên: i18n key có (dạng app.logtype.motion, app.logtype.ai_alarm_crosswire_all)
-    const i18nKey = `app.logtype.${evt.event_type.replace(/\./g, '_')}`;
+    const i18nKey = `app.logtype.svms_${evt.event_type.replace(/\./g, '_')}`;
     const i18nLabel = t(i18nKey);
-    const label = (i18nLabel && i18nLabel !== i18nKey)
-      ? i18nLabel
-      : (evt.event_description || evt.event_type);
+    const hasI18n = i18nLabel && i18nLabel !== i18nKey;
+    const fallback = i18n.language.startsWith('vi') ? 'Thông báo từ SVMS' : 'SVMS Alert';
+    const label = hasI18n ? i18nLabel : fallback;
     return { code: evt.event_type, label };
   });
   const OTHER_EVENTS_CODE = '__other_events__';
@@ -597,11 +603,12 @@ function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
   );
   const features = featureEntry?.features || {};
 
-  // Mặc định: chỉ event chuyển động và __other_events__ được bật
-  const SVMS_DEFAULT_ON = ['motion', 'a_motion_has_been_detected', '__other_events__'];
+  // M\u1eb7c \u0111\u1ecbnh: \u0111\u1ecdc t\u1eeb default_enabled trong registry, kh\u00f4ng hardcode
   const getEnabled = (code: string) => {
     if (features[code] !== undefined) return !!features[code];
-    return SVMS_DEFAULT_ON.includes(code);
+    if (code === '__other_events__') return true; // pseudo-event, lu\u00f4n m\u1eb7c \u0111\u1ecbnh b\u1eadt
+    const registryEvt = svmsKnownEvents.find(e => e.event_type === code);
+    return registryEvt?.default_enabled ?? false;
   };
 
   const handleToggle = (code: string, value: boolean) => {
@@ -732,48 +739,18 @@ function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera, on
   );
 }
 
-function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDeviceCamera }: { dev: MqttDeviceInfo; srv: MqttServerConfig; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; }) {
-  const { t } = useTranslation();
+function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDeviceCamera, milesightKnownEvents }: { dev: MqttDeviceInfo; srv: MqttServerConfig; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; milesightKnownEvents: any[]; }) {
+  const { t, i18n } = useTranslation();
   const [dragOverCatId, setDragOverCatId] = useState<string | null>(null);
 
-  const RADAR_CATEGORIES = [
-    {
-      id: 'accident',
-      label: t('app.devices.radar_categories.accident'),
-      colorClass: 'text-cyan-400',
-      bgClass: 'bg-cyan-500/5 border-cyan-500/10',
-      indicatorColor: 'bg-cyan-400',
-      subEvents: [
-        { code: 'fall', label: t('app.devices.radar_categories.sub_fall') },
-        { code: 'lying', label: t('app.devices.radar_categories.sub_lying') },
-      ],
-    },
-    {
-      id: 'presence',
-      label: t('app.devices.radar_categories.presence'),
-      colorClass: 'text-cyan-400',
-      bgClass: 'bg-cyan-500/5 border-cyan-500/10',
-      indicatorColor: 'bg-cyan-400',
-      subEvents: [
-        { code: 'occupied', label: t('app.devices.radar_categories.sub_occupied') },
-        { code: 'vacant', label: t('app.devices.radar_categories.sub_vacant') },
-        { code: 'dwell', label: t('app.devices.radar_categories.sub_dwell') },
-      ],
-    },
-    {
-      id: 'vital_signs',
-      label: t('app.devices.radar_categories.vital_signs'),
-      colorClass: 'text-cyan-400',
-      bgClass: 'bg-cyan-500/5 border-cyan-500/10',
-      indicatorColor: 'bg-cyan-400',
-      subEvents: [
-        { code: 'motionless', label: t('app.devices.radar_categories.sub_motionless') },
-        { code: 'out_of_bed', label: t('app.devices.radar_categories.sub_out_of_bed') },
-        { code: 'bradynea', label: t('app.devices.radar_categories.sub_bradynea') },
-        { code: 'tachypnea', label: t('app.devices.radar_categories.sub_tachypnea') },
-      ],
-    },
-  ];
+  const MILESIGHT_EVENTS = milesightKnownEvents.map(evt => {
+    const i18nKey = `app.logtype.${evt.event_description || evt.event_type}`;
+    const i18nLabel = t(i18nKey);
+    const hasI18n = i18nLabel && i18nLabel !== i18nKey;
+    const fallback = i18n.language.startsWith('vi') ? 'Thông báo MQTT' : 'MQTT Alert';
+    const label = hasI18n ? i18nLabel : fallback;
+    return { code: evt.event_type, label, defaultEnabled: evt.default_enabled };
+  });
 
   const link = deviceCameraLinks.find(l => l.devEui === dev.devEui && l.mqttServerId === srv.id);
 
@@ -785,8 +762,8 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
   // Normalize feature: hỗ trợ cả boolean cũ và object { enabled, cameraId } mới
   const getFeature = (code: string): { enabled: boolean; cameraId: string | null } => {
     const raw = features[code];
-    // Mặc định tắt tất cả, trừ té ngã (fall); __other_events__ mặc định cũng tắt
-    const defaultEnabled = code === 'fall';
+    const registryEvt = MILESIGHT_EVENTS.find(e => e.code === code);
+    const defaultEnabled = registryEvt?.defaultEnabled ?? false;
 
     if (raw === undefined || raw === null) return { enabled: defaultEnabled, cameraId: null };
     if (typeof raw === 'boolean') return { enabled: raw, cameraId: null };
@@ -812,10 +789,8 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
     });
   };
 
-  const totalEnabled = RADAR_CATEGORIES.reduce((acc, cat) => {
-    return acc + cat.subEvents.filter(sub => getFeature(sub.code).enabled).length;
-  }, 0) + (otherEventsEnabled ? 1 : 0);
-  const totalEvents = RADAR_CATEGORIES.reduce((acc, cat) => acc + cat.subEvents.length, 0) + 1; // +1 cho Sự kiện khác
+  const totalEnabled = MILESIGHT_EVENTS.filter(e => getFeature(e.code).enabled).length + (otherEventsEnabled ? 1 : 0);
+  const totalEvents = MILESIGHT_EVENTS.length + 1; // +1 cho Sự kiện khác
 
   const activeCameraId = link?.cameraId === 'none' ? null : (link?.cameraId || srv.cameraId);
   const activeCamera = activeCameraId ? allCameras.find(c => c.id === activeCameraId) : null;
@@ -865,140 +840,56 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
           </span>
         </div>
 
-        <div className="flex flex-col gap-3">
-          {RADAR_CATEGORIES.map((cat) => (
-            <div key={cat.id}
-              className={`relative rounded-md border p-3 transition-all duration-150 ${cat.bgClass} ${dragOverCatId === cat.id ? 'ring-2 ring-cyan-400/50 bg-cyan-500/10' : ''}`}
-              onDragOver={(e) => {
-                if (e.dataTransfer.types.includes('application/camera-id')) {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'link';
-                  setDragOverCatId(cat.id);
-                }
-              }}
-              onDragLeave={() => setDragOverCatId(null)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOverCatId(null);
-                const cameraId = e.dataTransfer.getData('application/camera-id');
-                if (cameraId) {
-                  const batchFeatures: Record<string, { cameraId: string }> = {};
-                  for (const sub of cat.subEvents) {
-                    batchFeatures[sub.code] = { cameraId };
-                  }
-                  socket.emit('update-device-features', {
-                    devEui: dev.devEui,
-                    mqttServerId: srv.id,
-                    features: batchFeatures,
-                  });
-                }
-              }}
-            >
-              {dragOverCatId === cat.id && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-cyan-500/5 rounded-md pointer-events-none">
-                  <div className="flex flex-col items-center gap-1">
-                    <Camera className="w-5 h-5 text-cyan-400 animate-bounce" />
-                    <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest bg-surface-container px-2 py-0.5 rounded shadow-sm">
-                      Thả để gán camera
+        <div className="flex flex-col gap-1.5">
+          {MILESIGHT_EVENTS.map((evt) => {
+            const feat = getFeature(evt.code);
+            const enabled = feat.enabled;
+
+            return (
+              <div
+                key={evt.code}
+                className="flex flex-col gap-1.5 py-1.5 border-b border-outline-variant/5 last:border-0"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 grow">
+                    <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? 'bg-cyan-400' : 'bg-on-surface-variant/30'}`} />
+                    <span className={`text-[11px] font-medium leading-tight transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'} min-w-[18%]`}>
+                      {evt.label}
                     </span>
+                    {/* Per-event camera selector — chỉ hiện khi event đang bật */}
+                    <div className="ml-3 flex items-center gap-2">
+                      <select
+                        disabled={!enabled}
+                        value={feat.cameraId || ''}
+                        onChange={(e) => handleEventCamera(evt.code, e.target.value || null)}
+                        className={`
+                          ${!enabled && 'opacity-[50%]'}
+                          transition-opacity duration-200
+                          flex-1 text-[10px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors`}
+                      >
+                        <option value="">{t('app.monitor.camera_default')}</option>
+                        {allCameras.map(cam => (
+                          <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
+
+                  {/* Enable toggle */}
+                  <button
+                    onClick={() => handleToggle(evt.code, !enabled)}
+                    className={`flex items-center w-7 h-4 rounded-full transition-colors transition-opacity cursor-pointer shrink-0 border-0 px-0.5
+                      ${enabled ? 'bg-cyan-400 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
+                    title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
+                  >
+                    <span
+                      className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200"
+                    />
+                  </button>
                 </div>
-              )}
-              {/* Category Header */}
-              {(() => {
-                const allEnabled = cat.subEvents.every(sub => getFeature(sub.code).enabled);
-                const handleGroupToggle = () => {
-                  const newValue = !allEnabled;
-                  const batchFeatures: Record<string, { enabled: boolean }> = {};
-                  for (const sub of cat.subEvents) {
-                    batchFeatures[sub.code] = { enabled: newValue };
-                  }
-                  socket.emit('update-device-features', {
-                    devEui: dev.devEui,
-                    mqttServerId: srv.id,
-                    features: batchFeatures,
-                  });
-                };
-                return (
-                  <div className={`flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-outline-variant/5`}>
-                    <div className="flex items-center gap-2">
-                      <span className={`w-1.5 h-1.5 rounded-full ${cat.indicatorColor}`} />
-                      <span className={`text-[11px] font-bold uppercase tracking-wider ${cat.colorClass}`}>
-                        {cat.label}
-                      </span>
-                    </div>
-                    <button
-                      onClick={handleGroupToggle}
-                      className={`${!allEnabled && 'opacity-50'} flex items-center w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
-                        ${allEnabled ? cat.indicatorColor + ' justify-end' : 'bg-surface-container-high justify-start '}`}
-                      title={allEnabled ? 'Tất cả đang bật — Click để tắt hết' : 'Có event đang tắt — Click để bật tất cả'}
-                    >
-                      <span
-                        className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200"
-                      />
-                    </button>
-                  </div>
-                );
-              })()}
-
-              {/* Individual sub-events list */}
-              <div className="flex flex-col gap-2">
-                {cat.subEvents.map((sub) => {
-                  const feat = getFeature(sub.code);
-                  const enabled = feat.enabled;
-                  const eventCam = feat.cameraId ? allCameras.find(c => c.id === feat.cameraId) : null;
-                  const eventCamLabel = eventCam
-                    ? ((eventCam as any).name || `${eventCam.type.toUpperCase()} - ${eventCam.cameraIp}:${eventCam.cameraPort}`)
-                    : null;
-
-                  return (
-                    <div
-                      key={sub.code}
-                      className="flex flex-col gap-1.5 py-1.5 first:pt-0 last:pb-0"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 grow">
-                          <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? cat.indicatorColor : 'bg-on-surface-variant/30'}`} />
-                          <span className={`text-[11px] font-medium leading-tight transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'} min-w-[18%]`}>
-                            {sub.label}
-                          </span>
-                          {/* Per-event camera selector — chỉ hiện khi event đang bật */}
-                          <div className="ml-3 flex items-center gap-2">
-                            <select
-                              disabled={!enabled}
-                              value={feat.cameraId || ''}
-                              onChange={(e) => handleEventCamera(sub.code, e.target.value || null)}
-                              className={`
-                                ${!enabled && 'opacity-[50%]'}
-                                transition-opacity duration-200
-                                flex-1 text-[10px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors`}
-                            >
-                              <option value="">{t('app.monitor.camera_default')}</option>
-                              {allCameras.map(cam => (
-                                <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* Enable toggle */}
-                        <button
-                          onClick={() => handleToggle(sub.code, !enabled)}
-                          className={`flex items-center w-7 h-4 rounded-full transition-colors transition-opacity cursor-pointer shrink-0 border-0 px-0.5
-                            ${enabled ? cat.indicatorColor + ' justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
-                          title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
-                        >
-                          <span
-                            className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200"
-                          />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Other Events toggle */}
@@ -1030,89 +921,38 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
   );
 }
 
-// ── Sunell Sub-event definitions ─────────────────────────────────────────────
-const SUNELL_SUBEVENTS: Record<string, { code: string; label: string }[]> = {
-  enableMotion: [
-    { code: '1/2', label: 'Phát hiện chuyển động (Motion detection)' },
-    { code: '1/9', label: 'Phát hiện thân nhiệt PIR' },
-  ],
-  enableLPR: [
-    { code: '6/37', label: 'Nhận diện biển số xe (LPR)' },
-    { code: 'detect/lpr', label: 'Luồng AI nhận diện biển số (Stream)' },
-  ],
-  enableFace: [
-    { code: 'detect/face', label: 'Phát hiện khuôn mặt qua luồng AI (Stream)' },
-    { code: 'detect/person', label: 'Phát hiện người (Person detection)' },
-  ],
-  enableIVA: [
-    { code: '6/21', label: 'Vượt hàng rào ảo (Trip Wire)' },
-    { code: '6/22', label: 'Phát hiện đối tượng di chuyển (SMD)' },
-    { code: '6/23', label: 'Camera bị che khuất (Occlusion)' },
-    { code: '6/24', label: 'Xâm nhập vùng cấm (Perimeter Intrusion)' },
-    { code: '6/25', label: 'Hàng rào ảo kép (Double Trip Wire)' },
-    { code: '6/26', label: 'Lảng vảng (Loitering)' },
-    { code: '6/27', label: 'Đám đông lảng vảng (Multi-person Loitering)' },
-    { code: '6/28', label: 'Bỏ quên đồ vật (Object Left)' },
-    { code: '6/29', label: 'Mất cắp đồ vật (Object Removed)' },
-    { code: '6/30', label: 'Quá tốc độ (Abnormal Speed)' },
-    { code: '6/31', label: 'Đi ngược chiều (Retrograde)' },
-    { code: '6/32', label: 'Đậu xe trái phép (Illegal Parking)' },
-    { code: '6/33', label: 'Camera bị dời góc (Camera Shift)' },
-    { code: '6/34', label: 'Tín hiệu video bất thường (Video Signal Bad)' },
-    { code: '9/50', label: 'CĐ thông minh - Không xác định (SMD Unknown)' },
-    { code: '9/51', label: 'CĐ thông minh - Người (SMD Human)' },
-    { code: '9/52', label: 'CĐ thông minh - Xe (SMD Vehicle)' },
-    { code: '9/53', label: 'CĐ thông minh - Xe thô sơ (SMD Non-motor)' },
-  ],
-  enableSystem: [
-    { code: '1/1', label: 'Báo động I/O' },
-    { code: '1/3', label: 'Camera bị che khuất (Camera Blocking)' },
-    { code: '1/4', label: 'Mất tín hiệu hình ảnh (Video Loss)' },
-    { code: '1/5', label: 'Rớt mạng (Network Disconnection)' },
-    { code: '1/10', label: 'Báo động cổng I/O NVR' },
-    { code: '4/2', label: 'Lỗi đọc/ghi ổ cứng' },
-    { code: '4/4', label: 'Ổ cứng đầy' },
-    { code: '4/5', label: 'Không có ổ cứng' },
-    { code: '5/2', label: 'Sai user/pass luồng dữ liệu' },
-    { code: '5/4', label: 'Đạt giới hạn số lượng kết nối luồng' },
-    { code: '7/0', label: 'Cảnh báo ngưỡng nhiệt độ (Thermal)' },
-    { code: '7/1', label: 'Báo động vượt ngưỡng nhiệt độ (Thermal)' },
-    { code: '7/4', label: 'Cảnh báo chênh lệch nhiệt (Thermal)' },
-    { code: '7/5', label: 'Báo động chênh lệch nhiệt (Thermal)' },
-    { code: '7/16', label: 'Phát hiện điểm cháy (Thermal)' },
-    { code: '7/17', label: 'Phát hiện hút thuốc (Smoking)' },
-    { code: '7/18', label: 'Phát hiện khói lửa (Smoke/Flame)' },
-  ],
-};
+// ── Camera Detail ────────────────────────────────────────────────────────────
 
-function CameraDetail({ cam, onEdit }: { cam: MqttDeviceConfig; onEdit?: () => void }) {
-  const { t } = useTranslation();
+function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfig; sunellKnownEvents: any[]; onEdit?: () => void }) {
+  const { t, i18n } = useTranslation();
   const features = (cam as any).features || {};
-  const [expandedSub, setExpandedSub] = useState<Record<string, boolean>>({});
 
-  const handleToggle = (feature: 'enableMotion' | 'enableLPR' | 'enableFace' | 'enableIVA' | 'enableSystem', value: boolean) => {
+  const handleToggle = (code: string, value: boolean) => {
     socket.emit('update-camera-features', {
       id: cam.id,
-      features: { [feature]: value }
+      features: { [code]: value }
     });
   };
 
-  const toggleSub = (key: string) =>
-    setExpandedSub(p => ({ ...p, [key]: !p[key] }));
-
   const isSunell = cam.type === 'sunell';
 
-  const featureList: {
-    key: 'enableMotion' | 'enableLPR' | 'enableFace' | 'enableIVA' | 'enableSystem';
-    label: string;
-    color: string;
-  }[] = [
-      { key: 'enableMotion', label: t('app.devices.sunell_categories.motion'), color: 'text-amber-400' },
-      { key: 'enableLPR', label: t('app.devices.sunell_categories.lpr'), color: 'text-blue-400' },
-      { key: 'enableFace', label: t('app.devices.sunell_categories.face'), color: 'text-pink-400' },
-      { key: 'enableIVA', label: t('app.devices.sunell_categories.iva'), color: 'text-purple-400' },
-      { key: 'enableSystem', label: t('app.devices.sunell_categories.system'), color: 'text-red-400' },
-    ];
+  const SUNELL_EVENTS = sunellKnownEvents.map(evt => {
+    const i18nKey = `app.logtype.${evt.event_description || evt.event_type}`;
+    const i18nLabel = t(i18nKey);
+    const hasI18n = i18nLabel && i18nLabel !== i18nKey;
+    const fallback = i18n.language.startsWith('vi') ? 'Thông báo Sunell' : 'Sunell Alert';
+    const label = hasI18n ? i18nLabel : fallback;
+    return { code: evt.event_type, label, defaultEnabled: evt.default_enabled };
+  });
+
+  const getEnabled = (code: string) => {
+    if (features[code] !== undefined) return !!features[code];
+    const registryEvt = sunellKnownEvents.find(e => e.event_type === code);
+    return registryEvt?.default_enabled ?? false;
+  };
+
+  const enabledCount = SUNELL_EVENTS.filter(e => getEnabled(e.code)).length;
+  const totalCount = SUNELL_EVENTS.length;
 
   return (
     <div className="CameraDetail flex flex-col gap-1">
@@ -1141,92 +981,39 @@ function CameraDetail({ cam, onEdit }: { cam: MqttDeviceConfig; onEdit?: () => v
 
       {isSunell && (
         <div className="mt-5 pt-4 border-t border-outline-variant/10">
-          {/* Section title */}
           <div className="flex items-center gap-2 mb-3">
             <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
               🎛 Event Filter — Sunell SDK
             </span>
             <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
-              {featureList.filter(f => features[f.key] ?? true).length}/{featureList.length} {t('app.devices.radar_categories.enabled_count')}
+              {enabledCount}/{totalCount} {t('app.devices.radar_categories.enabled_count')}
             </span>
           </div>
 
-          <div className="flex flex-col gap-1">
-            {featureList.map(({ key, label, color }) => {
-              const enabled = features[key] ?? true;
-              const subEvents = SUNELL_SUBEVENTS[key] || [];
-              const subExpanded = !!expandedSub[key];
-
+          <div className="flex flex-col gap-1.5">
+            {SUNELL_EVENTS.map(evt => {
+              const enabled = getEnabled(evt.code);
               return (
-                <div
-                  key={key}
-                  className={`rounded-md border transition-all duration-200 overflow-hidden
-                    ${enabled
-                      ? 'border-outline-variant/20 bg-surface-container/40'
-                      : 'border-outline-variant/10 bg-surface-container/10 opacity-60'
-                    }`}
-                >
-                  {/* Category row */}
-                  <div className="flex items-center gap-2 px-3 py-2.5">
-                    {/* Expand toggle */}
-                    <button
-                      onClick={() => toggleSub(key)}
-                      className="shrink-0 p-0.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer"
-                      title={subExpanded ? 'Thu gọn' : 'Xem sub-events'}
-                    >
-                      <ChevronRight
-                        className={`w-3 h-3 text-on-surface-variant transition-transform duration-200 ${subExpanded ? 'rotate-90' : ''}`}
-                      />
-                    </button>
-
-                    {/* Label */}
-                    <button
-                      onClick={() => toggleSub(key)}
-                      className="flex-1 text-left cursor-pointer"
-                    >
-                      <span className={`text-[12px] font-semibold ${enabled ? color : 'text-on-surface-variant'}`}>
-                        {label}
-                      </span>
-                      <span className="ml-2 text-[9px] font-mono text-on-surface-variant/40">
-                        {subEvents.length} {t('app.devices.sunell_categories.subevent_count')}
-                      </span>
-                    </button>
-
-                    {/* Enable toggle */}
-                    <button
-                      onClick={() => handleToggle(key, !enabled)}
-                      className={`flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
-                        ${enabled ? 'bg-primary justify-end' : 'bg-surface-container-high justify-start'}`}
-                      title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
-                    >
-                      <span
-                        className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200"
-                      />
-                    </button>
+                <div key={evt.code} className="flex items-center justify-between gap-3 py-1.5 border-b border-outline-variant/5 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? 'bg-green-500' : 'bg-on-surface-variant/30'}`} />
+                    <span className={`text-[11px] font-medium transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'}`}>
+                      {evt.label}
+                    </span>
                   </div>
-
-                  {/* Sub-event list */}
-                  {subExpanded && subEvents.length > 0 && (
-                    <div className={`border-t border-outline-variant/10 px-3 py-2 flex flex-col gap-0 ${!enabled ? 'opacity-50' : ''}`}>
-                      {subEvents.map(sub => (
-                        <div
-                          key={sub.code}
-                          className="flex items-start gap-2 py-1.5 border-b border-outline-variant/5 last:border-0"
-                        >
-                          <span className={`w-1 h-1 rounded-full shrink-0 mt-1.5 ${enabled ? color.replace('text-', 'bg-') : 'bg-on-surface-variant/30'}`} />
-                          <span className="text-[11px] text-on-surface-variant leading-tight">
-                            {sub.label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <button
+                    onClick={() => handleToggle(evt.code, !enabled)}
+                    className={`flex items-center w-7 h-4 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
+                      ${enabled ? 'bg-green-500 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
+                    title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
+                  >
+                    <span className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200" />
+                  </button>
                 </div>
               );
             })}
           </div>
 
-          {/* Footer hint */}
           <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
             {t('app.devices.sunell_categories.hint')}
           </p>

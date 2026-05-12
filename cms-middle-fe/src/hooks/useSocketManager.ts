@@ -6,7 +6,20 @@ import axios from 'axios';
 
 export interface SvmsKnownEvent {
   event_type: string;
+  event_description: string; // i18n key tham chiếu, ví dụ: 'ai_alarm_crosswire_all_description'
+  default_enabled: boolean;
+}
+
+export interface MilesightKnownEvent {
+  event_type: string;
   event_description: string;
+  default_enabled: boolean;
+}
+
+export interface SunellKnownEvent {
+  event_type: string;
+  event_description: string;
+  default_enabled: boolean;
 }
 
 const env = {
@@ -166,19 +179,14 @@ export function useSocketManager() {
   const [cameraDevices, setCameraDevices] = useState<MqttDeviceConfig[]>([]);
   const [deviceCameraLinks, setDeviceCameraLinks] = useState<DeviceCameraLink[]>([]);
   const [gridLayout, setGridLayout] = useState<{ grids: any[]; gridCols: number }>({ grids: [], gridCols: 3 });
+  
   // SVMS per-device event feature config
   const [svmsDeviceFeatures, setSvmsDeviceFeatures] = useState<{ serverId: string; deviceIndex: string; features: Record<string, boolean> }[]>([]);
 
-  // ─── SVMS Known Events (from registry file on BE) ──────────────────────────
-  // Seed mặc định để UI hiển thị ngay trước khi BE gửi danh sách qua socket.
-  const DEFAULT_SVMS_KNOWN_EVENTS: SvmsKnownEvent[] = [
-    { event_type: 'motion',                event_description: '' },
-    { event_type: 'ai.alarm.crosswire.all', event_description: '' },
-    { event_type: 'ai.alarm.direction.all', event_description: '' },
-    { event_type: 'ai.alarm.missing.all',   event_description: '' },
-    { event_type: 'videoloss',             event_description: '' },
-  ];
-  const [svmsKnownEvents, setSvmsKnownEvents] = useState<SvmsKnownEvent[]>(DEFAULT_SVMS_KNOWN_EVENTS);
+  // ─── Known Events States (Synced from BE JSON files) ───────────────────────
+  const [svmsKnownEvents, setSvmsKnownEvents] = useState<SvmsKnownEvent[]>([]);
+  const [milesightKnownEvents, setMilesightKnownEvents] = useState<MilesightKnownEvent[]>([]);
+  const [sunellKnownEvents, setSunellKnownEvents] = useState<SunellKnownEvent[]>([]);
 
   // ─── Log Batching: buffer incoming logs and flush every 500ms ───────────────
   const logBufferRef = useRef<LogData[]>([]);
@@ -381,13 +389,24 @@ export function useSocketManager() {
     fetchCameras();
     fetchDeviceCameraLinks();
     fetchGridLayout();
+    const requestSync = () => {
+      console.log('[SOCKET] Connected to BE — requesting sync');
+      socket.emit('request-sync');
+    };
+
     socket.on('connect', fetchCameras);
     socket.on('connect', fetchDeviceCameraLinks);
     socket.on('connect', fetchGridLayout);
+    socket.on('connect', requestSync);
+
+    // Phát ngay nếu đã kết nối sẵn
+    if (socket.connected) requestSync();
+
     return () => {
       socket.off('connect', fetchCameras);
       socket.off('connect', fetchDeviceCameraLinks);
       socket.off('connect', fetchGridLayout);
+      socket.off('connect', requestSync);
     };
   }, [fetchCameras, fetchDeviceCameraLinks, fetchGridLayout]);
 
@@ -642,7 +661,8 @@ export function useSocketManager() {
         ip: data.ip,
         cameraIp: data.body?.device_ip || 'SYSTEM',
         raw: data,
-        snapshot: data.body?.snapshot || data.body?.picture || (data.body?.pictures && data.body?.pictures[0]) || undefined
+        snapshot: data.body?.snapshot || data.body?.picture || (data.body?.pictures && data.body?.pictures[0]) || undefined,
+        source: 'svms'
       };
 
       if (data.ip && data.ip !== '127.0.0.1' && data.ip !== '::1') {
@@ -894,6 +914,18 @@ export function useSocketManager() {
     };
     socket.on('update-svms-known-events', onUpdateSvmsKnownEvents);
 
+    const onUpdateMilesightKnownEvents = (events: MilesightKnownEvent[]) => {
+      console.log('[SOCKET] update-milesight-known-events:', events.length, 'events');
+      if (Array.isArray(events) && events.length > 0) {
+        setMilesightKnownEvents(events);
+      }
+    };
+    socket.on('update-milesight-known-events', onUpdateMilesightKnownEvents);
+
+    socket.on('update-sunell-known-events', (data: SunellKnownEvent[]) => {
+      setSunellKnownEvents(data);
+    });
+
     return () => {
       socket.off('external-server-connecting', onConnectingExternalServer);
       socket.off('external-server-connect', onConnectedExternalServer);
@@ -917,6 +949,7 @@ export function useSocketManager() {
       socket.off('update-grid-layout', onUpdateGridLayout);
       socket.off('update-svms-device-features', onUpdateSvmsDeviceFeatures);
       socket.off('update-svms-known-events', onUpdateSvmsKnownEvents);
+      socket.off('update-milesight-known-events', onUpdateMilesightKnownEvents);
     };
   }, []);
 
@@ -963,5 +996,7 @@ export function useSocketManager() {
     fetchGridLayout,
     svmsDeviceFeatures,
     svmsKnownEvents,
+    milesightKnownEvents,
+    sunellKnownEvents,
   };
 }

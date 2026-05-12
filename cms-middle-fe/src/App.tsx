@@ -357,6 +357,8 @@ function Dashboard() {
     saveGridLayout,
     svmsDeviceFeatures,
     svmsKnownEvents,
+    milesightKnownEvents,
+    sunellKnownEvents,
   } = useSocketManager();
 
   // Grid state synced from BE
@@ -604,6 +606,8 @@ function Dashboard() {
                 handleAddExternalServer={handleAddExternalServer}
                 svmsDeviceFeatures={svmsDeviceFeatures}
                 svmsKnownEvents={svmsKnownEvents}
+                milesightKnownEvents={milesightKnownEvents}
+                sunellKnownEvents={sunellKnownEvents}
               />
             )}
           </div>
