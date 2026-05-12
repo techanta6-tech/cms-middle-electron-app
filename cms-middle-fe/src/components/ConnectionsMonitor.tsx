@@ -411,7 +411,7 @@ export function ConnectionsMonitor({
       <div className="flex-1 overflow-hidden p-6 h-full flex flex-col gap-4 min-h-0">
 
         {/* Tab Headers */}
-        <div className="flex items-center gap-2 border-b border-outline-variant/10 shrink-0">
+        {/* <div className="flex items-center gap-2 border-b border-outline-variant/10 shrink-0">
           <button
             onClick={() => setActiveTab('input')}
             className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'input' ? 'border-secondary text-secondary bg-secondary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
@@ -424,7 +424,7 @@ export function ConnectionsMonitor({
               )}
             </div>
           </button>
-          {/* <button
+          <button
             onClick={() => setActiveTab('output')}
             className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'output' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
           >
@@ -435,8 +435,8 @@ export function ConnectionsMonitor({
                 <span className="text-[9px] text-primary/70 tracking-normal font-mono leading-none">{sendServers.length} {t('app.monitor.endpoints_receiving')}</span>
               )}
             </div>
-          </button> */}
-        </div>
+          </button>
+        </div> */}
 
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-surface-container/20 border border-outline-variant/30 rounded-lg p-5">
