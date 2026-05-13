@@ -256,9 +256,6 @@ export function AlertWall({
                     <span className={`opacity-30 text-[9px] uppercase tracking-widest font-bold line-clamp-1 transition-all ${gridCols > colsBreakPoints[1] ? 'hidden' : ''}`}>
                       {gridItem?.device.device_name}
                     </span>
-                    {mqttCameraLog && (
-                      <span className="text-[10px] text-primary/80 mt-1 font-semibold">{t('app.alert_wall.has_event', 'Có sự kiện')}</span>
-                    )}
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setGrids(prev => { const c = [...prev]; delete c[idx]; return c; }); }}
@@ -271,6 +268,7 @@ export function AlertWall({
                 <>
                   <div className="no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-4 py-2">
                     <Camera className={`opacity-30 ${gridCols > colsBreakPoints[1] ? 'w-[80%] h-[80%]' : gridCols > colsBreakPoints[0] ? 'w-8 h-8' : 'w-12 h-12'} transition-all`} />
+                    
                     <span className={`opacity-30 text-[11px] uppercase tracking-widest font-bold line-clamp-1 transition-all ${gridCols > colsBreakPoints[1] ? 'hidden' : ''}`}>
                       {t('app.alert_wall.waiting_data')}
                     </span>

@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import type { EventTypeItem } from './types';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
 import { useTranslation } from 'react-i18next';
 import { ConnectionsMonitor } from './components/ConnectionsMonitor';
 import { LogPopup } from './components/LogPopup';
 import { useSocketManager } from './hooks/useSocketManager';
-import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut } from 'lucide-react';
+import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut, ChevronDown, Filter, Server, Camera } from 'lucide-react';
 import { ConfigSystem } from './components/ConfigSystem';
 import apiClient from './api/apiClient';
 import { LogEntry } from './components/LogEntry';
@@ -45,7 +46,7 @@ function LogFilter({
   mqttServers?: any[];
   mqttDevicesByServer?: Record<string, any[]>;
   cameraDevices?: any[];
-  eventTypes: string[];
+  eventTypes: EventTypeItem[];
   selectedServers: Set<string>;
   selectedDevices: Set<string>;
   selectedEventTypes: string[];
@@ -56,6 +57,9 @@ function LogFilter({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [showEventTypes, setShowEventTypes] = useState(true);
+  const [showServers, setShowServers] = useState(true);
+  const [showDevices, setShowDevices] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
 
   // Đóng khi click ra ngoài
@@ -187,133 +191,195 @@ function LogFilter({
         <div className="absolute right-3 top-[95%] z-50 bg-surface-container-high border border-outline-variant/90 shadow-lg rounded-md w-[90%] max-w-[230px] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           {/* Servers */}
           <div className="px-2 pt-2 pb-0.5">
-            <div className="flex items-center gap-1 mb-1">
-              <Cpu className="w-2.5 h-2.5 text-secondary" />
-              <span className="text-[8px] font-black uppercase tracking-widest text-secondary">{t('app.filter.servers')}</span>
-            </div>
-            {serverList.length === 0 ? (
-              <p className="text-[9px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_servers')}</p>
-            ) : (
-              <div className="flex flex-col gap-0.5">
-                {serverList.map(srv => {
-                  const id = srv.id;
-                  const checked = selectedServers.has(id);
-                  return (
-                    <button
-                      key={id}
-                      onClick={() => handleServerClick(id)}
-                      className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 first:pt-0.5 last:pb-0.5"
-                    >
-                      <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-secondary border-secondary' : 'border-outline-variant'
-                        }`}>
-                        {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
-                      </div>
-                      <span className="text-[10px] font-semibold text-on-surface shrink-0">{srv.name}</span>
-                      <span className="text-[8px] font-mono text-on-surface-variant/75 ml-auto truncate">{srv.type} - {srv.ip}</span>
-                    </button>
-                  );
-                })}
+            <button
+              onClick={() => setShowServers(!showServers)}
+              className="flex items-center justify-between w-full mb-1 p-1 rounded-md transition-colors"
+            >
+              <div className="flex items-center gap-1.5">
+                <Cpu className="w-3.5 h-3.5 text-secondary" />
+                <span className="text-[12px] font-black uppercase tracking-widest text-secondary">{t('app.filter.servers')}</span>
               </div>
+              <ChevronDown className={`w-3.5 h-3.5 text-secondary/50 transition-transform duration-300 ${showServers ? 'rotate-180' : ''}`} />
+            </button>
+            {showServers && (
+              serverList.length === 0 ? (
+                <p className="text-[11px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_servers')}</p>
+              ) : (
+                <div className="flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-200 cursor-pointer">
+                  {serverList.map(srv => {
+                    const id = srv.id;
+                    const checked = selectedServers.has(id);
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => handleServerClick(id)}
+                        className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 first:pt-0.5 last:pb-0.5"
+                      >
+                        <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-secondary border-secondary' : 'border-outline-variant'
+                          }`}>
+                          {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                        </div>
+                        <span className="text-[10px] font-semibold text-on-surface shrink-0">{srv.name}</span>
+                        <span className="text-[8px] font-mono text-on-surface-variant/75 ml-auto truncate">{srv.type} - {srv.ip}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )
             )}
           </div>
 
           <div className="mx-2 my-1 border-t border-outline-variant/10" />
 
           {/* Devices */}
-          <div className="px-2 pb-2 pt-0.5">
-            <div className="flex items-center gap-1 mb-1">
-              <MonitorSmartphone className="w-2.5 h-2.5 text-tertiary" />
-              <span className="text-[8px] font-black uppercase tracking-widest text-tertiary">{t('app.filter.devices')}</span>
-            </div>
-            {deviceList.length === 0 ? (
-              <p className="text-[9px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_devices')}</p>
-            ) : (
-              <div className="flex flex-col gap-1 max-h-36 overflow-y-auto custom-scrollbar pr-1">
-                {Object.entries(groupedDevices).map(([serverKey, devs]) => {
-                  if (!devs || devs.length === 0) return null;
-                  let groupLabel = serverKey;
-                  if (serverKey === 'SUNELL-LOCAL_sunell') {
-                    groupLabel = t('app.devices.sunell_cameras');
-                  } else if (serverKey.startsWith('SUNELL-LOCAL_')) {
-                    groupLabel = t('app.devices.cameras');
-                  } else if (serverKey.startsWith('mqtt-')) {
-                    const mqttId = serverKey.replace('mqtt-', '');
-                    const mqttSrv = (mqttServers || []).find(s => s.id === mqttId);
-                    groupLabel = `MQTT RADAR (${mqttSrv?.brokerHost || mqttId})`;
-                  } else {
-                    const srv = Object.values(servers).find(s => s.id === serverKey || s.serial === serverKey);
-                    groupLabel = `SVMS SERVER (${srv?.server_name || serverKey})`;
-                  }
-
-                  return (
-                    <div key={serverKey} id={`device-group-${serverKey}`} className="flex flex-col gap-[1px] border-b border-outline-variant/5 pb-1 mb-0.5 last:border-0 last:pb-0 last:mb-0">
-                      <div className="text-[7px] font-black uppercase tracking-widest text-on-surface/90 border-l border-outline-variant/50 pl-1 py-0 mb-0.5 mt-0.5">
-                        {groupLabel}
-                      </div>
-                      {devs.map(dev => {
-                        const uniqueKey = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
-                        const checked = selectedDevices.has(uniqueKey);
-                        return (
-                          <button
-                            key={uniqueKey}
-                            onClick={() => onToggleDevice(uniqueKey)}
-                            className="flex items-center gap-1.5 px-1 py-0.5 rounded-sm hover:bg-surface-container transition-colors w-full text-left"
-                          >
-                            <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-tertiary border-tertiary' : 'border-outline-variant'
-                              }`}>
-                              {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
-                            </div>
-                            <span className="text-[10px] font-semibold text-on-surface truncate">{dev.name}</span>
-                            <span className="text-[8px] font-mono text-on-surface/90 ml-auto shrink-0">{dev.type.charAt(0).toUpperCase() + dev.type.slice(1)}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+          <div className="px-2 pt-2 pb-0.5">
+            <button
+              onClick={() => setShowDevices(!showDevices)}
+              className="flex items-center justify-between w-full mb-1 p-1 rounded-md transition-colors"
+            >
+              <div className="flex items-center gap-1.5">
+                <MonitorSmartphone className="w-3.5 h-3.5 text-tertiary" />
+                <span className="text-[12px] font-black uppercase tracking-widest text-tertiary">{t('app.filter.devices')}</span>
               </div>
+              <ChevronDown className={`w-3.5 h-3.5 text-tertiary/50 transition-transform duration-300 ${showDevices ? 'rotate-180' : ''}`} />
+            </button>
+            {showDevices && (
+              deviceList.length === 0 ? (
+                <p className="text-[11px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_devices')}</p>
+              ) : (
+                <div className="flex flex-col gap-1 max-h-36 overflow-y-auto custom-scrollbar pr-1 animate-in fade-in slide-in-from-top-1 duration-200 cursor-pointer">
+                  {Object.entries(groupedDevices).map(([serverKey, devs]) => {
+                    if (!devs || devs.length === 0) return null;
+                    let groupLabel = serverKey;
+                    if (serverKey === 'SUNELL-LOCAL_sunell') {
+                      groupLabel = t('app.devices.sunell_cameras');
+                    } else if (serverKey.startsWith('SUNELL-LOCAL_')) {
+                      groupLabel = t('app.devices.cameras');
+                    } else if (serverKey.startsWith('mqtt-')) {
+                      const mqttId = serverKey.replace('mqtt-', '');
+                      const mqttSrv = (mqttServers || []).find(s => s.id === mqttId);
+                      groupLabel = `MQTT RADAR (${mqttSrv?.brokerHost || mqttId})`;
+                    } else {
+                      const srv = Object.values(servers).find(s => s.id === serverKey || s.serial === serverKey);
+                      groupLabel = `SVMS SERVER (${srv?.server_name || serverKey})`;
+                    }
+
+                    return (
+                      <div key={serverKey} id={`device-group-${serverKey}`} className="flex flex-col gap-[1px] border-b border-outline-variant/5 pb-1 mb-0.5 last:border-0 last:pb-0 last:mb-0">
+                        <div className="text-[7px] font-black uppercase tracking-widest text-on-surface/90 border-l border-outline-variant/50 pl-1 py-0 mb-0.5 mt-0.5">
+                          {groupLabel}
+                        </div>
+                        {devs.map(dev => {
+                          const uniqueKey = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
+                          const checked = selectedDevices.has(uniqueKey);
+                          return (
+                            <button
+                              key={uniqueKey}
+                              onClick={() => onToggleDevice(uniqueKey)}
+                              className="flex items-center gap-1.5 px-1 py-0.5 rounded-sm hover:bg-surface-container transition-colors w-full text-left"
+                            >
+                              <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-tertiary border-tertiary' : 'border-outline-variant'
+                                }`}>
+                                {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                              </div>
+                              <span className="text-[10px] font-semibold text-on-surface truncate">{dev.name}</span>
+                              <span className="text-[8px] font-mono text-on-surface/90 ml-auto shrink-0">{dev.type.charAt(0).toUpperCase() + dev.type.slice(1)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              )
             )}
           </div>
 
           <div className="mx-2 my-0.5 border-t border-outline-variant/10" />
 
           {/* Event Types */}
-          <div className="px-2 pb-2 pt-0.5">
-            <div className="flex items-center gap-1 mb-1">
-              <Terminal className="w-2.5 h-2.5 text-warning" />
-              <span className="text-[8px] font-black uppercase tracking-widest text-warning">{t('app.filter.event_types')}</span>
-            </div>
-            {eventTypes.length === 0 ? (
-              <p className="text-[9px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_event_types')}</p>
-            ) : (
-              <div className="flex flex-col gap-0.5 max-h-32 overflow-y-auto custom-scrollbar">
-                <button
-                  onClick={() => onClearEventTypes()}
-                  className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1 pt-1 first:pt-0.5"
-                >
-                  <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${selectedEventTypes.length === 0 ? 'bg-warning border-warning' : 'border-outline-variant'
-                    }`}>
-                    {selectedEventTypes.length === 0 && <Check className="w-2 h-2 text-white stroke-[3]" />}
-                  </div>
-                  <span className="text-[10px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
-                </button>
-                {eventTypes.map(type => {
-                  const checked = selectedEventTypes.includes(type);
-                  return (
-                    <button
-                      key={type}
-                      onClick={() => onToggleEventType(type)}
-                      className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 last:pb-0.5"
-                    >
-                      <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
-                        }`}>
-                        {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
-                      </div>
-                      <span className="text-[10px] font-semibold text-on-surface truncate">{t(`app.logtype.${type.toLowerCase().replace(/\./g, '')}`, { defaultValue: type })}</span>
-                    </button>
-                  );
-                })}
+          <div className="px-2 pt-2 pb-2">
+            <button
+              onClick={() => setShowEventTypes(!showEventTypes)}
+              className="flex items-center justify-between w-full mb-2 p-1 rounded-md transition-colors"
+            >
+              <div className="flex items-center gap-1.5">
+                <Terminal className="w-3.5 h-3.5 text-warning" />
+                <span className="text-[12px] font-black uppercase tracking-widest text-warning">{t('app.filter.event_types')}</span>
               </div>
+              <ChevronDown className={`w-3.5 h-3.5 text-warning/50 transition-transform duration-300 ${showEventTypes ? 'rotate-180' : ''}`} />
+            </button>
+            {showEventTypes && (
+              eventTypes.length === 0 ? (
+                <p className="text-[11px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_event_types')}</p>
+              ) : (
+                <div className="flex flex-col gap-0.5 max-h-32 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200 cursor-pointer">
+                  <button
+                    onClick={() => onClearEventTypes()}
+                    className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1 pt-1 first:pt-0.5"
+                  >
+                    <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${selectedEventTypes.length === 0 ? 'bg-warning border-warning' : 'border-outline-variant'
+                      }`}>
+                      {selectedEventTypes.length === 0 && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                    </div>
+                    <span className="text-[10px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
+                  </button>
+                  {eventTypes.map(item => {
+                    const { event_type: lt, log_source } = item;
+                    const checked = selectedEventTypes.includes(lt);
+
+                    let displayFilterType: string;
+                    if (log_source) {
+                      switch (log_source) {
+                        case 'svms': {
+                          const normalizedType = lt.replace(/\./g, '_');
+                          displayFilterType = t(`app.logtype.svms_${normalizedType}`);
+                          // fallback nếu key không tồn tại
+                          if (displayFilterType === `app.logtype.svms_${normalizedType}`) {
+                            displayFilterType = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
+                          }
+                          break;
+                        }
+                        case 'mqtt': {
+                          const normalizedType = lt.replace(/\./g, '_');
+                          displayFilterType = t(`app.logtype.milesight_${normalizedType}`);
+                          if (displayFilterType === `app.logtype.milesight_${normalizedType}`) {
+                            displayFilterType = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
+                          }
+                          break;
+                        }
+                        case 'sunell-camera': {
+                          const normalizedType = lt.replace(/\./g, '_');
+                          displayFilterType = t(`app.logtype.sunell_${normalizedType}`);
+                          if (displayFilterType === `app.logtype.sunell_${normalizedType}`) {
+                            displayFilterType = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
+                          }
+                          break;
+                        }
+                        default:
+                          displayFilterType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
+                      }
+                    } else {
+                      // Runtime-discovered event: fallback to direct key
+                      displayFilterType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
+                    }
+
+                    return (
+                      <button
+                        key={lt}
+                        onClick={() => onToggleEventType(lt)}
+                        className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 last:pb-0.5"
+                      >
+                        <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
+                          }`}>
+                          {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                        </div>
+                        <span className="text-[10px] font-semibold text-on-surface truncate">{displayFilterType}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )
             )}
           </div>
         </div>
@@ -355,6 +421,10 @@ function Dashboard() {
     handleLinkMqttServerCamera,
     gridLayout,
     saveGridLayout,
+    svmsDeviceFeatures,
+    svmsKnownEvents,
+    milesightKnownEvents,
+    sunellKnownEvents,,
     // ─── New System Data ───
     newSvmsLogs,
     svmsServers: newSvmsServers,
@@ -606,6 +676,10 @@ function Dashboard() {
                 fetchCameras={fetchCameras}
                 handleAddMqttServer={handleAddMqttServer}
                 handleAddExternalServer={handleAddExternalServer}
+                svmsDeviceFeatures={svmsDeviceFeatures}
+                svmsKnownEvents={svmsKnownEvents}
+                milesightKnownEvents={milesightKnownEvents}
+                sunellKnownEvents={sunellKnownEvents}
               />
             )}
           </div>
@@ -983,7 +1057,7 @@ function Dashboard() {
         <div className="w-px h-3 bg-outline-variant/15" />
 
         {/* MQTT Data Toggle */}
-        <div className="flex items-center gap-1.5">
+        {/* <div className="flex items-center gap-1.5">
           <button
             onClick={async () => {
               console.log("=== THÔNG TIN CHUNG TỪ PROVIDER (useSocketManager) ===");
@@ -1077,7 +1151,7 @@ function Dashboard() {
           >
             {t('app.footer.view_system_data')}
           </button>
-        </div>
+        </div> */}
 
         <div className="flex-1" />
 

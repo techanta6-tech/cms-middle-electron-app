@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { cameraDevices, getClientSockets } = require('../socketState');
+const sunellEventRegistry = require('./sunellEventRegistry.service');
 
 // Trong môi trường pkg, __dirname nằm trong virtual snapshot (read-only).
 // Phải dùng đường dẫn thực tế ngoài snapshot để có thể ghi file.
@@ -164,42 +165,71 @@ async function addCameraDevice(deviceConfig) {
           34: { logType: 'iva_signal_bad' },
         };
 
-        // --- FILTERING ---
-        let shouldProcess = false;
-
-        if (isLpr && enableLPR) {
-          shouldProcess = true;
+        // --- DETERMINE EVENT TYPE ---
+        if (isLpr) {
           logType = 'lpr_event';
           description = 'Phát hiện biển số (LPR)';
-        } else if (isFace && enableFace) {
-          shouldProcess = true;
+        } else if (isFace) {
           logType = 'face_event';
           description = 'Phát hiện khuôn mặt (Face)';
-        } else if (isMotion && enableMotion) {
-          shouldProcess = true;
+        } else if (isMotion) {
           logType = 'motion_event';
           description = (globalMainType != null && globalSubType != null)
             ? getAlarmName(globalMainType, globalSubType)
             : 'Phát hiện chuyển động (Motion)';
-        } else if (isIVA && enableIVA) {
-          shouldProcess = true;
+        } else if (isIVA) {
           const ivaInfo = IVA_SUBTYPE_MAP[ivaSubType];
           logType = ivaInfo ? ivaInfo.logType : `iva_event_${ivaSubType}`;
           description = (globalMainType != null && globalSubType != null)
             ? getAlarmName(globalMainType, globalSubType)
             : 'Phân tích AI (IVS/IVA)';
-        } else if (isSystem && enableSystem) {
-          shouldProcess = true;
+        } else if (isSystem) {
           logType = (globalMainType != null && globalSubType != null)
             ? `system_event_${globalMainType}_${globalSubType}`
             : 'system_event';
           description = (globalMainType != null && globalSubType != null)
             ? getAlarmName(globalMainType, globalSubType)
             : 'Cảnh báo hệ thống / an ninh';
+        } else {
+          return; // Bỏ qua nếu không nhận dạng được event nào
         }
 
-        // Nếu sự kiện không thuộc loại nào được bật thì bỏ qua
-        if (!shouldProcess) return;
+        // --- AUTO-DISCOVER & FILTERING ---
+        const isNewEvent = sunellEventRegistry.discoverEvent(logType);
+        if (isNewEvent) {
+          const clientSockets = getClientSockets();
+          if (clientSockets) {
+            clientSockets.emit('update-sunell-known-events', sunellEventRegistry.getEvents());
+          }
+        }
+
+        // Hỗ trợ backwards compatibility: nếu user đã set 'enableLPR', 'enableMotion' vv thì chuyển qua logType
+        const legacyMap = {
+          'lpr_event': features.enableLPR,
+          'face_event': features.enableFace,
+          'motion_event': features.enableMotion,
+        };
+        if (isIVA) legacyMap[logType] = features.enableIVA;
+        if (isSystem) legacyMap[logType] = features.enableSystem;
+
+        let shouldProcess = false;
+
+        // Ưu tiên 1: features[logType] (nếu FE update theo dạng phẳng)
+        // Ưu tiên 2: features.enableLPR/enableMotion (nếu FE dùng dạng nhóm cũ)
+        // Ưu tiên 3: sunellEventRegistry.getDefaultEnabled
+        if (features[logType] !== undefined) {
+          shouldProcess = !!features[logType];
+        } else if (legacyMap[logType] !== undefined) {
+          shouldProcess = !!legacyMap[logType];
+        } else {
+          shouldProcess = sunellEventRegistry.getDefaultEnabled(logType);
+        }
+
+        // Nếu sự kiện không được bật thì bỏ qua
+        if (!shouldProcess) {
+          console.log(`[Camera-${id}] Bỏ qua sự kiện bị vô hiệu hóa: ${logType}`);
+          return;
+        }
 
         // --- FALLBACK SNAPSHOT ---
         // Nếu sự kiện lọt qua được bộ lọc mà chưa có ảnh từ SDK, ta tiến hành chụp RTSP
@@ -425,7 +455,7 @@ function updateCameraFeatures(deviceId, features) {
   if (!device) return { success: false, error: 'Device not found' };
 
   if (!device.features) {
-    device.features = { enableMotion: true, enableLPR: true };
+    device.features = {};
   }
 
   Object.assign(device.features, features);
@@ -446,7 +476,7 @@ function _sanitizeDevice(d) {
     rtspUrl: d.rtspUrl || null,
     status: d.status,
     handle: d.handle,
-    features: d.features || { enableMotion: true, enableLPR: true },
+    features: d.features || {},
   };
 }
 

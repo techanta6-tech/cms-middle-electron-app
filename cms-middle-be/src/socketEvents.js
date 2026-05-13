@@ -1,6 +1,9 @@
-// ─── SOCKET SERVER EVENTS (BE↔FE only) ───────────────────────────────────────
-const { getClientSockets, servers, devices, allLogs, svmsServers, svmsDevices, mqttDeviceList } = require('./socketState');
+// ─── SOCKET SERVER EVENTS (BE↔FE only) ─────────────────────────────────────────────
+const { getClientSockets, servers, devices, allLogs, svmsServers, svmsDevices, mqttDeviceList, svmsDeviceFeatures } = require('./socketState');
 const { syncClientsToFrontend, syncConnectionsToFrontend } = require('./helpers/notify');
+const svmsEventRegistry = require('./services/svmsEventRegistry.service');
+const milesightEventRegistry = require('./services/milesightEventRegistry.service');
+const sunellEventRegistry = require('./services/sunellEventRegistry.service');
 
 /**
  * Sets up Socket.IO event listeners for the client server.
@@ -14,12 +17,12 @@ const setupSocketEvents = () => {
 
     socket.on('request-sync', () => {
       console.log(`[REQUEST-SYNC] Socket ${socket.id} requested data sync upon login.`);
-      socket.emit('receive-server-information', {
-        allServers: Object.fromEntries(servers)
-      });
-      socket.emit('receive-devices-information', {
-        allDevices: Object.fromEntries(devices)
-      });
+      socket.emit('receive-server-information', { allServers: Object.fromEntries(servers) });
+      socket.emit('receive-devices-information', { allDevices: Object.fromEntries(devices) });
+      socket.emit('update-svms-device-features', svmsDeviceFeatures);
+      socket.emit('update-svms-known-events', svmsEventRegistry.getEvents());
+      socket.emit('update-milesight-known-events', milesightEventRegistry.getEvents());
+      socket.emit('update-sunell-known-events', sunellEventRegistry.getEvents());
     });
 
     // Khởi tạo sentCount cho socket này
@@ -85,6 +88,23 @@ const setupSocketEvents = () => {
 
       console.log(`[SOCKET] Updated features for device ${devEui}:`, link.features);
       clientSockets.emit('update-device-camera-links', [...deviceCameraLinks]);
+    });
+
+    socket.on('update-svms-device-features', ({ serverId, deviceIndex, features }) => {
+      if (!serverId || deviceIndex == null) return;
+      const key = `${serverId}::${deviceIndex}`;
+      let entry = svmsDeviceFeatures.find(e => e.serverId === serverId && String(e.deviceIndex) === String(deviceIndex));
+      if (!entry) {
+        entry = { serverId, deviceIndex: String(deviceIndex), features: {} };
+        svmsDeviceFeatures.push(entry);
+      }
+      if (!entry.features) entry.features = {};
+      // Merge: value là boolean
+      for (const [code, value] of Object.entries(features)) {
+        entry.features[code] = !!value;
+      }
+      console.log(`[SOCKET] Updated SVMS device features for ${key}:`, entry.features);
+      clientSockets.emit('update-svms-device-features', [...svmsDeviceFeatures]);
     });
 
     socket.on('disconnect', () => {

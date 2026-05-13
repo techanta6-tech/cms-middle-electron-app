@@ -13,30 +13,30 @@
 const axios = require('axios');
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-const BE_URL   = 'http://localhost:5050';
+const BE_URL = 'http://localhost:5050';
 const INTERVAL = 5000; // ms giữa mỗi log
 
 // Thông tin giả lập
 const FAKE_SERVER = {
-  id:          'SIM-SERVER-001',
-  serial:      'SIM-SERVER-001',
-  server_id:   'SIM-SERVER-001',
-  server_ip:   '192.168.99.1',
+  id: 'SIM-SERVER-001',
+  serial: 'SIM-SERVER-001',
+  server_id: 'SIM-SERVER-001',
+  server_ip: '192.168.99.1',
   server_name: '(Giả lập) Main SVMS Server',
-  version:     '1.0.0-sim',
-  location:    'Phòng Lab - Tầng 3',
-  day:   1,
+  version: '1.0.0-sim',
+  location: 'Phòng Lab - Tầng 3',
+  day: 1,
   month: 1,
-  year:  2025,
+  year: 2025,
   svms_ipv4_ip: '192.168.99.1',
 };
 
 const FAKE_DEVICE = {
-  index:       1,
-  name:        '(Giả lập) Camera Hành Lang',
-  ip:          '192.168.99.101:2000',
-  type:        'camera',
-  device_ip:   '192.168.99.101',
+  index: 1,
+  name: '(Giả lập) Camera Hành Lang',
+  ip: '192.168.99.101:2000',
+  type: 'camera',
+  device_ip: '192.168.99.101',
   device_port: 2000,
   // ← MARK: set này là 'connected'. Khi test disconnect, đổi thành 'disconnected'
   // connectionStatus: 'disconnected',
@@ -44,19 +44,26 @@ const FAKE_DEVICE = {
 
 const FAKE_DEVICES_PAYLOAD = {
   server: {
-    serial:    FAKE_SERVER.serial,
+    serial: FAKE_SERVER.serial,
     server_id: FAKE_SERVER.id,
   },
   devices: [FAKE_DEVICE],
 };
 
+// 'ai.alarm.crosswire.all',
+// 'ai.alarm.direction.all',
+// 'ai.alarm.missing.all',
+// 'videoloss',
+
 // ─── LOG TEMPLATES ────────────────────────────────────────────────────────────
 const LOG_TYPES = [
-  { log_type: 'motion.detection',              description: 'Motion detected in frame' },
-  { log_type: 'crosswire.counting.vehicle.result', description: String(Math.floor(Math.random() * 100)) },
-  { log_type: 'intrusion.alert',               description: 'Intrusion alert triggered' },
-  { log_type: 'camera.offline',                description: 'Camera reconnected after brief offline' },
-  { log_type: 'face.recognition.result',       description: 'Unknown face detected' },
+  { log_type: 'ai.alarm.crosswire.all', description: String(Math.floor(Math.random() * 100)) },
+  { log_type: 'ai.alarm.direction.all', description: 'Intrusion alert triggered' },
+  { log_type: 'ai.alarm.missing.all', description: 'Camera reconnected after brief offline' },
+  { log_type: 'videoloss', description: 'Unknown face detected' },
+  { log_type: 'ai.alarm.crosswire.all', description: String(Math.floor(Math.random() * 100)) },
+  { log_type: 'motion', description: String(Math.floor(Math.random() * 100)) },
+  { log_type: 'motion', description: String(Math.floor(Math.random() * 100)) },
 ];
 
 let logSequence = 0;
@@ -67,18 +74,18 @@ function buildLogPayload() {
 
   return {
     server: {
-      serial:    FAKE_SERVER.serial,
+      serial: FAKE_SERVER.serial,
       server_id: FAKE_SERVER.id,
     },
-    time:        Math.floor(Date.now() / 1000),
-    server_id:   FAKE_SERVER.id,
+    time: Math.floor(Date.now() / 1000),
+    server_id: FAKE_SERVER.id,
     device_index: FAKE_DEVICE.index,
-    device_ip:   FAKE_DEVICE.ip,
+    device_ip: FAKE_DEVICE.ip,
     device_type: FAKE_DEVICE.type,
     device_name: FAKE_DEVICE.name,
-    log_type:    template.log_type,
+    log_type: template.log_type,
     description: template.description,
-    snapshot:    '', // ← bỏ trống theo yêu cầu
+    snapshot: '', // ← bỏ trống theo yêu cầu
   };
 }
 
@@ -88,7 +95,7 @@ let accessToken = null;
 async function login() {
   try {
     const res = await axios.post(`${BE_URL}/api/v1/login`, {
-      email:    'admin@cms.com',
+      email: 'admin@cms.com',
       password: 'admin1234',
     }, { timeout: 5000 });
 

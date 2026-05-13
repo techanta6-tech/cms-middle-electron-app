@@ -89,31 +89,86 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
   const renderEventSummary = () => {
     if (log.raw?.payload?.object?.events?.length > 0) {
       return log.raw.payload.object.events.map((evt: any, idx: number) => {
-        const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
-        const statusVal = evt.status !== undefined ? evt.status : evt.alarm_status;
-        const typeStr = typeVal !== undefined ? t(`app.mqtt_alarm_type.${typeVal}`, { defaultValue: String(typeVal) }) : t('app.log_popup.unknown_type');
-        const statusStr = statusVal !== undefined ? t(`app.mqtt_alarm_status.${statusVal}`, { defaultValue: String(statusVal) }) : t('app.log_popup.unknown_status');
+        let displayType, displayDesc;
+        switch (log.source) {
+          case 'svms': {
+            const normalizedType = log.log_type.replace(/\./g, '_');
+            displayType = t(`app.logtype.svms_${normalizedType}`);
+            displayDesc = t(`app.logtype.svms_${normalizedType}_description`);
+            break;
+          }
+          case 'mqtt': {
+            const normalizedType = log.log_type.replace(/\./g, '_');
+            displayType = t(`app.logtype.milesight_${normalizedType}`);
+            displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
+            break;
+          }
+          case 'sunell-camera': {
+            const normalizedType = log.log_type.replace(/\./g, '_');
+            displayType = t(`app.logtype.sunell_${normalizedType}`);
+            displayDesc = t(`app.logtype.sunell_${normalizedType}_description`);
+            break;
+          }
+          default:
+            displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
+            if (log.description) {
+              const descKey = log.description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+              displayDesc = t(`app.logtype.${descKey}`, {
+                defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
+              });
+            }
+        }
         return (
           <span key={idx} className="flex items-center gap-2">
             {idx > 0 && <span className="text-on-surface-variant/50">•</span>}
-            <span className="text-amber-400">{statusStr}</span>
+            <span className="text-amber-400">{displayType}</span>
             <span className="text-on-surface-variant/50">|</span>
-            <span className="text-cyan-400">{typeStr}</span>
+            <span className="text-cyan-400">{displayDesc}</span>
           </span>
         );
       });
     } else if (log.raw?.body?.log_type || log.log_type) {
+      let displayType, displayDesc;
+      switch (log.source) {
+        case 'svms': {
+          const normalizedType = log.log_type.replace(/\./g, '_');
+          displayType = t(`app.logtype.svms_${normalizedType}`);
+          displayDesc = t(`app.logtype.svms_${normalizedType}_description`);
+          break;
+        }
+        case 'mqtt': {
+          const normalizedType = log.log_type.replace(/\./g, '_');
+          displayType = t(`app.logtype.milesight_${normalizedType}`);
+          displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
+          break;
+        }
+        case 'sunell-camera': {
+          const normalizedType = log.log_type.replace(/\./g, '_');
+          displayType = t(`app.logtype.sunell_${normalizedType}`);
+          displayDesc = t(`app.logtype.sunell_${normalizedType}_description`);
+          break;
+        }
+        default:
+          displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
+          if (log.description) {
+            const descKey = log.description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+            displayDesc = t(`app.logtype.${descKey}`, {
+              defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
+            });
+          }
+          console.log("cant find, use: ", displayType, displayDesc, log)
+      }
       // const typeStr = t(`app.logtype.${(log.raw?.body?.log_type || log.log_type).toLowerCase()}`, { defaultValue: (log.raw?.body?.log_type || log.log_type).toLowerCase() });
       const typeStr = allMetadata.find(item => item.label === t('app.log_popup.log_type'))?.value;
       // const descStr = (log.raw?.body?.description || log.description) ? t(`app.logtype.${(log.raw?.body?.description || log.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.raw?.body?.description || log.description).toLowerCase() }) : '';
       const descStr = allMetadata.find(item => item.label === t('app.log_popup.description'))?.value;
       return (
         <span className="flex items-center gap-2">
-          <span className="text-cyan-400">{typeStr}</span>
-          {descStr && (
+          <span className="text-cyan-400">{displayType}</span>
+          {displayDesc && (
             <>
               <span className="text-on-surface-variant/50">:</span>
-              <span className="text-amber-400">{descStr}</span>
+              <span className="text-amber-400">{displayDesc}</span>
             </>
           )}
         </span>

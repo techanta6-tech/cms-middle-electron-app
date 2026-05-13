@@ -55,6 +55,13 @@ const deviceCameraLinks = [];
 const gridLayout = { grids: [], gridCols: 3 };
 
 /**
+ * In-memory store for per-device event feature config for SVMS devices.
+ * Structure: [{ serverId: string, deviceIndex: string, features: Record<string, boolean> }]
+ * features key = log_type (e.g. 'crosswire', 'motion'), value = boolean enabled
+ */
+const svmsDeviceFeatures = [];
+
+/**
  * Global variable to hold the Socket.IO server instance.
  */
 let clientSockets = null;
@@ -85,7 +92,7 @@ module.exports = {
   mqttServers,
   cameraDevices,
   deviceCameraLinks,
-  gridLayout,
+  gridLayout, svmsDeviceFeatures,
   // ─── Aggregated stores (re-exported from aggregatedState.js) ───
   allLogs,
   ALL_LOGS_MAX,

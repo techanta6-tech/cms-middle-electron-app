@@ -2,7 +2,7 @@ const path = require('path');
 require('dotenv').config(); // Load biến môi trường của BE (cms-middle-be/.env)
 require('dotenv').config({ path: path.join(__dirname, '../.env.generated') }); // Đè các thông số IP/Port chung từ root
 if (process.env.USER_DATA_PATH) {
-  require('dotenv').config({ path: path.join(process.env.USER_DATA_PATH, '.env.generated') }); 
+  require('dotenv').config({ path: path.join(process.env.USER_DATA_PATH, '.env.generated') });
 }
 
 // Global error handlers to prevent abrupt crashes
@@ -22,6 +22,15 @@ const socketState = require('./src/socketState');
 const setupSocketEvents = require('./src/socketEvents');
 const { startMonitoring } = require('./src/services/check-server.service');
 const connectivityMonitor = require('./src/services/connectivity-monitor.service');
+const svmsEventRegistry = require('./src/services/svmsEventRegistry.service');
+const milesightEventRegistry = require('./src/services/milesightEventRegistry.service');
+const sunellEventRegistry = require('./src/services/sunellEventRegistry.service');
+
+// Load SVMS event registry từ file vào memory
+svmsEventRegistry.loadRegistry();
+milesightEventRegistry.loadRegistry();
+sunellEventRegistry.loadRegistry();
+
 
 const httpServer = createServer(app);
 

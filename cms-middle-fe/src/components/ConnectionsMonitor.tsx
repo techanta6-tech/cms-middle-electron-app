@@ -67,7 +67,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('__all__');
   const [displayLimit, setDisplayLimit] = useState(30);
-
+  const log_source = logs[0]?.source || null;
   // Extract unique log_type values
   const logTypes = useMemo(() => {
     const types = new Set<string>();
@@ -127,9 +127,34 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
           >
             <option value="__all__">{t('app.monitor.all_types')}</option>
             {logTypes.map(lt => {
+
               const translatedType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
+              let displayFilterType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
+
+              if (log_source) {
+                switch (log_source) {
+                  case 'svms': {
+                    const normalizedType = lt.replace(/\./g, '_');
+                    displayFilterType = t(`app.logtype.svms_${normalizedType}`);
+
+                    break;
+                  }
+                  case 'mqtt': {
+                    const normalizedType = lt.replace(/\./g, '_');
+                    displayFilterType = t(`app.logtype.milesight_${normalizedType}`);
+                    break;
+                  }
+                  case 'sunell-camera': {
+                    const normalizedType = lt.replace(/\./g, '_');
+                    displayFilterType = t(`app.logtype.sunell_${normalizedType}`);
+                    break;
+                  }
+                  default:
+                    displayFilterType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
+                }
+              }
               return (
-                <option key={lt} value={lt}>{translatedType}</option>
+                <option key={lt} value={lt}>{displayFilterType}</option>
               );
             })}
           </select>
@@ -149,40 +174,72 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
         ) : (
           <div className="divide-y divide-outline-variant/5">
             {displayedLogs.map((log, i) => {
-              let displayDesc = log.description;
-              if (displayDesc) {
-                const descKey = displayDesc.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
-                displayDesc = t(`app.logtype.${descKey}`, {
-                  defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
-                });
-              }
+              // let displayDesc = log.description;
+              // if (displayDesc) {
+              //   const descKey = displayDesc.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+              //   displayDesc = t(`app.logtype.${descKey}`, {
+              //     defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
+              //   });
+              // }
 
-              if (log.source === 'mqtt') {
-                let evt = log.raw?.event;
-                if (!evt && log.raw?.payload?.object?.events?.length > 0) {
-                  evt = log.raw.payload.object.events[0];
+              // if (log.source === 'mqtt') {
+              //   let evt = log.raw?.event;
+              //   if (!evt && log.raw?.payload?.object?.events?.length > 0) {
+              //     evt = log.raw.payload.object.events[0];
+              //   }
+              //   if (evt) {
+              //     const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
+              //     if (typeVal !== undefined) {
+              //       const lowerVal = String(typeVal).toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
+              //       displayDesc = t(`app.mqtt_alarm_type.${lowerVal}`, {
+              //         defaultValue: t(`app.logtype.${lowerVal}`, { defaultValue: String(typeVal) })
+              //       });
+              //     }
+              //   }
+              // }
+
+              // const displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type || 'LOG').toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, {
+              //   defaultValue: log.log_type || 'LOG'
+              // });
+
+              let displayType, displayDesc;
+
+              switch (log.source) {
+                case 'svms': {
+                  const normalizedType = log.log_type.replace(/\./g, '_');
+                  displayType = t(`app.logtype.svms_${normalizedType}`);
+                  displayDesc = t(`app.logtype.svms_${normalizedType}_description`);
+                  break;
                 }
-                if (evt) {
-                  const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
-                  if (typeVal !== undefined) {
-                    const lowerVal = String(typeVal).toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
-                    displayDesc = t(`app.mqtt_alarm_type.${lowerVal}`, {
-                      defaultValue: t(`app.logtype.${lowerVal}`, { defaultValue: String(typeVal) })
+                case 'mqtt': {
+                  const normalizedType = log.log_type.replace(/\./g, '_');
+                  displayType = t(`app.logtype.milesight_${normalizedType}`);
+                  displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
+                  break;
+                }
+                case 'sunell-camera': {
+                  const normalizedType = log.log_type.replace(/\./g, '_');
+                  displayType = t(`app.logtype.sunell_${normalizedType}`);
+                  displayDesc = t(`app.logtype.sunell_${normalizedType}_description`);
+                  break;
+                }
+                default:
+                  displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
+                  if (log.description) {
+                    const descKey = log.description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+                    displayDesc = t(`app.logtype.${descKey}`, {
+                      defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
                     });
                   }
-                }
+                  console.log("cant find, use: ", displayType, displayDesc, log)
               }
-
-              const displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type || 'LOG').toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, {
-                defaultValue: log.log_type || 'LOG'
-              });
 
               return (
                 <div key={log.id || i} className="flex items-baseline gap-2 px-2 py-1 hover:bg-surface-container/30 transition-colors">
                   <span className="text-[8.5px] font-mono text-on-surface-variant/50 shrink-0 min-w-[50px]">
                     {new Date(log.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
-                  <span className={`min-w-[150px] text-[7.5px] font-bold uppercase tracking-wider shrink-0 min-w-[45px] text-left ${logTypeBadgeColor(log.log_type)}`}>
+                  <span className={`min-w-[150px] text-[7.5px] font-bold uppercase tracking-wider shrink-0 min-w-[45px] text-left`}>
                     {displayType}
                   </span>
                   <span className="text-[9px] text-on-surface-variant leading-tight flex-1 break-words">
@@ -354,7 +411,7 @@ export function ConnectionsMonitor({
       <div className="flex-1 overflow-hidden p-6 h-full flex flex-col gap-4 min-h-0">
 
         {/* Tab Headers */}
-        <div className="flex items-center gap-2 border-b border-outline-variant/10 shrink-0">
+        {/* <div className="flex items-center gap-2 border-b border-outline-variant/10 shrink-0">
           <button
             onClick={() => setActiveTab('input')}
             className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'input' ? 'border-secondary text-secondary bg-secondary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
@@ -367,7 +424,7 @@ export function ConnectionsMonitor({
               )}
             </div>
           </button>
-          {/* <button
+          <button
             onClick={() => setActiveTab('output')}
             className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'output' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
           >
@@ -378,8 +435,8 @@ export function ConnectionsMonitor({
                 <span className="text-[9px] text-primary/70 tracking-normal font-mono leading-none">{sendServers.length} {t('app.monitor.endpoints_receiving')}</span>
               )}
             </div>
-          </button> */}
-        </div>
+          </button>
+        </div> */}
 
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-surface-container/20 border border-outline-variant/30 rounded-lg p-5">

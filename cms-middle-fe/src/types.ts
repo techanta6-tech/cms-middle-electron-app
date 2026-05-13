@@ -28,6 +28,12 @@ export interface New_LogData {
   raw: any;
 }
 
+/** Một mục trong danh sách filter Event Types */
+export interface EventTypeItem {
+  event_type: string;
+  log_source: 'svms' | 'mqtt' | 'sunell-camera' | null;
+}
+
 export interface LogData {
   id?: string;
   time: number;

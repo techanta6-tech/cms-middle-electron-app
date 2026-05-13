@@ -1,0 +1,37 @@
+[
+  {
+    "event_type": "motion_event",
+    "event_description": "sunell_motion_event_description",
+    "default_enabled": true
+  },
+  {
+    "event_type": "lpr_event",
+    "event_description": "sunell_lpr_event_description",
+    "default_enabled": true
+  },
+  {
+    "event_type": "face_event",
+    "event_description": "sunell_face_event_description",
+    "default_enabled": true
+  },
+  {
+    "event_type": "iva_trip_wire",
+    "event_description": "sunell_iva_trip_wire_description",
+    "default_enabled": true
+  },
+  {
+    "event_type": "iva_perimeter_intrusion",
+    "event_description": "sunell_iva_perimeter_intrusion_description",
+    "default_enabled": true
+  },
+  {
+    "event_type": "iva_event_52",
+    "event_description": "sunell_iva_event_52_description",
+    "default_enabled": false
+  },
+  {
+    "event_type": "iva_double_trip_wire",
+    "event_description": "sunell_iva_double_trip_wire_description",
+    "default_enabled": false
+  }
+]
