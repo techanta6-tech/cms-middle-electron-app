@@ -424,7 +424,7 @@ function Dashboard() {
     svmsDeviceFeatures,
     svmsKnownEvents,
     milesightKnownEvents,
-    sunellKnownEvents,,
+    sunellKnownEvents,
     // ─── New System Data ───
     newSvmsLogs,
     svmsServers: newSvmsServers,

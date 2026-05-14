@@ -4,7 +4,7 @@ const { getClientSockets, connections, servers, devices, allLogs, ALL_LOGS_MAX, 
 const { notifyStatusToClients } = require('../../helpers/notify');
 const authMiddleware = require('../../middleware/auth.middleware');
 const connectivityMonitor = require('../../services/connectivity-monitor.service');
-const svmsEventRegistry = require('../services/svmsEventRegistry.service');
+const svmsEventRegistry = require('../../services/svmsEventRegistry.service');
 
 // __other_events__: pseudo-key đặc biệt, mặc định bật (không lưu trong registry)
 const OTHER_EVENTS_DEFAULT_ON = true;
