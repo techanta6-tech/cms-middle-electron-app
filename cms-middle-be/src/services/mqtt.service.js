@@ -253,7 +253,7 @@ const connectMqttServer = (serverConfig) => {
 
             // ─── Ghi vào allLogs tổng (New_LogData shape) ──────────────────────────
 
-            allLogs.push(MQTT_Milesight_LogEntry);
+            allLogs.push(logEntry);
             if (allLogs.length > ALL_LOGS_MAX) allLogs.shift();
 
             // ─── Upsert MQTT device vào mqttDeviceList (logic giống FE) ────────────────────
