@@ -6,13 +6,16 @@
   "scripts": {
     "dev:fe": "cd cms-middle-fe && yarn dev",
     "dev:be": "cd cms-middle-be && yarn dev",
-    "dev:electron": "wait-on tcp:5050 tcp:5173 && electron .",
+    "dev:electron": "wait-on tcp:5173 && electron .",
     "detect-ip": "node scripts/detect-ip.js",
     "clean": "node scripts/clear-storage.js",
-    "dev": "node scripts/detect-ip.js && concurrently --kill-others \"yarn dev:be\" \"yarn dev:fe\" \"yarn dev:electron\"",
+    "dev": "node scripts/detect-ip.js && concurrently --kill-others \"yarn dev:fe\" \"yarn dev:electron\"",
+    "dev:all": "node scripts/detect-ip.js && concurrently --kill-others \"yarn dev:be\" \"yarn dev:fe\" \"yarn dev:electron\"",
     "build:fe": "cd cms-middle-fe && yarn build",
     "build:be": "cd cms-middle-be && yarn build",
-    "build": "yarn build:fe && yarn build:be && electron-builder",
+    "build:electron": "yarn build:fe && electron-builder",
+    "build:all": "yarn build:be && yarn build:electron",
+    "build": "yarn build:electron",
     "arch-map": "npx vite C:/Users/phucp/.understand-anything-plugin/packages/dashboard --port 3333 --host 0.0.0.0",
     "arch-map:update": "node scripts/update-map.js"
   },
@@ -33,19 +36,11 @@
     "directories": {
       "output": "dist"
     },
+    "publish": null,
     "files": [
       "main.js",
       "preload.js",
       "cms-middle-fe/dist/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "build-be",
-        "to": "bin",
-        "filter": [
-          "**/*"
-        ]
-      }
     ],
     "win": {
       "target": "nsis"

@@ -4,10 +4,10 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project shape
 - Monorepo-style Electron app with three runnable parts:
-  - Root Electron wrapper (`main.js`, `preload.js`)
-  - Backend middle server (`cms-middle-be`, Express + Socket.IO)
+  - Root Electron wrapper (`main.js`, `preload.js`) that runs the FE client only
+  - Standalone backend middle server (`cms-middle-be`, Express + Socket.IO)
   - Frontend UI (`cms-middle-fe`, React + Vite + TypeScript)
-- Root scripts orchestrate FE + BE + Electron together for local development and package FE + Electron for production.
+- Root scripts keep the backend separate from the Electron package so multiple FE/Electron clients can connect to one BE instance.
 
 ## Essential commands
 Run commands from repository root unless noted.
@@ -24,9 +24,18 @@ yarn --cwd cms-middle-fe install
 yarn dev
 ```
 - Runs `scripts/detect-ip.js`, then starts:
-  - backend (`yarn dev:be`)
   - frontend (`yarn dev:fe`)
-  - electron (`yarn dev:electron`, waits for ports 5050 and 5173)
+  - electron (`yarn dev:electron`, waits for port 5173)
+
+Run the shared backend separately when needed:
+```bash
+yarn dev:be
+```
+
+Run all local parts together for a smoke test:
+```bash
+yarn dev:all
+```
 
 Run parts individually when debugging:
 ```bash
@@ -40,10 +49,19 @@ yarn dev:electron
 yarn build
 ```
 - Builds FE (`cms-middle-fe/dist`) then packages Electron with `electron-builder`.
+- The Electron package contains only the FE client and does not bundle or spawn the BE.
 
-Build FE only:
+Build FE or BE separately:
 ```bash
 yarn build:fe
+yarn build:be
+```
+
+`yarn build:be` creates the standalone backend artifact under `build-be/`.
+
+Build both independent artifacts:
+```bash
+yarn build:all
 ```
 
 ### Lint
@@ -68,10 +86,11 @@ yarn clean
 - Clears Electron app data/local storage under OS app-data directories via `scripts/clear-storage.js`.
 
 ## Environment and runtime wiring
-- Root `.env` provides `FE_PORT` and `BE_PORT`.
+- Root `.env` provides `FE_PORT` and `BE_PORT`; optional `BE_HOST` can set the default FE target backend host.
 - `scripts/detect-ip.js` auto-detects local IPv4 and writes:
   - `cms-middle-fe/.env.local` (`VITE_HOST`, `VITE_PORT`, `VITE_BE_HOST`, `VITE_BE_PORT`)
-  - `.env.generated` (`LOCAL_IP`, `FE_PORT`, `BE_PORT`)
+  - `.env.generated` (`LOCAL_IP`, `FE_PORT`, `BE_HOST`, `BE_PORT`)
+- `scripts/detect-ip.js` does not probe or auto-shift `BE_PORT`; a busy BE port can be the intended shared backend.
 - Backend startup (`cms-middle-be/index.js`) loads:
   - `cms-middle-be/.env`
   - root `.env.generated` (overrides shared host/port fields)
@@ -81,7 +100,8 @@ yarn clean
 ### 1) Electron container
 - `main.js` creates the desktop window.
 - In dev: loads Vite URL (`http://localhost:5173`).
-- In packaged mode: loads `cms-middle-fe/dist/index.html` and spawns backend process (`cms-middle-be/index.js`).
+- In packaged mode: loads `cms-middle-fe/dist/index.html`.
+- Electron does not spawn, wait for, or terminate a backend process.
 
 ### 2) Middle backend (Express + Socket.IO)
 - Entry: `cms-middle-be/index.js` → HTTP server + Socket.IO init + route app + monitoring cron.
