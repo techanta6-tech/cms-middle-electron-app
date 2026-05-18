@@ -13,19 +13,96 @@ export interface SystemConfig {
   be: { ip: string; port: string };
 }
 
-export interface New_LogData {
+export interface Sunell_PlateInfo {
+  Have_plate?: number;
+  Plate_angleH?: number;
+  Plate_angleV?: number;
+  Plate_color?: number;
+  Plate_type?: number;
+  Plate_confidence?: number;
+  Plate_country?: number;
+  Char_num?: number;
+  Plate_num?: string;
+  Plate_char_confidence?: string;
+  [key: string]: any;
+}
+
+export interface Sunell_TargetDetectItem {
+  TargeId?: number;
+  TargetId?: number;
+  Type?: number;
+  X?: number;
+  Y?: number;
+  W?: number;
+  H?: number;
+  AttrDataLen?: number;
+  PlateInfo?: Sunell_PlateInfo;
+  [key: string]: any;
+}
+
+export interface Sunell_AlarmData {
+  dev_ip?: string;
+  src_type?: number;
+  src_id?: number;
+  src_name?: string;
+  dev_id?: string;
+  dev_descript?: string;
+  io_port_id?: number;
+  targer_type?: number;
+  target_type?: number;
+  upleft_x?: number;
+  upleft_y?: number;
+  lowright_x?: number;
+  lowright_y?: number;
+  alarm_pic_len?: number;
+  alarm_pic?: string;
+  dev_type?: number;
+  main_type?: number;
+  sub_type?: number;
+  alarm_flag?: number;
+  time?: string;
+  [key: string]: any;
+}
+
+export interface Sunell_LogPayload {
+  Magic?: string;
+  Vesion?: number;
+  Version?: number;
+  TotalLen?: number;
+  PictureLen?: number;
+  FullImageWidth?: number;
+  FullImageHeight?: number;
+  Capture_TimeH?: number;
+  Capture_TimeL?: number;
+  SequenceID?: number;
+  Full_crop?: number;
+  TargetSize?: number;
+  TargetDetectList?: Sunell_TargetDetectItem[];
+  data?: Sunell_AlarmData;
+  SNPointList?: any[];
+  AlarmAreaList?: any[];
+  eventName?: string;
+  snapshotBase64?: string;
+  rawJson?: string;
+  timestamp?: string;
+  snapshotPath?: string | null;
+  [key: string]: any;
+}
+
+export interface LogData {
   id?: string;
   receive_time: number;
   log_type: string;
   log_description: string;
   snapshot?: string;
+  log_snapshot_image_path?: string;
   log_source: 'svms' | 'milesight-radar' | 'sunell-camera';
   device_info: {
     name: string;
     id: string;
   }
   server_unique_id: string;
-  raw: any;
+  raw: SVMS_LogPayload | MQTT_Milesight_LogEntry | Sunell_LogPayload | any;
 }
 
 /** Một mục trong danh sách filter Event Types */
@@ -34,25 +111,27 @@ export interface EventTypeItem {
   log_source: 'svms' | 'mqtt' | 'sunell-camera' | null;
 }
 
-export interface LogData {
+export interface SVMS_LogPayload {
   id?: string;
-  time: number;
-  device_index: number;
-  device_ip: string;
-  device_type: string;
-  device_name: string;
-  log_type: string;
-  description: string;
+  time?: number | string;
+  device_index?: number;
+  device_ip?: string;
+  device_type?: string;
+  device_name?: string;
+  log_type?: string;
+  description?: string;
   snapshot?: string;
-  server: {
-    server_id: string;
-    serial: string;
+  server?: {
+    server_id?: string;
+    serial?: string;
   };
-  ip: string;
+  ip?: string;
+  sender_ip?: string;
   raw?: any;
-  cameraIp?: string;
-  source?: 'svms' | 'mqtt' | 'sunell-camera';
-  mqttServerId?: string;
+  body?: any;
+  source?: 'svms';
+  log_source?: 'svms';
+  [key: string]: any;
 }
 
 export interface AddExternalServerProps {

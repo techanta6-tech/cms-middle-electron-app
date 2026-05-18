@@ -1,6 +1,6 @@
 // ─── SHARED SOCKET STATE ──────────────────────────────────────────────────────
 const { Server } = require('socket.io');
-const { allLogs, ALL_LOGS_MAX, svmsServers, svmsDevices, mqttDeviceList } = require('./newSystemDataState');
+const { allLogs, ALL_LOGS_MAX, svmsServers, svmsDevices, mqttDeviceList, prefilter } = require('./newSystemDataState');
 
 /**
  * Global array to store metadata for registered external connections.
@@ -99,4 +99,5 @@ module.exports = {
   svmsServers,
   svmsDevices,
   mqttDeviceList,
+  prefilter,
 };

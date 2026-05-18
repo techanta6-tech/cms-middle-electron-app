@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { cameraDevices, getClientSockets } = require('../socketState');
+const { appendLog } = require('./system-state.service');
 const sunellEventRegistry = require('./sunellEventRegistry.service');
 
 // Trong môi trường pkg, __dirname nằm trong virtual snapshot (read-only).
@@ -94,6 +95,9 @@ async function addCameraDevice(deviceConfig) {
     onAlarm: async (rawJsonStr) => {
       if (!cameraDevices.some(d => d.id === id)) return;
       try {
+        const originalRawJson = typeof rawJsonStr === 'string'
+          ? rawJsonStr
+          : JSON.stringify(rawJsonStr, null, 2);
         const payload = typeof rawJsonStr === 'string' ? JSON.parse(rawJsonStr) : rawJsonStr;
 
         // Neu device chua co features mac dinh thi coi nhu dc bat
@@ -277,11 +281,7 @@ async function addCameraDevice(deviceConfig) {
           dataToWrite += `Camera: ${device.name} (${device.id})\n`;
           dataToWrite += `Description: ${description}\n`;
           dataToWrite += `Raw JSON:\n`;
-          dataToWrite += (typeof rawJsonStr === 'string' ? rawJsonStr : JSON.stringify(rawJsonStr, null, 2)) + '\n\n';
-
-          if (payload.snapshotBase64) {
-            dataToWrite += `[HAS SNAPSHOT BASE64 IMAGE - LENGTH: ${payload.snapshotBase64.length}]\n`;
-          }
+          dataToWrite += originalRawJson + '\n\n';
 
           try {
             fs.writeFileSync(logFilePath, dataToWrite, 'utf8');
@@ -290,6 +290,22 @@ async function addCameraDevice(deviceConfig) {
             console.error(`[Sunell-Sample] Lỗi ghi file log mẫu:`, err);
           }
         }
+
+        const logData = {
+          id: `sunell-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          receive_time: Date.now(),
+          log_type: logType,
+          log_description: description,
+          snapshot: payload.snapshotBase64 || undefined,
+          log_source: 'sunell-camera',
+          device_info: {
+            name: device.name || 'Sunell Camera',
+            id: device.id,
+          },
+          server_unique_id: `camera-${device.id}`,
+          raw: payload,
+        };
+        appendLog(logData);
 
         const sockets = getClientSockets();
         if (sockets) {
@@ -308,7 +324,7 @@ async function addCameraDevice(deviceConfig) {
 
           // Bắn log qua socket với mục raw_data chứa toàn bộ event
           sockets.emit('receive-sunell-log', {
-            id: `sunell-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            id: logData.id,
             timestamp: new Date().toISOString(),
             source: 'sunell-camera',
             camera_id: device.id,

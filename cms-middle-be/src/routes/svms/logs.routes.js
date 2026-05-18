@@ -1,10 +1,11 @@
 const express = require('express');
 const axios = require('axios');
-const { getClientSockets, connections, servers, devices, allLogs, ALL_LOGS_MAX, svmsDeviceFeatures } = require('../../socketState');
+const { getClientSockets, connections, servers, devices, svmsDeviceFeatures } = require('../../socketState');
 const { notifyStatusToClients } = require('../../helpers/notify');
 const authMiddleware = require('../../middleware/auth.middleware');
 const connectivityMonitor = require('../../services/connectivity-monitor.service');
 const svmsEventRegistry = require('../../services/svmsEventRegistry.service');
+const { appendLog } = require('../../services/system-state.service');
 
 // __other_events__: pseudo-key đặc biệt, mặc định bật (không lưu trong registry)
 const OTHER_EVENTS_DEFAULT_ON = true;
@@ -82,7 +83,7 @@ router.post('/api/v1/logs', async (req, res) => {
     body: logBodyForFrontend,
   };
 
-  // export interface New_LogData {
+  // export interface LogData {
   //   id?: string;
   //   receive_time: number;
   //   log_type: string;
@@ -107,7 +108,9 @@ router.post('/api/v1/logs', async (req, res) => {
 
   const newLogData = {
     id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
-    time: logBodyForFrontend.time,
+    receive_time: logBodyForFrontend.time
+      ? new Date(logBodyForFrontend.time).getTime()
+      : Date.now(),
     log_type: logBodyForFrontend.log_type,
     log_description: logBodyForFrontend.description,
     snapshot: logBodyForFrontend.snapshot,
@@ -120,11 +123,7 @@ router.post('/api/v1/logs', async (req, res) => {
     raw: logBodyForFrontend
   }
 
-  // ─── Ghi vào allLogs tổng (New_LogData shape) + emit lên FE ─────────────────
-  allLogs.push(newLogData);
-  if (allLogs.length > ALL_LOGS_MAX) allLogs.shift();
-  clientSockets.emit('new-svms-log', newLogData);
-
+  // ─── Ghi vào allLogs tổng (LogData shape) + emit lên FE ─────────────────
   // ─── CONNECTIVITY: AUTO-RECONNECT & TIMER RESET ────────────────────────────
   const logBody = logBodyForFrontend;
   const serverId = logBody.server_id || logBody.server?.server_id;
@@ -162,12 +161,9 @@ router.post('/api/v1/logs', async (req, res) => {
     connectivityMonitor.onLogReceived(serverId, deviceIndex);
   }
 
-  // ─── SVMS Event Filtering + Auto-discovery ──────────────────────────────────
-  // Luôn áp dụng lọc, kể cả khi chưa có cấu hình trong svmsDeviceFeatures.
   if (serverId && deviceIndex != null) {
     const logType = (logBodyForFrontend.log_type || '').toLowerCase();
     if (logType) {
-      // Auto-discover: nếu event chưa có trong registry → bổ sung và notify FE
       const isNewEvent = svmsEventRegistry.discoverEvent(logType);
       if (isNewEvent) {
         clientSockets.emit('update-svms-known-events', svmsEventRegistry.getEvents());
@@ -177,32 +173,30 @@ router.post('/api/v1/logs', async (req, res) => {
         e => e.serverId === serverId && String(e.deviceIndex) === String(deviceIndex)
       );
       const feats = deviceEntry ? (deviceEntry.features || {}) : {};
-
-      // isKnown = event nằm trong registry (đã biết trước hoặc vừa được discover)
       const knownTypesSet = svmsEventRegistry.getKnownTypesSet();
       const isKnown = knownTypesSet.has(logType);
 
       if (isKnown) {
-        // Event quen thuộc: ưu tiên cấu hình của user, fallback về default_enabled từ registry
         const enabled = feats[logType] !== undefined
           ? !!feats[logType]
           : svmsEventRegistry.getDefaultEnabled(logType);
         if (!enabled) {
-          console.log(`[SVMS] Filtered event '${logType}' for device ${serverId}::${deviceIndex}`);
+          console.log(`[SVMS] Prefiltered event '${logType}' for device ${serverId}::${deviceIndex}`);
           return res.status(200).send({ success: true });
         }
       } else {
-        // Event lạ (chưa trong registry): kiểm tra __other_events__, mặc định true
         const otherEnabled = feats['__other_events__'] !== undefined
           ? !!feats['__other_events__']
           : OTHER_EVENTS_DEFAULT_ON;
         if (!otherEnabled) {
-          console.log(`[SVMS] Filtered unknown event '${logType}' (__other_events__ disabled) for ${serverId}::${deviceIndex}`);
+          console.log(`[SVMS] Prefiltered unknown event '${logType}' (__other_events__ disabled) for ${serverId}::${deviceIndex}`);
           return res.status(200).send({ success: true });
         }
       }
     }
   }
+
+  appendLog(newLogData);
 
 
   // 1. Phát dữ liệu cho các Client của mình (Frontend) qua Socket.IO

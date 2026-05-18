@@ -5,9 +5,9 @@ import { TriangleAlert, Info, AlertCircle } from 'lucide-react';
 export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick: () => void, mqttServers?: any[] }) {
   const { t } = useTranslation();
 
-  let serverName = log.server.server_id;
-  if (log.source === 'mqtt' || log.mqttServerId || serverName.startsWith('mqtt-')) {
-    const cleanId = (log.mqttServerId || serverName.replace('mqtt-', '')).toLowerCase();
+  let serverName = log.server_unique_id;
+  if (log.log_source === 'milesight-radar' || serverName.startsWith('mqtt-')) {
+    const cleanId = serverName.replace('mqtt-', '').toLowerCase();
     const mqttSrv = (mqttServers || []).find(s => s.id?.toLowerCase() === cleanId);
     if (mqttSrv) {
       serverName = mqttSrv.name || `${mqttSrv.brokerHost}:${mqttSrv.brokerPort}`;
@@ -27,41 +27,16 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
     Icon = TriangleAlert;
   }
 
-  // let displayDesc = log.description;
-  // if (displayDesc) {
-  //   const descKey = displayDesc.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
-  //   displayDesc = t(`app.logtype.${descKey}`, {
-  //     defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
-  //   });
-  // }
-
-  // if (log.source === 'mqtt') {
-  //   let evt = log.raw?.event;
-  //   if (!evt && log.raw?.payload?.object?.events?.length > 0) {
-  //     evt = log.raw.payload.object.events[0];
-  //   }
-  //   if (evt) {
-  //     const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
-  //     if (typeVal !== undefined) {
-  //       const lowerVal = String(typeVal).toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
-  //       displayDesc = t(`app.mqtt_alarm_type.${lowerVal}`, {
-  //         defaultValue: t(`app.logtype.${lowerVal}`, { defaultValue: String(typeVal) })
-  //       });
-  //     }
-  //   }
-  // }
-
-
   let displayType;
   let displayDesc;
-  switch (log.source) {
+  switch (log.log_source) {
     case 'svms': {
       const normalizedType = log.log_type.replace(/\./g, '_');
       displayType = t(`app.logtype.svms_${normalizedType}`);
       displayDesc = t(`app.logtype.svms_${normalizedType}_description`);
       break;
     }
-    case 'mqtt': {
+    case 'milesight-radar': {
       const normalizedType = log.log_type.replace(/\./g, '_');
       displayType = t(`app.logtype.milesight_${normalizedType}`);
       displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
@@ -75,15 +50,15 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
     }
     default:
       displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
-      if (log.description) {
-        const descKey = log.description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+      if (log.log_description) {
+        const descKey = log.log_description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
         displayDesc = t(`app.logtype.${descKey}`, {
           defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
         });
       }
       console.log("cant find, use: ", displayType, displayDesc, log)
   }
-  const timeStr = new Date(log.time * 1000).toLocaleTimeString();
+  const timeStr = new Date(log.receive_time).toLocaleTimeString();
 
   return (
     <div
@@ -101,8 +76,8 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
           </span>
         </div>
         <p className="displayDesc text-[11px] text-on-surface mb-1 font-medium leading-relaxed truncate uppercase">{displayDesc}</p>
-        {/* <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{serverName} // {log.device_name} // {timeStr}</div> */}
-        <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{log.device_name} / {timeStr}</div>
+        {/* <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{serverName} // {log.device_info.name} // {timeStr}</div> */}
+        <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{log.device_info.name} / {timeStr}</div>
       </div>
       {log.snapshot && (
         <div className="rounded-sm overflow-hidden border border-outline-variant/20 shrink-0 w-24 mr-2">

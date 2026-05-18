@@ -8,7 +8,7 @@ export function CameraFeed({ cam, onClick }: { cam: LogData, onClick: () => void
     >
       <img
         src={cam.snapshot?.startsWith('data:image') ? cam.snapshot : `data:image/jpeg;base64,${cam.snapshot}`}
-        alt={cam.device_name}
+        alt={cam.device_info?.name || cam.log_type}
         className="camera-feed-image w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-700"
         referrerPolicy="no-referrer"
       />

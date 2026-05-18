@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+﻿import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { socket, updateSocketUrlAsync, getBeHost, getBePort } from '../socket';
-import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink, New_LogData, SVMSServer, SMVSDevices, MQTT_Milesight_DeviceInfo, EventTypeItem } from '../types';
+import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink, SVMSServer, SMVSDevices, MQTT_Milesight_DeviceInfo, EventTypeItem } from '../types';
 import apiClient from '../api/apiClient';
 import axios from 'axios';
 
@@ -123,6 +123,36 @@ export const getLogTypeDisplayName = (logType: string, t: (key: string) => strin
   return logType;
 };
 
+type SystemSnapshot = {
+  connections?: SystemConnection[];
+  sendServers?: SystemConnection[];
+  receiveServers?: SystemConnection[];
+  servers?: Record<string, ServerData>;
+  devices?: Record<string, DeviceData>;
+  svmsServers?: SVMSServer[];
+  svmsDevices?: SMVSDevices[];
+  mqttServers?: (MqttServerConfig & { devices?: MQTT_Milesight_DeviceInfo[] })[];
+  mqttDeviceList?: MQTT_Milesight_DeviceInfo[];
+  cameras?: MqttDeviceConfig[];
+  allLogs?: LogData[];
+  prefilter?: any[];
+  gridLayout?: { grids: any[]; gridCols: number };
+  knownEvents?: {
+    svms?: SvmsKnownEvent[];
+    milesight?: MilesightKnownEvent[];
+    sunell?: SunellKnownEvent[];
+  };
+  compatibility?: {
+    svmsDeviceFeatures?: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[];
+    deviceCameraLinks?: DeviceCameraLink[];
+  };
+};
+
+const getFilterLogSource = (source: LogData['log_source'] | undefined): EventTypeItem['log_source'] => {
+  if (source === 'milesight-radar') return 'mqtt';
+  return source || null;
+};
+
 export function useSocketManager() {
   const [isConnected, setIsConnected] = useState(socket.connected);
   useEffect(() => {
@@ -212,7 +242,7 @@ export function useSocketManager() {
           return Array.from(map.values());
         });
       }
-    }, 500);
+    }, 250);
     return () => clearInterval(flushInterval);
   }, []);
   const [servers, setServers] = useState<Record<string, ServerData>>({});
@@ -242,8 +272,8 @@ export function useSocketManager() {
   const [mqttServers, setMqttServers] = useState<MqttServerConfig[]>([]);
 
   // ─── New System Data State ────────────────────────────────────────────────────────
-  /** Log tổng từ tất cả nguồn (SVMS + MQTT) theo schema New_LogData */
-  const [newSvmsLogs, setNewSvmsLogs] = useState<New_LogData[]>([]);
+  /** BE-owned normalized logs from all sources. */
+  const [newSvmsLogs, setNewSvmsLogs] = useState<LogData[]>([]);
   /** Danh sách SVMS server raw (full payload từ BE) */
   const [svmsServers, setSvmsServers] = useState<SVMSServer[]>([]);
   /** Danh sách SVMS device raw (full payload từ BE) */
@@ -397,24 +427,15 @@ export function useSocketManager() {
     fetchCameras();
     fetchDeviceCameraLinks();
     fetchGridLayout();
-    const requestSync = () => {
-      console.log('[SOCKET] Connected to BE — requesting sync');
-      socket.emit('request-sync');
-    };
 
     socket.on('connect', fetchCameras);
     socket.on('connect', fetchDeviceCameraLinks);
-    socket.on('connect', fetchGridLayout);
-    socket.on('connect', requestSync);
-
-    // Phát ngay nếu đã kết nối sẵn
-    if (socket.connected) requestSync();
+    socket.on('connect', fetchGridLayout);
 
     return () => {
       socket.off('connect', fetchCameras);
       socket.off('connect', fetchDeviceCameraLinks);
-      socket.off('connect', fetchGridLayout);
-      socket.off('connect', requestSync);
+      socket.off('connect', fetchGridLayout);
     };
   }, [fetchCameras, fetchDeviceCameraLinks, fetchGridLayout]);
 
@@ -656,7 +677,7 @@ export function useSocketManager() {
       // Để nhóm alias vào cùng 1 filter, thêm vào LOG_TYPE_GROUPS phía trên.
       const parsedLogType = data.body?.log_type || 'event.info';
 
-      const newLog: LogData = {
+      const newLog: any = {
         id: crypto.randomUUID(),
         time: Math.floor(timeNumber),
         device_index: data.body?.device_index || 0,
@@ -679,7 +700,7 @@ export function useSocketManager() {
 
 
       // Push to buffer instead of direct setState — flushed every 500ms
-      logBufferRef.current.push(newLog);
+      // Main log state is fed by BE-owned `logs-batch`.
       // Runtime discovery: event_type mới từ SVMS sẽ có log_source='svms'
       eventTypeBufferRef.current.push({
         event_type: resolveToGroupKey(newLog.log_type),
@@ -690,7 +711,7 @@ export function useSocketManager() {
     const onReceiveSunellLog = (raw: any) => {
       const timeNumber = raw.timestamp ? new Date(raw.timestamp).getTime() / 1000 : Date.now() / 1000;
 
-      const newLog: LogData = {
+      const newLog: any = {
         id: raw.id,
         time: Math.floor(timeNumber),
         device_index: 0,
@@ -708,7 +729,7 @@ export function useSocketManager() {
 
 
       // Push to buffer
-      logBufferRef.current.push(newLog);
+      // Main log state is fed by BE-owned `logs-batch`.
       // Runtime discovery: event_type mới từ Sunell sẽ có log_source='sunell-camera'
       eventTypeBufferRef.current.push({
         event_type: resolveToGroupKey(newLog.log_type),
@@ -835,7 +856,7 @@ export function useSocketManager() {
       const safeRaw = { ...raw };
       if (safeRaw.snapshot) safeRaw.snapshot = '[BASE64_IMAGE_OMITTED_FROM_RAW]';
 
-      const newLog: LogData = {
+      const newLog: any = {
         id: crypto.randomUUID(),
         time: Math.floor(new Date(raw.time || Date.now()).getTime() / 1000),
         device_index: 0,
@@ -857,8 +878,7 @@ export function useSocketManager() {
       if (newLog.log_type === 'debug_raw') {
         return;
       }
-
-      logBufferRef.current.push(newLog);
+      // Main log state is fed by BE-owned `logs-batch`.
       // Runtime discovery: event_type mới từ MQTT sẽ có log_source='mqtt'
       eventTypeBufferRef.current.push({
         event_type: resolveToGroupKey(newLog.log_type),
@@ -927,31 +947,73 @@ export function useSocketManager() {
     };
     socket.on('debug-camera-snapshot', onDebugCameraSnapshot);
 
-    // ─── Sync initial New System Data khi socket vừa connect ─────────────────────────────────
-    const onSyncNewSystemData = (data: {
-      allLogs: New_LogData[];
-      svmsServers: SVMSServer[];
-      svmsDevices: SMVSDevices[];
-      mqttDeviceList: MQTT_Milesight_DeviceInfo[];
-    }) => {
-      console.log('%c[SOCKET] 🔄 sync-new-system-data — nhận dữ liệu khởi tạo từ BE', 'color: #a78bfa; font-weight: bold');
-      if (data.allLogs?.length) {
-        setNewSvmsLogs(prev => {
-          const merged = [...prev, ...data.allLogs];
-          return merged.length > env.MAX_LOGS_LIST ? merged.slice(-env.MAX_LOGS_LIST) : merged;
-        });
+    // ─── Full BE-owned state sync after socket connection ─────────────────────
+    const applySystemSnapshot = (data: SystemSnapshot) => {
+      console.log('%c[SOCKET] system-snapshot - synced full BE state', 'color: #a78bfa; font-weight: bold');
+
+      const allLogs = Array.isArray(data.allLogs) ? data.allLogs : [];
+      const slicedLogs = allLogs.slice(-env.MAX_LOGS_LIST);
+      logBufferRef.current = [];
+      setNewSvmsLogs(slicedLogs);
+      setLogs(slicedLogs);
+      setTotalLogCount(allLogs.length);
+      eventTypeBufferRef.current.push(...slicedLogs.map(log => ({
+        event_type: resolveToGroupKey(log.log_type),
+        log_source: getFilterLogSource(log.log_source),
+      })));
+
+      if (Array.isArray(data.sendServers)) setSendServers(data.sendServers);
+      if (Array.isArray(data.receiveServers)) setReceiveServers(data.receiveServers);
+      if (data.servers) setServers(data.servers);
+      if (data.devices) setDevices(data.devices);
+      if (Array.isArray(data.svmsServers)) setSvmsServers(data.svmsServers);
+      if (Array.isArray(data.svmsDevices)) setSvmsDevices(data.svmsDevices);
+      if (Array.isArray(data.mqttServers)) {
+        setMqttServers(data.mqttServers);
+        setMqttMilesightServers(data.mqttServers);
       }
-      if (data.svmsServers?.length) setSvmsServers(data.svmsServers);
-      if (data.svmsDevices?.length) setSvmsDevices(data.svmsDevices);
-      if (data.mqttDeviceList?.length) setMqttMilesightDevices(data.mqttDeviceList);
+      if (Array.isArray(data.mqttDeviceList)) setMqttMilesightDevices(data.mqttDeviceList);
+      if (Array.isArray(data.cameras)) setCameraDevices(data.cameras);
+      if (data.gridLayout) setGridLayout({ grids: data.gridLayout.grids || [], gridCols: data.gridLayout.gridCols || 3 });
+      if (Array.isArray(data.knownEvents?.svms)) setSvmsKnownEvents(data.knownEvents.svms);
+      if (Array.isArray(data.knownEvents?.milesight)) setMilesightKnownEvents(data.knownEvents.milesight);
+      if (Array.isArray(data.knownEvents?.sunell)) setSunellKnownEvents(data.knownEvents.sunell);
+      if (Array.isArray(data.compatibility?.svmsDeviceFeatures)) setSvmsDeviceFeatures(data.compatibility.svmsDeviceFeatures);
+      if (Array.isArray(data.compatibility?.deviceCameraLinks)) setDeviceCameraLinks(data.compatibility.deviceCameraLinks);
     };
+
+    const onSyncNewSystemData = applySystemSnapshot;
+
+    const onLogsBatch = (batch: LogData[]) => {
+      if (!Array.isArray(batch) || batch.length === 0) return;
+
+      logBufferRef.current.push(...batch);
+      eventTypeBufferRef.current.push(...batch.map(log => ({
+        event_type: resolveToGroupKey(log.log_type),
+        log_source: getFilterLogSource(log.log_source),
+      })));
+      setNewSvmsLogs(prev => {
+        const merged = [...prev, ...batch];
+        return merged.length > env.MAX_LOGS_LIST ? merged.slice(-env.MAX_LOGS_LIST) : merged;
+      });
+    };
+
+    const requestFullSync = () => {
+      console.log('[SOCKET] Connected to BE - requesting full state sync');
+      socket.emit('request-sync');
+    };
+
+    socket.on('system-snapshot', applySystemSnapshot);
     socket.on('sync-new-system-data', onSyncNewSystemData);
+    socket.on('logs-batch', onLogsBatch);
+    socket.on('connect', requestFullSync);
+    if (socket.connected) requestFullSync();
 
     // ─── New System Data listeners ────────────────────────────────────────────────────────
-    const onNewSvmsLog = (data: New_LogData) => {
-      setNewSvmsLogs(prev => {
-        const next = [...prev, data];
-        return next.length > env.MAX_LOGS_LIST ? next.slice(-env.MAX_LOGS_LIST) : next;
+    const onNewSvmsLog = (data: LogData) => {
+      eventTypeBufferRef.current.push({
+        event_type: resolveToGroupKey(data.log_type),
+        log_source: getFilterLogSource(data.log_source),
       });
     };
     const onNewSvmsServers = (data: SVMSServer[]) => {
@@ -989,9 +1051,10 @@ export function useSocketManager() {
     };
     socket.on('update-milesight-known-events', onUpdateMilesightKnownEvents);
 
-    socket.on('update-sunell-known-events', (data: SunellKnownEvent[]) => {
+    const onUpdateSunellKnownEvents = (data: SunellKnownEvent[]) => {
       setSunellKnownEvents(data);
-    });
+    };
+    socket.on('update-sunell-known-events', onUpdateSunellKnownEvents);
 
     return () => {
       socket.off('external-server-connecting', onConnectingExternalServer);
@@ -1019,10 +1082,14 @@ export function useSocketManager() {
       socket.off('new-svms-devices', onNewSvmsDevices);
       socket.off('update-mqtt-milesight-servers', onUpdateMqttMilesightServers);
       socket.off('update-mqtt-milesight-devices', onUpdateMqttMilesightDevices);
+      socket.off('system-snapshot', applySystemSnapshot);
       socket.off('sync-new-system-data', onSyncNewSystemData);
+      socket.off('logs-batch', onLogsBatch);
+      socket.off('connect', requestFullSync);
       socket.off('update-svms-device-features', onUpdateSvmsDeviceFeatures);
       socket.off('update-svms-known-events', onUpdateSvmsKnownEvents);
       socket.off('update-milesight-known-events', onUpdateMilesightKnownEvents);
+      socket.off('update-sunell-known-events', onUpdateSunellKnownEvents);
     };
   }, []);
 

@@ -87,7 +87,7 @@ export function AlertWall({
             let latestLog: LogData | undefined;
             for (let i = logs.length - 1; i >= 0; i--) {
               const log = logs[i];
-              if (log.source === 'mqtt' && log.server?.serial === devEui && log.mqttServerId === mqttServerId) {
+              if (log.log_source === 'milesight-radar' && log.device_info?.id === devEui && log.server_unique_id === `mqtt-${mqttServerId}`) {
                 latestLog = log;
                 break;
               }
@@ -138,16 +138,15 @@ export function AlertWall({
             for (let i = logs.length - 1; i >= 0; i--) {
               const log = logs[i];
               if (camera.type === 'sunell') {
-                if (log.source === 'sunell-camera' && log.device_ip === camera.ip) {
+                if (log.log_source === 'sunell-camera' && log.device_info?.id === camera.ip) {
                   cameraLog = log;
                   break;
                 }
               } else {
                 if (
-                  log.device_ip === camera.ip &&
-                  log.device_name === camera.name &&
-                  log.server?.server_id === camera.server_id &&
-                  log.server?.serial === camera.server_serial
+                  log.device_info?.id === camera.ip &&
+                  log.device_info?.name === camera.name &&
+                  (log.server_unique_id === camera.server_id || log.server_unique_id === camera.server_serial)
                 ) {
                   cameraLog = log;
                   break;

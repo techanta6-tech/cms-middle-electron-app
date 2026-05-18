@@ -1,6 +1,7 @@
 // ─── SOCKET SERVER EVENTS (BE↔FE only) ─────────────────────────────────────────────
-const { getClientSockets, servers, devices, allLogs, svmsServers, svmsDevices, mqttDeviceList, svmsDeviceFeatures } = require('./socketState');
+const { getClientSockets, servers, devices, svmsDeviceFeatures } = require('./socketState');
 const { syncClientsToFrontend, syncConnectionsToFrontend } = require('./helpers/notify');
+const { emitSystemSnapshot } = require('./services/system-state.service');
 const svmsEventRegistry = require('./services/svmsEventRegistry.service');
 const milesightEventRegistry = require('./services/milesightEventRegistry.service');
 const sunellEventRegistry = require('./services/sunellEventRegistry.service');
@@ -17,6 +18,7 @@ const setupSocketEvents = () => {
 
     socket.on('request-sync', () => {
       console.log(`[REQUEST-SYNC] Socket ${socket.id} requested data sync upon login.`);
+      emitSystemSnapshot(socket);
       socket.emit('receive-server-information', { allServers: Object.fromEntries(servers) });
       socket.emit('receive-devices-information', { allDevices: Object.fromEntries(devices) });
       socket.emit('update-svms-device-features', svmsDeviceFeatures);
@@ -33,12 +35,7 @@ const setupSocketEvents = () => {
     syncConnectionsToFrontend();
 
     // ─── Sync New System Data với FE client vừa connect ──────────────────────────────────
-    socket.emit('sync-new-system-data', {
-      allLogs,
-      svmsServers,
-      svmsDevices,
-      mqttDeviceList,
-    });
+    emitSystemSnapshot(socket);
 
 
     socket.on('message', (data) => {

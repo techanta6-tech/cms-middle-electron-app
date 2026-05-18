@@ -2,7 +2,7 @@
 
 /**
  * Tổng hợp toàn bộ log nhận được từ tất cả nguồn (SVMS + MQTT).
- * Mỗi entry theo cấu trúc New_LogData (types.ts FE):
+ * Mỗi entry theo cấu trúc LogData (types.ts FE):
  * Structure: [{
  *   id?: string,
  *   receive_time: number,          // Unix timestamp (ms)
@@ -50,10 +50,19 @@ const svmsDevices = [];
  */
 const mqttDeviceList = [];
 
+/**
+ * Global prefilter config. This is owned by BE and applies to every connected FE.
+ * Existing feature arrays are kept for compatibility while the generic shape is
+ * introduced gradually.
+ * Structure: [{ id, scope, enabled, rules, updatedAt }]
+ */
+const prefilter = [];
+
 module.exports = {
   allLogs,
   ALL_LOGS_MAX,
   svmsServers,
   svmsDevices,
   mqttDeviceList,
+  prefilter,
 };

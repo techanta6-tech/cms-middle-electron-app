@@ -30,10 +30,10 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
     }
   }
 
-  let serverId = log.server?.server_id || log.raw?.body?.server?.server_id || 'UNKNOWN_SERVER';
+  let serverId = log.server_unique_id || log.raw?.body?.server?.server_id || 'UNKNOWN_SERVER';
   // Tra server_name từ servers map: tìm theo cả serial + server_id, fallback server_id → serial
-  const logSerial = log.server?.serial || log.raw?.body?.server?.serial || '';
-  const logServerId = log.server?.server_id || log.raw?.body?.server?.server_id || '';
+  const logSerial = log.raw?.server?.serial || log.raw?.body?.server?.serial || '';
+  const logServerId = log.server_unique_id || log.raw?.body?.server?.server_id || '';
   let serverName = '';
   if (servers) {
     // Ưu tiên 1: tìm server khớp cả serial lẫn server_id (id trong map = serverId)
@@ -57,8 +57,8 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
     }
   }
 
-  if (log.source === 'mqtt' || log.mqttServerId || serverId.startsWith('mqtt-')) {
-    const cleanId = (log.mqttServerId || serverId.replace('mqtt-', '')).toLowerCase();
+  if (log.log_source === 'milesight-radar' || serverId.startsWith('mqtt-')) {
+    const cleanId = serverId.replace('mqtt-', '').toLowerCase();
     const mqttSrv = (mqttServers || []).find(s => s.id?.toLowerCase() === cleanId);
     if (mqttSrv) {
       serverId = mqttSrv.name || `${mqttSrv.brokerHost}:${mqttSrv.brokerPort}`;
@@ -70,17 +70,17 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
   const allMetadata = [
     { label: t('app.log_popup.server_name'), value: serverName || undefined, isImportant: true },
     { label: t('app.log_popup.server_id'), value: serverId, isImportant: true },
-    { label: t('app.log_popup.device_name'), value: log.device_name || log.raw?.body?.device_name, isImportant: true },
-    { label: t('app.log_popup.device_ip'), value: log.cameraIp || log.device_ip || 'Internal', isImportant: false },
+    { label: t('app.log_popup.device_name'), value: log.device_info?.name || log.raw?.body?.device_name, isImportant: true },
+    { label: t('app.log_popup.device_ip'), value: log.device_info?.id || 'Internal', isImportant: false },
     { label: t('app.log_popup.device_port'), value: log.raw?.body?.device_port, isImportant: false },
     { label: t('app.log_popup.device_index'), value: log.device_index ?? log.raw?.body?.device_index, isImportant: false },
-    { label: t('app.log_popup.device_type'), value: log.device_type || log.raw?.body?.device_type, isImportant: true },
+    { label: t('app.log_popup.device_type'), value: log.log_source || log.raw?.body?.device_type, isImportant: true },
     { label: t('app.log_popup.log_type'), value: (log.log_type || log.raw?.body?.log_type) ? t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: (log.log_type || log.raw?.body?.log_type) }) : undefined, isImportant: true },
     { label: t('app.log_popup.plate_number', { defaultValue: 'Plate Number' }), value: plateNum, isImportant: true },
     { label: t('app.log_popup.confidence', { defaultValue: 'Confidence' }), value: plateConfidence !== undefined ? `${plateConfidence}%` : undefined, isImportant: true },
-    { label: t('app.log_popup.description'), value: (log.description || log.raw?.body?.description) ? t(`app.logtype.${(log.description || log.raw?.body?.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.description || log.raw?.body?.description) }) : undefined, isImportant: false },
-    { label: t('app.log_popup.source_ip'), value: log.ip || log.raw?.ip, isImportant: false },
-    { label: t('app.log_popup.timestamp'), value: log.time ? new Date(log.time * 1000).toLocaleString() : '—', isImportant: true },
+    { label: t('app.log_popup.description'), value: (log.log_description || log.raw?.body?.description) ? t(`app.logtype.${(log.log_description || log.raw?.body?.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.log_description || log.raw?.body?.description) }) : undefined, isImportant: false },
+    { label: t('app.log_popup.source_ip'), value: log.raw?.sender_ip || log.raw?.ip, isImportant: false },
+    { label: t('app.log_popup.timestamp'), value: log.receive_time ? new Date(log.receive_time).toLocaleString() : '-', isImportant: true },
   ].filter(item => item.value !== undefined && item.value !== null && item.value !== '');
 
   const importantMetadata = allMetadata.filter(item => item.isImportant);
@@ -90,14 +90,14 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
     if (log.raw?.payload?.object?.events?.length > 0) {
       return log.raw.payload.object.events.map((evt: any, idx: number) => {
         let displayType, displayDesc;
-        switch (log.source) {
+        switch (log.log_source) {
           case 'svms': {
             const normalizedType = log.log_type.replace(/\./g, '_');
             displayType = t(`app.logtype.svms_${normalizedType}`);
             displayDesc = t(`app.logtype.svms_${normalizedType}_description`);
             break;
           }
-          case 'mqtt': {
+          case 'milesight-radar': {
             const normalizedType = log.log_type.replace(/\./g, '_');
             displayType = t(`app.logtype.milesight_${normalizedType}`);
             displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
@@ -111,8 +111,8 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
           }
           default:
             displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
-            if (log.description) {
-              const descKey = log.description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+            if (log.log_description) {
+              const descKey = log.log_description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
               displayDesc = t(`app.logtype.${descKey}`, {
                 defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
               });
@@ -129,14 +129,14 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
       });
     } else if (log.raw?.body?.log_type || log.log_type) {
       let displayType, displayDesc;
-      switch (log.source) {
+      switch (log.log_source) {
         case 'svms': {
           const normalizedType = log.log_type.replace(/\./g, '_');
           displayType = t(`app.logtype.svms_${normalizedType}`);
           displayDesc = t(`app.logtype.svms_${normalizedType}_description`);
           break;
         }
-        case 'mqtt': {
+        case 'milesight-radar': {
           const normalizedType = log.log_type.replace(/\./g, '_');
           displayType = t(`app.logtype.milesight_${normalizedType}`);
           displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
@@ -150,8 +150,8 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
         }
         default:
           displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
-          if (log.description) {
-            const descKey = log.description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+          if (log.log_description) {
+            const descKey = log.log_description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
             displayDesc = t(`app.logtype.${descKey}`, {
               defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
             });
@@ -160,7 +160,7 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
       }
       // const typeStr = t(`app.logtype.${(log.raw?.body?.log_type || log.log_type).toLowerCase()}`, { defaultValue: (log.raw?.body?.log_type || log.log_type).toLowerCase() });
       const typeStr = allMetadata.find(item => item.label === t('app.log_popup.log_type'))?.value;
-      // const descStr = (log.raw?.body?.description || log.description) ? t(`app.logtype.${(log.raw?.body?.description || log.description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.raw?.body?.description || log.description).toLowerCase() }) : '';
+      // const descStr = (log.raw?.body?.description || log.log_description) ? t(`app.logtype.${(log.raw?.body?.description || log.log_description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.raw?.body?.description || log.log_description).toLowerCase() }) : '';
       const descStr = allMetadata.find(item => item.label === t('app.log_popup.description'))?.value;
       return (
         <span className="flex items-center gap-2">
@@ -177,7 +177,7 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
     return null;
   };
 
-  const deviceName = log.device_name || log.raw?.body?.device_name || 'UNKNOWN_DEVICE';
+  const deviceName = log.device_info?.name || log.raw?.body?.device_name || 'UNKNOWN_DEVICE';
   const summaryContent = renderEventSummary();
 
   return (

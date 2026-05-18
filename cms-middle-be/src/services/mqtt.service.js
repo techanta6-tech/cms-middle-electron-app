@@ -1,6 +1,6 @@
 const mqtt = require('mqtt');
 const path = require('path');
-const { mqttServers, servers, deviceCameraLinks, getClientSockets, allLogs, ALL_LOGS_MAX, mqttDeviceList } = require('../socketState');
+const { mqttServers, servers, deviceCameraLinks, getClientSockets, mqttDeviceList } = require('../socketState');
 let cameraModule;
 try {
   cameraModule = require('./cameraModule');
@@ -15,6 +15,7 @@ try {
 const { getSnapshotForCamera } = require('./cameras.service');
 const { normalizeFeature } = require('../helpers/featureNormalizer');
 const milesightEventRegistry = require('./milesightEventRegistry.service');
+const { appendLog } = require('./system-state.service');
 
 /** Map of active MQTT client instances, keyed by server config id */
 const mqttClients = new Map();
@@ -174,7 +175,7 @@ const connectMqttServer = (serverConfig) => {
             const knownTypesSet = milesightEventRegistry.getKnownTypesSet();
             const isKnownEvent = knownTypesSet.has(alarmType);
 
-            let feat;
+            let feat = { enabled: true, cameraId: linkFeatures[alarmType]?.cameraId || null };
             if (isKnownEvent) {
               const defaultEnabled = milesightEventRegistry.getDefaultEnabled(alarmType);
               feat = normalizeFeature(linkFeatures[alarmType], alarmType);
@@ -215,7 +216,7 @@ const connectMqttServer = (serverConfig) => {
               }
             };
 
-            // export interface New_LogData {
+            // export interface LogData {
             //   id?: string;
             //   receive_time: number;
             //   log_type: string;
@@ -251,32 +252,29 @@ const connectMqttServer = (serverConfig) => {
             _pushDataLog(id, logEntry);
             _emitMqttLog(id, logEntry);
 
-            // ─── Ghi vào allLogs tổng (New_LogData shape) ──────────────────────────
+            // ─── Ghi vào allLogs tổng (LogData shape) ──────────────────────────
 
-            allLogs.push(MQTT_Milesight_LogEntry);
-            if (allLogs.length > ALL_LOGS_MAX) allLogs.shift();
+            const newLogData = {
+              id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+              receive_time: dataTarget.time ? new Date(dataTarget.time).getTime() : Date.now(),
+              log_type: event.alarm_type || 'mqtt_event',
+              log_description: event.alarm_status || event.alarm_type || 'MQTT event',
+              snapshot: snapshot || null,
+              log_source: 'milesight-radar',
+              device_info: {
+                name: dataTarget?.deviceInfo?.deviceName || 'Milesight Device',
+                id: devEui || dataTarget?.deviceInfo?.deviceName || 'unknown',
+              },
+              server_unique_id: `mqtt-${id}`,
+              raw: isolatedPayload,
+            };
+            appendLog(newLogData);
 
             // ─── Upsert MQTT device vào mqttDeviceList (logic giống FE) ────────────────────
             if (devEui) {
               const existing = mqttDeviceList.findIndex(
                 d => d.devEui === devEui && d.mqttServerId === id
               );
-              const newLogData = {
-                id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
-                // "receive_time": "2026-04-28T09:39:59.953452708+00:00",
-                receive_time: dataTarget.time,
-                log_type: event.event_type,
-                log_description: event.event_type,
-                snapshot: snapshot || null,
-                log_source: 'milesight-radar',
-                device_info: {
-                  name: target.deviceInfo.deviceName || 'Milesight Device',
-                  id: target.deviceInfo.devEui,
-                },
-                // id dùng applicationID
-                server_unique_id: target.deviceInfoApplicationId,
-                raw: isolatedPayload,
-              }
               // clientSockets.emit('test', {
               //   message: 'milesight-radar new log',
               //   newLogData

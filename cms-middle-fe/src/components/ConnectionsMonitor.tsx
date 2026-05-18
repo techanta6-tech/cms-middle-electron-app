@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
+import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MqttDeviceConfig, DeviceCameraLink, MQTT_Milesight_DeviceInfo } from '../types';
 import { Plus, Inbox, Activity, Terminal, Cpu, Globe, Send, Wifi, WifiOff, Loader2, ChevronDown, RefreshCw, Trash2, Settings, ArrowDownLeft, ArrowUpRight, Radio, Camera, Search, Filter, Bell, BellRing } from 'lucide-react';
 import { AddExternalServer } from './AddExternalServer';
 import { ConfigSystem } from './ConfigSystem';
@@ -67,7 +67,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('__all__');
   const [displayLimit, setDisplayLimit] = useState(30);
-  const log_source = logs[0]?.source || null;
+  const log_source = logs[0]?.log_source || null;
   // Extract unique log_type values
   const logTypes = useMemo(() => {
     const types = new Set<string>();
@@ -84,13 +84,13 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(l =>
-        (l.description || '').toLowerCase().includes(q) ||
+        (l.log_description || '').toLowerCase().includes(q) ||
         (l.log_type || '').toLowerCase().includes(q) ||
-        (l.device_name || '').toLowerCase().includes(q)
+        (l.device_info?.name || '').toLowerCase().includes(q)
       );
     }
     // Sort by time descending (newest first)
-    return result.sort((a, b) => b.time - a.time);
+    return result.sort((a, b) => b.receive_time - a.receive_time);
   }, [logs, typeFilter, searchQuery]);
 
   const displayedLogs = filteredLogs.slice(0, displayLimit);
@@ -139,7 +139,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
 
                     break;
                   }
-                  case 'mqtt': {
+                  case 'milesight-radar': {
                     const normalizedType = lt.replace(/\./g, '_');
                     displayFilterType = t(`app.logtype.milesight_${normalizedType}`);
                     break;
@@ -174,44 +174,16 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
         ) : (
           <div className="divide-y divide-outline-variant/5">
             {displayedLogs.map((log, i) => {
-              // let displayDesc = log.description;
-              // if (displayDesc) {
-              //   const descKey = displayDesc.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
-              //   displayDesc = t(`app.logtype.${descKey}`, {
-              //     defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
-              //   });
-              // }
-
-              // if (log.source === 'mqtt') {
-              //   let evt = log.raw?.event;
-              //   if (!evt && log.raw?.payload?.object?.events?.length > 0) {
-              //     evt = log.raw.payload.object.events[0];
-              //   }
-              //   if (evt) {
-              //     const typeVal = evt.alarm_type !== undefined ? evt.alarm_type : evt.type;
-              //     if (typeVal !== undefined) {
-              //       const lowerVal = String(typeVal).toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
-              //       displayDesc = t(`app.mqtt_alarm_type.${lowerVal}`, {
-              //         defaultValue: t(`app.logtype.${lowerVal}`, { defaultValue: String(typeVal) })
-              //       });
-              //     }
-              //   }
-              // }
-
-              // const displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type || 'LOG').toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, {
-              //   defaultValue: log.log_type || 'LOG'
-              // });
-
               let displayType, displayDesc;
 
-              switch (log.source) {
+              switch (log.log_source) {
                 case 'svms': {
                   const normalizedType = log.log_type.replace(/\./g, '_');
                   displayType = t(`app.logtype.svms_${normalizedType}`);
                   displayDesc = t(`app.logtype.svms_${normalizedType}_description`);
                   break;
                 }
-                case 'mqtt': {
+                case 'milesight-radar': {
                   const normalizedType = log.log_type.replace(/\./g, '_');
                   displayType = t(`app.logtype.milesight_${normalizedType}`);
                   displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
@@ -225,8 +197,8 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
                 }
                 default:
                   displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
-                  if (log.description) {
-                    const descKey = log.description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+                  if (log.log_description) {
+                    const descKey = log.log_description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
                     displayDesc = t(`app.logtype.${descKey}`, {
                       defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
                     });
@@ -237,7 +209,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
               return (
                 <div key={log.id || i} className="flex items-baseline gap-2 px-2 py-1 hover:bg-surface-container/30 transition-colors">
                   <span className="text-[8.5px] font-mono text-on-surface-variant/50 shrink-0 min-w-[50px]">
-                    {new Date(log.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {new Date(log.receive_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                   <span className={`min-w-[150px] text-[7.5px] font-bold uppercase tracking-wider shrink-0 min-w-[45px] text-left`}>
                     {displayType}
@@ -246,7 +218,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
                     {displayDesc || '—'}
                   </span>
                   <span className="text-[7.5px] font-mono text-on-surface-variant/30 shrink-0">
-                    {log.server?.server_id || ''}
+                    {log.server_unique_id || ''}
                   </span>
                 </div>
               );
@@ -269,7 +241,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
 }
 
 export function ConnectionsMonitor({
-  logs, sendServers, servers, devices, mqttServers, mqttLogs, cameraDevices, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera
+  logs, sendServers, servers, devices, mqttServers, mqttDevices, cameraDevices, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera
 }: {
   socket: any,
   isConnected: boolean,
@@ -280,7 +252,7 @@ export function ConnectionsMonitor({
   servers: Record<string, ServerData>;
   devices: Record<string, DeviceData>;
   mqttServers: MqttServerConfig[];
-  mqttLogs: MQTT_Milesight_LogEntry[];
+  mqttDevices: MQTT_Milesight_DeviceInfo[];
   cameraDevices: MqttDeviceConfig[];
   deviceCameraLinks: DeviceCameraLink[];
   onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
@@ -295,12 +267,12 @@ export function ConnectionsMonitor({
 
   // ─── Pre-filter logs by category to minimize cascading re-renders ────────
   const svmsLogs = useMemo(() =>
-    (throttledLogs || []).filter(l => l.source !== 'mqtt' && l.source !== 'sunell-camera'),
+    (throttledLogs || []).filter(l => l.log_source === 'svms'),
     [throttledLogs]
   );
 
   const sunellLogs = useMemo(() =>
-    (throttledLogs || []).filter(l => l.source === 'sunell-camera'),
+    (throttledLogs || []).filter(l => l.log_source === 'sunell-camera'),
     [throttledLogs]
   );
 
@@ -308,7 +280,7 @@ export function ConnectionsMonitor({
   const svmsLogsByServer = useMemo(() => {
     const map: Record<string, LogData[]> = {};
     svmsLogs.forEach(l => {
-      const sId = l.server?.server_id || '';
+      const sId = l.server_unique_id || '';
       if (!map[sId]) map[sId] = [];
       map[sId].push(l);
     });
@@ -319,10 +291,10 @@ export function ConnectionsMonitor({
   const deviceLogStats = useMemo(() => {
     const stats: Record<string, { serverId: string; serverSerial: string; deviceName: string; deviceIp: string; logCount: number }> = {};
     svmsLogs.forEach(log => {
-      const sId = log.server?.server_id || '';
-      const sSerial = log.server?.serial || '';
-      const dName = log.device_name || '';
-      const dIp = log.device_ip || '';
+      const sId = log.server_unique_id || '';
+      const sSerial = log.raw?.server?.serial || '';
+      const dName = log.device_info?.name || '';
+      const dIp = log.device_info?.id || '';
 
       const key = `${sId}_${sSerial}_${dName}_${dIp}`;
 
@@ -375,33 +347,29 @@ export function ConnectionsMonitor({
     return orphans;
   }, [deviceLogStats, servers, devices]);
 
-  // Extract unique MQTT devices per server from mqttLogs
+  // MQTT devices come from BE snapshot. Logs are used only for per-device counts.
   const mqttDevicesByServer = useMemo(() => {
     const map: Record<string, { devEui: string; applicationId: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[]> = {};
-    (mqttLogs || []).forEach(log => {
-      const serverId = log.mqttServerId;
-      const di = log.payload?.deviceInfo;
-      if (!serverId || !di?.devEui) return;
+    (mqttDevices || []).forEach(device => {
+      const serverId = (device as any).mqttServerId;
+      if (!serverId || !device.devEui) return;
+      const deviceLogs = (throttledLogs || []).filter(log =>
+        log.log_source === 'milesight-radar' &&
+        log.server_unique_id === `mqtt-${serverId}` &&
+        log.device_info?.id === device.devEui
+      );
       if (!map[serverId]) map[serverId] = [];
-      const existing = map[serverId].find(d => d.devEui === di.devEui);
-      const eventCount = log.payload?.object?.events?.length || 0;
-      if (existing) {
-        existing.alarmCount += eventCount;
-        existing.lastSeen = log.time;
-        if (!existing.applicationId && di.applicationId) existing.applicationId = di.applicationId;
-      } else {
-        map[serverId].push({
-          devEui: di.devEui,
-          applicationId: di.applicationId || '',
-          deviceName: di.deviceName || 'Unknown',
-          deviceProfileName: di.deviceProfileName || 'Unknown',
-          alarmCount: eventCount,
-          lastSeen: log.time,
-        });
-      }
+      map[serverId].push({
+        devEui: device.devEui,
+        applicationId: device.applicationId || '',
+        deviceName: device.deviceName || 'Unknown',
+        deviceProfileName: device.deviceProfileName || 'Unknown',
+        alarmCount: deviceLogs.length,
+        lastSeen: (device as any).lastSeen || '',
+      });
     });
     return map;
-  }, [mqttLogs]);
+  }, [mqttDevices, throttledLogs]);
 
   const [activeTab, setActiveTab] = useState<'input' | 'output'>('input');
   const { t } = useTranslation();
@@ -411,7 +379,7 @@ export function ConnectionsMonitor({
       <div className="flex-1 overflow-hidden p-6 h-full flex flex-col gap-4 min-h-0">
 
         {/* Tab Headers */}
-        {/* <div className="flex items-center gap-2 border-b border-outline-variant/10 shrink-0">
+        <div className="flex items-center gap-2 border-b border-outline-variant/10 shrink-0">
           <button
             onClick={() => setActiveTab('input')}
             className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'input' ? 'border-secondary text-secondary bg-secondary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
@@ -436,7 +404,7 @@ export function ConnectionsMonitor({
               )}
             </div>
           </button>
-        </div> */}
+        </div>
 
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-surface-container/20 border border-outline-variant/30 rounded-lg p-5">
@@ -574,7 +542,7 @@ const CameraDevicesCard = memo(function CameraDevicesCard({ cameras, sunellLogs 
   const cameraLogStats = useMemo(() => {
     const stats: Record<string, number> = {};
     sunellLogs.forEach(log => {
-      const camId = log.cameraIp || '';
+      const camId = log.device_info?.id || '';
       stats[camId] = (stats[camId] || 0) + 1;
     });
     return stats;
@@ -660,7 +628,7 @@ const CameraDevicesCard = memo(function CameraDevicesCard({ cameras, sunellLogs 
               const isError = cam.status === 'error';
 
               // Filter pre-filtered sunell logs for this specific camera
-              const cameraLogs = sunellLogs.filter(l => l.cameraIp === cam.id);
+              const cameraLogs = sunellLogs.filter(l => l.device_info?.id === cam.id);
 
               return (
                 <CameraItemWithLogs
@@ -1086,10 +1054,10 @@ const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, dev
 
                 // Filter pre-grouped server logs for this specific device
                 const deviceLogs = serverLogs.filter(l => {
-                  const lsId = l.server?.server_id || '';
-                  const lsSerial = l.server?.serial || '';
-                  const ldName = l.device_name || '';
-                  const ldIp = l.device_ip || '';
+                  const lsId = l.server_unique_id || '';
+                  const lsSerial = l.raw?.server?.serial || '';
+                  const ldName = l.device_info?.name || '';
+                  const ldIp = l.device_info?.id || '';
                   return `${lsId}_${lsSerial}_${ldName}_${ldIp}` === key;
                 });
 
@@ -1169,7 +1137,7 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
   } as const;
 
   const cfg = statusConfig[status] || statusConfig.disconnected;
-  const serverLogsCount = useMemo(() => logs.filter(l => l.mqttServerId === server.id).length, [logs, server.id]);
+  const serverLogsCount = useMemo(() => logs.filter(l => l.server_unique_id === `mqtt-${server.id}`).length, [logs, server.id]);
 
   return (
     <div className={`mqtt-server-card bg-surface-container border border-outline-variant/10 px-4 py-3 pb-4 rounded-md border-l-[3px] ${cfg.border} shadow-sm transition-all hover:bg-surface-container-high/40 group`}>
@@ -1253,8 +1221,8 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
                 {devices.map((device) => {
                   const link = deviceCameraLinks.find(l => l.devEui === device.devEui && l.mqttServerId === server.id);
                   const deviceLogs = (logs || []).filter(l => {
-                    const matchRadar = l.mqttServerId === server.id && l.server?.serial === device.devEui;
-                    const matchCamera = link?.cameraId && l.source === 'sunell-camera' && l.cameraIp === link.cameraId;
+                    const matchRadar = l.server_unique_id === `mqtt-${server.id}` && l.device_info?.id === device.devEui;
+                    const matchCamera = link?.cameraId && l.log_source === 'sunell-camera' && l.device_info?.id === link.cameraId;
                     return !!(matchRadar || matchCamera);
                   });
                   return (

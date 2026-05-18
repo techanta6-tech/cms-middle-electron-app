@@ -639,7 +639,6 @@ function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
         <InfoRow label={t('app.monitor.server_ip')} value={srv.svms_ipv4_ip || srv.server_ip} mono />
       </div>
 
-      {/* Event Filter Section */}
       <div className="mt-5 pt-4 border-t border-outline-variant/10">
         <button 
           onClick={() => setShowEventList(!showEventList)}

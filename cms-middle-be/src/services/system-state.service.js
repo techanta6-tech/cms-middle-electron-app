@@ -1,0 +1,147 @@
+const LOG_EMIT_INTERVAL_MS = 250;
+
+let pendingLogs = [];
+let flushTimer = null;
+
+function appendLog(logEntry) {
+  if (!logEntry) return;
+
+  const { allLogs, ALL_LOGS_MAX } = require('../socketState');
+  allLogs.push(logEntry);
+  while (allLogs.length > ALL_LOGS_MAX) allLogs.shift();
+
+  pendingLogs.push(logEntry);
+  scheduleLogFlush();
+}
+
+function scheduleLogFlush() {
+  if (flushTimer) return;
+  flushTimer = setTimeout(flushPendingLogs, LOG_EMIT_INTERVAL_MS);
+}
+
+function flushPendingLogs() {
+  flushTimer = null;
+  if (pendingLogs.length === 0) return;
+
+  const batch = pendingLogs.splice(0);
+  const { getClientSockets } = require('../socketState');
+  const clientSockets = getClientSockets();
+  if (clientSockets) {
+    clientSockets.emit('logs-batch', batch);
+  }
+}
+
+function getSystemSnapshot() {
+  const {
+    allLogs,
+    connections,
+    servers,
+    devices,
+    svmsServers,
+    svmsDevices,
+    mqttServers,
+    mqttDeviceList,
+    cameraDevices,
+    prefilter,
+    svmsDeviceFeatures,
+    deviceCameraLinks,
+    gridLayout,
+  } = require('../socketState');
+  const svmsEventRegistry = require('./svmsEventRegistry.service');
+  const milesightEventRegistry = require('./milesightEventRegistry.service');
+  const sunellEventRegistry = require('./sunellEventRegistry.service');
+
+  const svmsServersWithDevices = svmsServers.map((server) => {
+    const serverId = server.id || server.server_id;
+    const deviceEntry = svmsDevices.find((entry) => {
+      const entryServerId = entry.server?.server_id || entry.server_id;
+      const entrySerial = entry.server?.serial || entry.serial;
+      return String(entryServerId) === String(serverId) || String(entrySerial) === String(server.serial);
+    });
+
+    return {
+      ...server,
+      devices: deviceEntry?.devices || [],
+    };
+  });
+
+  const mqttServersWithDevices = mqttServers.map((server) => {
+    const devices = mqttDeviceList
+      .filter((device) => device.mqttServerId === server.id)
+      .map((device) => ({
+        ...device,
+        type: device.type || 'milesight',
+      }));
+
+    return {
+      id: server.id,
+      name: server.name || '',
+      brokerHost: server.brokerHost,
+      brokerPort: server.brokerPort,
+      protocol: server.protocol,
+      topic: server.topic,
+      defaultTopic: server.defaultTopic,
+      cameraId: server.cameraId || null,
+      status: server.status || 'disconnected',
+      logCount: (server.logs || []).length,
+      devices,
+    };
+  });
+
+  const cameras = cameraDevices.map((camera) => ({
+    id: camera.id,
+    name: camera.name,
+    type: camera.type === 'sunell' ? 'sunell' : 'other',
+    cameraIp: camera.cameraIp,
+    cameraPort: camera.cameraPort,
+    cameraUser: camera.cameraUser,
+    rtspUrl: camera.rtspUrl || null,
+    status: camera.status,
+    handle: camera.handle || null,
+    capabilities: {
+      sdk: camera.type === 'sunell',
+      rtsp: true,
+    },
+    features: camera.features || {},
+  }));
+
+  return {
+    connections: [...connections],
+    sendServers: connections.filter((connection) => connection.mode === 'send'),
+    receiveServers: connections.filter((connection) => connection.mode === 'receive'),
+    servers: Object.fromEntries(servers),
+    devices: Object.fromEntries(devices),
+    svmsServers: svmsServersWithDevices,
+    svmsDevices: [...svmsDevices],
+    mqttServers: mqttServersWithDevices,
+    mqttDeviceList: [...mqttDeviceList],
+    cameras,
+    allLogs: [...allLogs],
+    prefilter: [...prefilter],
+    gridLayout: {
+      grids: [...(gridLayout.grids || [])],
+      gridCols: gridLayout.gridCols || 3,
+    },
+    knownEvents: {
+      svms: svmsEventRegistry.getEvents(),
+      milesight: milesightEventRegistry.getEvents(),
+      sunell: sunellEventRegistry.getEvents(),
+    },
+    compatibility: {
+      svmsDeviceFeatures: [...svmsDeviceFeatures],
+      deviceCameraLinks: [...deviceCameraLinks],
+    },
+  };
+}
+
+function emitSystemSnapshot(socket) {
+  socket.emit('system-snapshot', getSystemSnapshot());
+}
+
+module.exports = {
+  LOG_EMIT_INTERVAL_MS,
+  appendLog,
+  flushPendingLogs,
+  getSystemSnapshot,
+  emitSystemSnapshot,
+};

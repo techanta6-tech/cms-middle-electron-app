@@ -143,7 +143,7 @@ const resources = {
         devices: {
           svms_servers: "SVMS Servers",
           no_svms: "Không có SVMS servers nào",
-          lora_server: "LoRa Servers",
+          lora_server: "Lora Servers",
           no_lora: "Không có LoRa servers nào",
           cameras: "Camera độc lập",
           no_cameras: "Không có camera nào",
@@ -697,7 +697,7 @@ const resources = {
         devices: {
           svms_servers: "SVMS Servers",
           no_svms: "No SVMS servers",
-          lora_server: "LoRa Servers",
+          lora_server: "Lora Servers",
           no_lora: "No LoRa servers",
           cameras: "Independent Cameras",
           no_cameras: "No cameras found",
