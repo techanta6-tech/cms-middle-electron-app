@@ -10,7 +10,7 @@ const { port } = require('../config');
  * @param {string} status - The status ('connected', 'error', 'disconnected').
  * @param {any} data - Optional data to include in the payload.
  */
-const notifyStatusToClients = (url = null, mode = 'send', status, data = null) => {
+const notifyStatusToClients = (url = null, mode = 'receive', status, data = null) => {
   const clientSockets = getClientSockets();
   const payload = { url, type: mode, status };
 
@@ -42,7 +42,7 @@ const getActiveClients = async () => {
       ip: (s.handshake.address || '').replace('::ffff:', ''),
       port: clientPort,
       status: 'connected',
-      mode: 'send',
+      mode: 'receive',
       sentCount: s.data.sentCount || 0
     };
   });
@@ -62,8 +62,8 @@ const syncClientsToFrontend = async () => {
  */
 const syncConnectionsToFrontend = () => {
   const clientSockets = getClientSockets();
-  const sendList = connections.filter(c => c.mode === 'send');
-  const receiveList = connections.filter(c => c.mode === 'receive');
+  const sendList = [];
+  const receiveList = connections;
   clientSockets.emit('update-connections', { sendList, receiveList });
 };
 

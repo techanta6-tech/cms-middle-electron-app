@@ -92,11 +92,12 @@ export interface Sunell_LogPayload {
 export interface LogData {
   id?: string;
   receive_time: number;
+  device_index?: number | string;
   log_type: string;
   log_description: string;
   snapshot?: string;
   log_snapshot_image_path?: string;
-  log_source: 'svms' | 'milesight-radar' | 'sunell-camera';
+  log_source: 'svms' | 'milesight-radar' | 'sunell-camera' | 'other';
   device_info: {
     name: string;
     id: string;
@@ -108,7 +109,7 @@ export interface LogData {
 /** Một mục trong danh sách filter Event Types */
 export interface EventTypeItem {
   event_type: string;
-  log_source: 'svms' | 'mqtt' | 'sunell-camera' | null;
+  log_source: 'svms' | 'mqtt' | 'sunell-camera' | 'other' | null;
 }
 
 export interface SVMS_LogPayload {
@@ -135,24 +136,42 @@ export interface SVMS_LogPayload {
 }
 
 export interface AddExternalServerProps {
-  onSave: (ip: string, port: string, mode: 'receive' | 'send') => void;
+  onSave: (ip: string, port: string) => void;
   onSaveMqtt: (config: MqttServerConfig) => void;
   onClose: () => void;
   initialIp?: string;
   initialPort?: string;
-  initialMode?: 'receive' | 'send';
+  initialMode?: 'receive';
   initialConnectionType?: 'svms' | 'mqtt';
   mqttToEdit?: MqttServerConfig;
 }
 
-export interface NewServerData {
+export interface ServerData {
   server_id: string;
   server_name: string;
-  type: 'svms' | 'milesight-radar';
+  type: 'svms' | 'milesight-radar' | 'direct' | 'forwarded' | 'mqtt';
   custom_server_name: string;
   svms_server_info?: SVMSServerData;
   milesight_server_info?: MqttServerConfig;
   raw: any;
+
+  // Compatibility fields from the current BE socket payload.
+  id: string;
+  serial: string;
+  server_ip: string;
+  svms_ipv4_ip: string;
+  version: string;
+  location: string;
+  day: number;
+  month: number;
+  year: number;
+  sender_ip: string;
+  lastSeen: string;
+  connectionStatus: 'connected' | 'disconnected' | 'connecting';
+  lastLogReceived: string;
+  mqttTopic?: string;
+  status?: 'connecting' | 'connected' | 'disconnected' | 'error';
+  name?: string;
 }
 
 export interface SVMSServer {
@@ -180,27 +199,27 @@ export interface SVMSServerData {
   year: number;
 }
 
-export interface ServerData {
-  // og log datas
-  id: string;
-  serial: string;
-  server_ip: string;
-  server_name: string;
-  version: string;
-  location: string;
-  day: number;
-  month: number;
-  year: number;
-  sender_ip?: string;
-  lastSeen?: string;
-  // new datas
-  svms_ipv4_ip?: string;
-  // connectivity monitor fields
-  type?: 'direct' | 'forwarded' | 'mqtt';
-  connectionStatus?: 'connected' | 'disconnected' | 'connecting';
-  lastLogReceived?: string;
-  mqttTopic?: string;
-}
+// export interface ServerData {
+//   // og log datas
+//   id: string;
+//   serial: string;
+//   server_ip: string;
+//   server_name: string;
+//   version: string;
+//   location: string;
+//   day: number;
+//   month: number;
+//   year: number;
+//   sender_ip?: string;
+//   lastSeen?: string;
+//   // new datas
+//   svms_ipv4_ip?: string;
+//   // connectivity monitor fields
+//   type?: 'direct' | 'forwarded' | 'mqtt';
+//   connectionStatus?: 'connected' | 'disconnected' | 'connecting';
+//   lastLogReceived?: string;
+//   mqttTopic?: string;
+// }
 
 export interface DeviceItem {
   name: string;

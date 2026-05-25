@@ -1,8 +1,8 @@
-﻿import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { socket, updateSocketUrlAsync, getBeHost, getBePort } from '../socket';
 import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink, SVMSServer, SMVSDevices, MQTT_Milesight_DeviceInfo, EventTypeItem } from '../types';
 import apiClient from '../api/apiClient';
-import axios from 'axios';
+import { normalizeServerData, normalizeServersRecord } from '../utils/serverData';
 
 export interface SvmsKnownEvent {
   event_type: string;
@@ -125,7 +125,7 @@ export const getLogTypeDisplayName = (logType: string, t: (key: string) => strin
 
 type SystemSnapshot = {
   connections?: SystemConnection[];
-  sendServers?: SystemConnection[];
+
   receiveServers?: SystemConnection[];
   servers?: Record<string, ServerData>;
   devices?: Record<string, DeviceData>;
@@ -280,7 +280,6 @@ export function useSocketManager() {
     });
   }, []);
 
-  const [sendServers, setSendServers] = useState<SystemConnection[]>([]);
   const [receiveServers, setReceiveServers] = useState<SystemConnection[]>([]);
   const [mqttServers, setMqttServers] = useState<MqttServerConfig[]>([]);
 
@@ -318,7 +317,6 @@ export function useSocketManager() {
   const fetchConnections = useCallback(async () => {
     try {
       const { data } = await apiClient.get('/api/v1/connections');
-      setSendServers(data.sendList || []);
       setReceiveServers(data.receiveList || []);
       console.log('[FETCH_CONNECTIONS] Synced from BE:', data);
     } catch (err) {
@@ -519,44 +517,16 @@ export function useSocketManager() {
     });
   };
 
-  const updateSendServers = (ip: string, port: string, status: 'connecting' | 'connected' | 'disconnected') => {
-    setSendServers(prev => {
-      const idx = prev.findIndex(s => s.ip === ip && s.port === port);
-      if (idx !== -1) {
-        const updated = [...prev];
-        updated[idx] = { ...updated[idx], status };
-        return updated;
-      }
-      return [...prev, { ip, port, status }];
-    });
-  };
-
-  const handleAddExternalServer = useCallback(async (ip: string, port: string, mode: 'receive' | 'send') => {
-    console.log(`[SYNC_INIT] Requesting local BE to connect to http://${ip}:${port} (${mode})`);
-
-    if (mode === 'send') {
-      // GỌI ĐẾN BE CỦA MÌNH ĐỂ THỰC HIỆN KẾT NỐI ĐẾN SERVER ĐÍCH
-      apiClient.post(`/api/v1/create-connection`, { ip, port, mode })
-        .then((res: any) => {
-          console.log(`[SYNC_SUCCESS] Backend response:`, res.data);
-          // Sau khi tạo connection thành công → fetch lại full list từ BE
-          fetchConnections();
-        })
-        .catch((err: any) => console.error(`[SYNC_ERROR] Failed to initiate sync:`, err));
-    } else if (mode === 'receive') {
-      // GỌI ĐẾN BE CỦA IP:PORT ĐỂ ĐÍCH KẾT NỐI ĐẾN SERVER HIỆN TẠI
-      axios.post(`http://${ip}:${port}/api/v1/create-connection`,
-        { ip: systemConfig.be.ip, port: systemConfig.be.port, mode: 'send' },
-        { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } }
-      )
-        .then((res: any) => {
-          console.log(`[SYNC_SUCCESS] Target backend response:`, res.data);
-          // Fetch mồi lại list, hệ thống sẽ tự cập nhật khi Data log đổ về
-          fetchConnections();
-        })
-        .catch((err: any) => console.error(`[SYNC_ERROR] Failed to initiate sync on target:`, err));
+  const handleAddExternalServer = useCallback(async (ip: string, port: string) => {
+    console.log(`[SOURCE_REGISTER] Registering receive-only source http://${ip}:${port}`);
+    try {
+      const res = await apiClient.post('/api/v1/create-connection', { ip, port, mode: 'receive' });
+      console.log('[SOURCE_REGISTER] Backend response:', res.data);
+      fetchConnections();
+    } catch (err: any) {
+      console.error('[SOURCE_REGISTER] Failed to register source:', err);
     }
-  }, [systemConfig.be.ip, systemConfig.be.port, fetchConnections]);
+  }, [fetchConnections]);
 
   // ─── MQTT Server Handlers ───────────────────────────────────────────────────
   const handleAddMqttServer = useCallback(async (config: MqttServerConfig) => {
@@ -606,55 +576,21 @@ export function useSocketManager() {
     }
   }, [fetchMqttServers]);
 
-  const handleRemoveConnection = useCallback((ip: string, port: string, mode: 'receive' | 'send') => {
-    if (mode === 'send') {
-      setSendServers(prev => prev.filter(s => !(s.ip === ip && s.port === port)));
-    } else {
-      setReceiveServers(prev => prev.filter(s => !(s.ip === ip && s.port === port)));
-    }
+  const handleRemoveConnection = useCallback((ip: string, port: string) => {
+    setReceiveServers(prev => prev.filter(s => !(s.ip === ip && s.port === port)));
   }, []);
 
   useEffect(() => {
     function onConnectingExternalServer(raw: any) {
-      const { url } = raw;
-      const parsed = new URL(url);
-      updateSendServers(parsed.hostname, parsed.port, 'connecting');
+      updateReceiveServer({ ...raw, status: 'connecting' });
     }
 
     function onConnectedExternalServer(raw: any) {
-      const { url } = raw;
-      const parsed = new URL(url);
-      updateSendServers(parsed.hostname, parsed.port, 'connected');
+      updateReceiveServer({ ...raw, status: 'connected' });
     }
 
-    function onLogDispatched(raw: any) {
-      const { sentServerList } = raw;
-      setSendServers(prev => prev.map(s => {
-        if (sentServerList.includes('http://' + s.ip + ':' + s.port)) {
-          return {
-            ...s,
-            sentCount: (s.sentCount || 0) + 1
-          };
-        }
-        return s;
-      }));
-    }
-
-    function onUpdateConnections(data: { sendList: SystemConnection[], receiveList: SystemConnection[] }) {
+    function onUpdateConnections(data: { receiveList: SystemConnection[] }) {
       console.log('[SOCKET] update-connections:', data);
-
-      // Merge để không làm mất 'sentCount' và 'status' hiện tại
-      setSendServers(prev => {
-        return (data.sendList || []).map(newServer => {
-          const existing = prev.find(p => p.ip === newServer.ip && p.port === newServer.port);
-          return {
-            ...newServer,
-            sentCount: existing ? existing.sentCount : 0,
-            status: existing && newServer.status === 'connected' ? existing.status : newServer.status
-          };
-        });
-      });
-
       setReceiveServers(data.receiveList || []);
     }
 
@@ -662,24 +598,12 @@ export function useSocketManager() {
     function onUpdateClients() { }
 
     function onDisconnectedExternalServer(raw: any) {
-      const { url, type } = raw;
-      if (type === 'send' || !type) {
-        const parsed = new URL(url);
-        updateSendServers(parsed.hostname, parsed.port, 'disconnected');
-      } else {
-        updateReceiveServer(raw);
-      }
+      updateReceiveServer(raw);
     }
 
     function onErrorExternalServer(raw: any) {
       // 'error' event is legacy — treat as disconnected
-      const { url, type } = raw;
-      if (type === 'send' || !type) {
-        const parsed = new URL(url);
-        updateSendServers(parsed.hostname, parsed.port, 'disconnected');
-      } else {
-        updateReceiveServer(raw);
-      }
+      updateReceiveServer(raw);
     }
 
     const onReceiveLog = (raw: any) => {
@@ -765,9 +689,9 @@ export function useSocketManager() {
             console.log(`  ${key}: status=${srv.connectionStatus}, ip=${srv.server_ip}, topic=${srv.mqttTopic || 'N/A'}`);
           });
         }
-        setServers(raw.allServers);
+        setServers(normalizeServersRecord(raw.allServers));
       } else if (raw.serverId && raw.data) {
-        setServers(prev => ({ ...prev, [raw.serverId]: raw.data }));
+        setServers(prev => ({ ...prev, [raw.serverId]: normalizeServerData(raw.data, raw.serverId) }));
       }
     };
 
@@ -856,7 +780,6 @@ export function useSocketManager() {
     };
     socket.on('sunell-test', onSunellTest);
     socket.on('update-client', onUpdateClients);
-    socket.on('log-dispatched', onLogDispatched);
     socket.on('receive-server-information', onReceiveServerInformation);
     socket.on('receive-devices-information', onReceiveDevicesInformation);
     socket.on('update-connections', onUpdateConnections);
@@ -905,9 +828,8 @@ export function useSocketManager() {
         log_source: getFilterLogSource(log.log_source),
       })));
 
-      if (Array.isArray(data.sendServers)) setSendServers(data.sendServers);
       if (Array.isArray(data.receiveServers)) setReceiveServers(data.receiveServers);
-      if (data.servers) setServers(data.servers);
+      if (data.servers) setServers(normalizeServersRecord(data.servers));
       if (data.devices) setDevices(data.devices);
       if (Array.isArray(data.svmsServers)) setSvmsServers(data.svmsServers);
       if (Array.isArray(data.svmsDevices)) setSvmsDevices(data.svmsDevices);
@@ -1008,7 +930,7 @@ export function useSocketManager() {
       socket.off('receive-sunell-log', onReceiveSunellLog);
       socket.off('sunell-test', onSunellTest);
       socket.off('update-client', onUpdateClients);
-      socket.off('log-dispatched', onLogDispatched);
+
       socket.off('receive-server-information', onReceiveServerInformation);
       socket.off('receive-devices-information', onReceiveDevicesInformation);
       socket.off('update-connections', onUpdateConnections);
@@ -1054,7 +976,6 @@ export function useSocketManager() {
     devices,
     systemConfig,
     setSystemConfig,
-    sendServers,
     receiveServers,
     handleAddExternalServer,
     handleRemoveConnection,

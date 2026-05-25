@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AddExternalServerProps, MqttServerConfig } from '../types';
-import { TriangleAlert, Inbox, Send, Cloud, Terminal, Radio, X } from 'lucide-react';
+import { TriangleAlert, Cloud, Terminal, Radio, X } from 'lucide-react';
 
-export const AddExternalServer = React.memo(function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '', initialPort = '', initialMode = 'receive', initialConnectionType = 'svms', mqttToEdit }: AddExternalServerProps) {
+export const AddExternalServer = React.memo(function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '', initialPort = '', initialConnectionType = 'svms', mqttToEdit }: AddExternalServerProps) {
   const { t } = useTranslation();
   // Connection type: 'svms' or 'mqtt'
   const [connectionType, setConnectionType] = useState<'svms' | 'mqtt'>(mqttToEdit ? 'mqtt' : initialConnectionType);
@@ -11,7 +11,6 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
   // SVMS fields
   const [ip, setIp] = useState(initialIp);
   const [port, setPort] = useState(initialPort);
-  const [mode, setMode] = useState<'receive' | 'send'>(initialMode);
 
   // MQTT fields — placeholders from current .env defaults
   const [mqttName, setMqttName] = useState(mqttToEdit?.name || '');
@@ -29,7 +28,7 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (connectionType === 'svms') {
-      onSave(ip, port, mode);
+      onSave(ip, port, 'receive');
     } else if (connectionType === 'mqtt' && onSaveMqtt) {
       const config: MqttServerConfig = {
         id: mqttToEdit?.id || '', // Keep existing ID if editing, BE will generate if empty
@@ -107,37 +106,6 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
           {/* ─── SVMS Form ─────────────────────────────────────────────── */}
           {connectionType === 'svms' && (
             <>
-              {/* Mode Switcher */}
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1 transition-colors group-focus-within:text-primary">
-                  {t('app.add_server.op_mode')}
-                </label>
-                <div className="flex bg-black/40 p-1 rounded-sm border border-outline-variant/30">
-                  <button
-                    type="button"
-                    onClick={() => setMode('receive')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xs text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${mode === 'receive'
-                      ? 'bg-primary text-primary-container shadow-lg shadow-primary/20'
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                      }`}
-                  >
-                    <Inbox className={`w-3.5 h-3.5 ${mode === 'receive' ? 'animate-bounce' : ''}`} />
-                    {t('app.add_server.receive')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMode('send')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xs text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${mode === 'send'
-                      ? 'bg-primary text-primary-container shadow-lg shadow-primary/20'
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                      }`}
-                  >
-                    <Send className={`w-3.5 h-3.5 ${mode === 'send' ? 'animate-pulse' : ''}`} />
-                    {t('app.add_server.send')}
-                  </button>
-                </div>
-              </div>
-
               <div className="space-y-1.5 group">
                 <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1">
                   {t('app.add_server.target_ip')}

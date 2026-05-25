@@ -241,12 +241,14 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
 }
 
 export function ConnectionsMonitor({
-  logs, sendServers, servers, devices, mqttServers, mqttDevices, cameraDevices, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera
+  isConnected,
+  systemConfig,
+  receiveServers,
+  logs, servers, devices, mqttServers, mqttDevices, cameraDevices, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera
 }: {
   socket: any,
   isConnected: boolean,
   logs: LogData[],
-  sendServers: SystemConnection[],
   receiveServers: SystemConnection[],
   systemConfig: SystemConfig;
   servers: Record<string, ServerData>;
@@ -257,10 +259,10 @@ export function ConnectionsMonitor({
   deviceCameraLinks: DeviceCameraLink[];
   onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
   onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void;
-  onSave: (ip: string, port: string, mode: 'receive' | 'send') => void,
+  onSave: (ip: string, port: string) => void,
   onSaveMqtt: (config: MqttServerConfig) => void,
   onSaveSystemConfig: (config: SystemConfig) => void,
-  onRemoveConnection: (ip: string, port: string, mode: 'receive' | 'send') => void,
+  onRemoveConnection: (ip: string, port: string) => void,
 }) {
   // ─── Throttle logs riêng cho tab này: 1 lần/giây thay vì 500ms ──────────
   const throttledLogs = useThrottledValue(logs, MONITOR_THROTTLE_MS);
@@ -291,10 +293,10 @@ export function ConnectionsMonitor({
   const deviceLogStats = useMemo(() => {
     const stats: Record<string, { serverId: string; serverSerial: string; deviceName: string; deviceIp: string; logCount: number }> = {};
     svmsLogs.forEach(log => {
-      const sId = log.server_unique_id || '';
+      const sId = log.raw?.server?.server_id || log.server_unique_id || '';
       const sSerial = log.raw?.server?.serial || '';
       const dName = log.device_info?.name || '';
-      const dIp = log.device_info?.id || '';
+      const dIp = log.raw?.device_ip || log.device_info?.id || '';
 
       const key = `${sId}_${sSerial}_${dName}_${dIp}`;
 
@@ -371,7 +373,7 @@ export function ConnectionsMonitor({
     return map;
   }, [mqttDevices, throttledLogs]);
 
-  const [activeTab, setActiveTab] = useState<'input' | 'output'>('input');
+
   const { t } = useTranslation();
 
   return (
@@ -379,36 +381,11 @@ export function ConnectionsMonitor({
       <div className="flex-1 overflow-hidden p-6 h-full flex flex-col gap-4 min-h-0">
 
         {/* Tab Headers */}
-        <div className="flex items-center gap-2 border-b border-outline-variant/10 shrink-0">
-          <button
-            onClick={() => setActiveTab('input')}
-            className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'input' ? 'border-secondary text-secondary bg-secondary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
-          >
-            <Terminal className="w-4 h-4" />
-            <div className="flex flex-col text-left">
-              <span>{t('app.monitor.input_connections')}</span>
-              {Object.keys(servers).length + mqttServers.length > 0 && (
-                <span className="text-[9px] text-secondary/70 tracking-normal font-mono leading-none">{Object.keys(servers).length + mqttServers.length} {t('app.monitor.sources_emitting')}</span>
-              )}
-            </div>
-          </button>
-          <button
-            onClick={() => setActiveTab('output')}
-            className={`flex-1 py-3 px-6 font-bold uppercase tracking-[0.1em] text-[12px] flex items-center justify-center gap-2 border-b-[3px] transition-all ${activeTab === 'output' ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-on-surface-variant hover:bg-surface-container/50'}`}
-          >
-            <Globe className="w-4 h-4" />
-            <div className="flex flex-col text-left">
-              <span>{t('app.monitor.output_targets')}</span>
-              {sendServers.length > 0 && (
-                <span className="text-[9px] text-primary/70 tracking-normal font-mono leading-none">{sendServers.length} {t('app.monitor.endpoints_receiving')}</span>
-              )}
-            </div>
-          </button>
-        </div>
+        Thêm thẻ thống kê biểu đồ bla bla vào đây
 
-        {/* Tab Content */}
+
+        {/* Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-surface-container/20 border border-outline-variant/30 rounded-lg p-5">
-          {activeTab === 'input' && (
             <div className="flex flex-col gap-4">
               {Object.keys(servers).length === 0 && orphanDevices.length === 0 && mqttServers.length === 0 ? (
                 <div className="py-12 flex flex-col items-center justify-center opacity-40 gap-3 border border-dashed border-outline-variant/20 rounded-md bg-surface-container-lowest/50">
@@ -453,24 +430,6 @@ export function ConnectionsMonitor({
                 </>
               )}
             </div>
-          )}
-
-          {activeTab === 'output' && (
-            <div className="flex flex-col gap-4">
-              {sendServers.length === 0 ? (
-                <div className="py-12 flex flex-col items-center justify-center opacity-40 gap-3 border border-dashed border-outline-variant/20 rounded-md bg-surface-container-lowest/50">
-                  <Send className="w-8 h-8 text-on-surface-variant" />
-                  <span className="text-[10px] uppercase tracking-widest font-bold">{t('app.monitor.no_output')}</span>
-                </div>
-              ) : (
-                <>
-                  {sendServers.map((s, idx) => (
-                    <SendTargetCard key={idx} conn={s} />
-                  ))}
-                </>
-              )}
-            </div>
-          )}
         </div>
 
       </div>
@@ -809,137 +768,6 @@ const DeviceItemRow = memo(function DeviceItemRow({
   (prev.filteredLogs?.length || 0) === (next.filteredLogs?.length || 0)
 );
 
-function SendTargetCard({ conn }: { conn: SystemConnection }) {
-  const { t } = useTranslation();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const status = conn.status || 'connecting';
-
-  const handleRemoveConnection = async () => {
-    console.log('[DEBUG] remove-connection for:', conn.ip);
-    setIsMenuOpen(false);
-    try {
-      await apiClient.post('/api/v1/remove-connection', {
-        ip: conn.ip,
-        port: conn.port,
-      });
-    } catch (e) {
-      console.error('[DEBUG] Failed to remove connection', e);
-    }
-  };
-
-  const handleReconnect = async () => {
-    console.log('[DEBUG] reconnect for:', conn.ip);
-    // Gọi API -> BE sẽ bắn socket event -> useSocketManager cập nhật sendServers -> conn.status tự thay đổi
-    await apiClient.post('/api/v1/reconnect-connection', {
-      ip: conn.ip,
-      port: conn.port,
-    });
-  };
-
-  const statusConfig = {
-    connecting: {
-      dot: 'bg-amber-400 ring-amber-400/20',
-      badge: 'text-amber-400 bg-amber-400/10 border-amber-400/30',
-      label: 'CONNECTING',
-      icon: <Loader2 className="w-3 h-3 animate-spin" />,
-      border: 'border-l-amber-400/60',
-    },
-    connected: {
-      dot: 'bg-primary ring-primary/20',
-      badge: 'text-primary bg-primary/10 border-primary/30 hover:bg-primary/20 cursor-pointer',
-      label: 'CONNECTED',
-      icon: <Wifi className="w-3 h-3" />,
-      border: 'border-l-primary/60',
-    },
-    disconnected: {
-      dot: 'bg-tertiary ring-tertiary/20',
-      badge: 'text-tertiary bg-tertiary/10 border-tertiary/30 hover:bg-tertiary/20 cursor-pointer',
-      label: 'DISCONNECTED',
-      icon: <WifiOff className="w-3 h-3" />,
-      border: 'border-l-tertiary/60',
-    },
-  } as const;
-
-  const cfg = statusConfig[status] ?? statusConfig.disconnected;
-
-  return (
-    <div className={`send-target-card bg-surface-container border border-outline-variant/10 px-5 py-4 rounded-md flex items-center justify-between border-l-[3px] ${cfg.border} transition-all hover:bg-surface-container-high/40 shadow-sm group`}>
-      <div className="flex items-start gap-4">
-        <div className={`mt-2 flex-shrink-0 w-2 h-2 rounded-full ring-[3px] ${cfg.dot} ${status === 'connecting' ? 'animate-pulse' : ''}`}></div>
-        <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-bold text-on-surface-variant/70 uppercase tracking-widest flex items-center gap-1.5">
-            {t('app.monitor.target_endpoint')}
-          </span>
-          <div className="flex items-end gap-1">
-            <span className="text-[16px] font-black text-on-surface font-mono tracking-tight leading-none">{conn.ip}</span>
-            <span className="text-[12px] font-mono font-medium text-on-surface-variant/60 mb-0.5">:{conn.port}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-5">
-        <div className="flex flex-col items-end gap-1.5">
-          <span className="text-[9px] font-bold text-on-surface-variant/70 uppercase tracking-widest">{t('app.monitor.logs_sent')}</span>
-          <span className="text-[12px] font-black font-mono text-on-surface flex items-center justify-end gap-1.5 min-w-[50px] bg-surface-container-low px-2 py-0.5 rounded border border-outline-variant/10">
-            <Send className="w-3 h-3 text-on-surface-variant/50" />
-            <span>{conn.sentCount || 0}</span>
-          </span>
-        </div>
-
-        <div className="flex flex-col items-end gap-1.5 border-l border-outline-variant/10 pl-5 relative h-full justify-center">
-          <span className="text-[9px] font-bold text-on-surface-variant/70 uppercase tracking-widest">{t('app.monitor.status')}</span>
-
-          {status === 'connected' ? (
-            <div className="relative">
-              <button
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className={`text-[10px] uppercase font-bold px-2 py-1 rounded font-mono border flex items-center gap-1.5 transition-colors shadow-sm ${cfg.badge}`}
-              >
-                {cfg.icon}
-                {cfg.label}
-                <ChevronDown className={`w-3 h-3 transition-transform opacity-60 ${isMenuOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {isMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 z-50 bg-surface-container-high border border-outline-variant shadow-lg rounded min-w-[160px]  animate-in fade-in zoom-in duration-150">
-                  <button
-                    onClick={handleRemoveConnection}
-                    className="w-full text-left px-3 py-2.5 text-[10px] font-bold text-tertiary hover:bg-tertiary/10 flex items-center gap-2 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    {t('app.monitor.remove_conn')}
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : status === 'disconnected' ? (
-            <InfoTooltip content="Kết nối lại" side="top">
-              <button
-                onClick={handleReconnect}
-                className={`text-[10px] uppercase font-bold px-2 py-1 rounded font-mono border flex items-center gap-1.5 transition-colors shadow-sm ${cfg.badge}`}
-              >
-                <RefreshCw className="w-3 h-3" />
-                {cfg.label}
-              </button>
-            </InfoTooltip>
-          ) : (
-            <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded font-mono border flex items-center gap-1.5 shadow-sm ${cfg.badge}`}>
-              {cfg.icon}
-              {cfg.label}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {isMenuOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setIsMenuOpen(false)}
-        ></div>
-      )}
-    </div>
-  );
-}
 
 const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, deviceLogStats, serverLogs }: { srv: any, matchedDevices: any, deviceLogStats: Record<string, any>, serverLogs: LogData[] }) {
   const { t } = useTranslation();
@@ -1054,10 +882,10 @@ const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, dev
 
                 // Filter pre-grouped server logs for this specific device
                 const deviceLogs = serverLogs.filter(l => {
-                  const lsId = l.server_unique_id || '';
+                  const lsId = l.raw?.server?.server_id || l.server_unique_id || '';
                   const lsSerial = l.raw?.server?.serial || '';
                   const ldName = l.device_info?.name || '';
-                  const ldIp = l.device_info?.id || '';
+                  const ldIp = l.raw?.device_ip || l.device_info?.id || '';
                   return `${lsId}_${lsSerial}_${ldName}_${ldIp}` === key;
                 });
 

@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { mqttServers } = require('../../socketState');
 const { connectMqttServer, disconnectMqttServer, getMqttServersList, getMqttServerLogs, publishDownlink, controlBuzzer } = require('../../services/mqtt.service');
 const authMiddleware = require('../../middleware/auth.middleware');
+const persistedDevices = require('../../services/persisted-devices.service');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -99,6 +100,9 @@ router.patch('/api/v1/mqtt-servers/:id', (req, res) => {
   if (cameraId !== undefined) {
     mqttServers[idx].cameraId = cameraId;
   }
+  if (mqttServers[idx].status === 'connected') {
+    persistedDevices.persistMqttServer(mqttServers[idx]);
+  }
 
   // Emit updated list to FE
   const { getClientSockets } = require('../../socketState');
@@ -120,6 +124,7 @@ router.delete('/api/v1/mqtt-servers/:id', (req, res) => {
 
   disconnectMqttServer(id);
   mqttServers.splice(idx, 1);
+  persistedDevices.removeMqttServer(id);
 
   // Emit updated list to FE
   const { getClientSockets } = require('../../socketState');

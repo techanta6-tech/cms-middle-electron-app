@@ -23,5 +23,10 @@
     "event_type": "videoloss",
     "event_description": "videoloss_description",
     "default_enabled": false
+  },
+  {
+    "event_type": "stop_record",
+    "event_description": "svms_stop_record_description",
+    "default_enabled": false
   }
 ]

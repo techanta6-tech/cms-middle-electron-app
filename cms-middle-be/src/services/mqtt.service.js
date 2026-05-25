@@ -16,6 +16,7 @@ const { getSnapshotForCamera } = require('./cameras.service');
 const { normalizeFeature } = require('../helpers/featureNormalizer');
 const milesightEventRegistry = require('./milesightEventRegistry.service');
 const { appendLog } = require('./system-state.service');
+const persistedDevices = require('./persisted-devices.service');
 
 /** Map of active MQTT client instances, keyed by server config id */
 const mqttClients = new Map();
@@ -26,7 +27,8 @@ const mqttClients = new Map();
  * Connect to a single MQTT server config and start listening.
  * @param {object} serverConfig - { id, brokerHost, brokerPort, protocol, topic, defaultTopic, cameraId }
  */
-const connectMqttServer = (serverConfig) => {
+const connectMqttServer = (serverConfig, options = {}) => {
+  const { persistOnConnect = true } = options;
   const { id, brokerHost, brokerPort, protocol, topic, cameraId } = serverConfig;
   const brokerUrl = `${protocol || 'mqtt'}://${brokerHost}:${brokerPort}`;
 
@@ -100,6 +102,10 @@ const connectMqttServer = (serverConfig) => {
       if (srvEntry) {
         srvEntry.connectionStatus = 'connected';
         srvEntry.lastSeen = new Date().toISOString();
+      }
+
+      if (persistOnConnect && entry) {
+        persistedDevices.persistMqttServer(entry);
       }
 
       _emitMqttServersUpdate();

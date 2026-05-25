@@ -1,0 +1,144 @@
+{
+  "socketConnected": true,
+  "hostTarget": "192.168.1.105:5050",
+  "totalLogs": 151,
+  "totalSvmsServers": 1,
+  "totalMqttServers": 0,
+  "totalCameras": 0,
+  "totalOrphanDevices": 2,
+  "totalSendConnections": 0,
+  "totalReceiveConnections": 1,
+  "svmsServers": [
+    {
+      "name": "Ten SVMS Server Cua Phuc",
+      "ip": "192.168.52.1",
+      "status": "UNKNOWN",
+      "deviceCount": 3
+    }
+  ],
+  "mqttServers": [],
+  "cameras": [],
+  "sendConnections": [],
+  "recentLogs": [
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    },
+    {
+      "time": "22:21:19 21/1/1970",
+      "source": "svms",
+      "type": "motion",
+      "description": "A Motion has been detected."
+    }
+  ]
+}

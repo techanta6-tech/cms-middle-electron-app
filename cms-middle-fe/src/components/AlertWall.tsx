@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DeviceData, LogData, DeviceCameraLink } from '../types';
-import { CameraOff, X, Settings, Camera, ZoomIn, ZoomOut } from 'lucide-react';
+import { CameraOff, X, Settings, Camera, ZoomIn, ZoomOut, Maximize, Minimize } from 'lucide-react';
 import { CameraFeed } from './CameraFeed';
 
 export function AlertWall({
@@ -12,7 +12,9 @@ export function AlertWall({
   gridCols,
   setGridCols,
   grids,
-  setGrids
+  setGrids,
+  isFullscreen,
+  setIsFullscreen
 }: {
   logs: LogData[],
   cameras: DeviceData[],
@@ -39,7 +41,9 @@ export function AlertWall({
       device_name: string,
       device_type: string
     }
-  }[]>>
+  }[]>>,
+  isFullscreen?: boolean,
+  setIsFullscreen?: (val: boolean) => void
 }) {
   const { t } = useTranslation();
   const [showGridSettings, setShowGridSettings] = useState(false);
@@ -139,6 +143,19 @@ export function AlertWall({
               const log = logs[i];
               if (camera.type === 'sunell') {
                 if (log.log_source === 'sunell-camera' && log.device_info?.id === camera.ip) {
+                  cameraLog = log;
+                  break;
+                }
+              } else if (log.log_source === 'svms') {
+                const rawDeviceName = log.raw?.device_name;
+                const rawServerSerial = log.raw?.server?.serial;
+                const rawDeviceIp = log.raw?.device_ip;
+
+                if (
+                  rawDeviceName === camera.name &&
+                  (rawServerSerial === camera.server_serial || rawServerSerial === camera.server_id) &&
+                  rawDeviceIp === camera.ip
+                ) {
                   cameraLog = log;
                   break;
                 }
@@ -267,7 +284,7 @@ export function AlertWall({
                 <>
                   <div className="no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-4 py-2">
                     <Camera className={`opacity-30 ${gridCols > colsBreakPoints[1] ? 'w-[80%] h-[80%]' : gridCols > colsBreakPoints[0] ? 'w-8 h-8' : 'w-12 h-12'} transition-all`} />
-                    
+
                     <span className={`opacity-30 text-[11px] uppercase tracking-widest font-bold line-clamp-1 transition-all ${gridCols > colsBreakPoints[1] ? 'hidden' : ''}`}>
                       {t('app.alert_wall.waiting_data')}
                     </span>
@@ -350,11 +367,37 @@ export function AlertWall({
                 </button>
                 {/* Nút Thu nhỏ (Zoom Out): Tăng ma trận lưới thành (gridCols+1) x (gridCols+1) */}
                 <button
-                  onClick={() => setGridCols(gridCols + 1)}
+                  onClick={() => gridCols < 6 && setGridCols(gridCols + 1)}
                   className="p-2.5 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
                   title={t('app.alert_wall.inc_grid')}
                 >
                   <ZoomOut className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                </button>
+                {/* Nút Toggle Full Screen: Bật/tắt chế độ toàn màn hình cho Alert Wall */}
+                <button
+                  onClick={() => {
+                    const nextVal = !isFullscreen;
+                    if (nextVal) {
+                      document.documentElement.requestFullscreen().catch(err => {
+                        console.error('Error entering fullscreen:', err);
+                      });
+                    } else {
+                      if (document.fullscreenElement) {
+                        document.exitFullscreen().catch(err => {
+                          console.error('Error exiting fullscreen:', err);
+                        });
+                      }
+                    }
+                    setIsFullscreen?.(nextVal);
+                  }}
+                  className="p-2.5 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
+                  title={isFullscreen ? t('app.alert_wall.exit_fullscreen', 'Thoát toàn màn hình') : t('app.alert_wall.enter_fullscreen', 'Toàn màn hình')}
+                >
+                  {isFullscreen ? (
+                    <Minimize className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  ) : (
+                    <Maximize className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  )}
                 </button>
               </div>
               <div className="h-[1px] w-full bg-outline-variant/20 my-0.5" />

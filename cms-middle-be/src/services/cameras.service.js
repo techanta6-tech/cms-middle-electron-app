@@ -3,6 +3,7 @@ const path = require('path');
 const { cameraDevices, getClientSockets } = require('../socketState');
 const { appendLog } = require('./system-state.service');
 const sunellEventRegistry = require('./sunellEventRegistry.service');
+const persistedDevices = require('./persisted-devices.service');
 
 // Trong môi trường pkg, __dirname nằm trong virtual snapshot (read-only).
 // Phải dùng đường dẫn thực tế ngoài snapshot để có thể ghi file.
@@ -40,10 +41,11 @@ try {
   };
 }
 
-async function addCameraDevice(deviceConfig) {
+async function addCameraDevice(deviceConfig, options = {}) {
+  const { persist = true, id: providedId } = options;
   const { name, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl } = deviceConfig;
 
-  const id = `cam-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const id = providedId || deviceConfig.id || `cam-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const baseWritableDir = process.env.USER_DATA_PATH || process.cwd();
   const snapshotDir = path.join(baseWritableDir, 'snapshots');
   const isPackaged = process.env.IS_PACKAGED === 'true' || process.pkg;
@@ -64,7 +66,8 @@ async function addCameraDevice(deviceConfig) {
     sdkPath,
     status: 'connecting',
     handle: null,
-    instance: null
+    instance: null,
+    features: deviceConfig.features || {}
   };
 
   cameraDevices.push(device);
@@ -366,10 +369,14 @@ async function addCameraDevice(deviceConfig) {
   }
 
   _emitCamerasUpdate();
+  if (persist && device.status === 'connected') {
+    persistedDevices.persistCamera(device);
+  }
   return { success: true, device: _sanitizeDevice(device), sdkResult };
 }
 
-async function removeCameraDevice(deviceId) {
+async function removeCameraDevice(deviceId, options = {}) {
+  const { persist = true } = options;
   const idx = cameraDevices.findIndex(d => d.id === deviceId);
   if (idx === -1) return { success: false, error: 'Device not found' };
 
@@ -383,6 +390,9 @@ async function removeCameraDevice(deviceId) {
   }
 
   cameraDevices.splice(idx, 1);
+  if (persist) {
+    persistedDevices.removeCamera(deviceId);
+  }
   console.log(`[Camera-Device] Removed device '${deviceId}'`);
   _emitCamerasUpdate();
   return { success: true };
@@ -458,6 +468,9 @@ async function updateCameraDevice(deviceId, updates) {
   }
 
   console.log(`[Camera-Device] Updated device '${deviceId}':`, JSON.stringify(updates));
+  if (device.status === 'connected') {
+    persistedDevices.persistCamera(device);
+  }
   _emitCamerasUpdate();
   return { success: true, device: _sanitizeDevice(device) };
 }
@@ -477,6 +490,9 @@ function updateCameraFeatures(deviceId, features) {
   Object.assign(device.features, features);
   console.log(`[Camera-Device] Updated features for '${deviceId}':`, device.features);
 
+  if (device.status === 'connected') {
+    persistedDevices.persistCamera(device);
+  }
   _emitCamerasUpdate();
   return { success: true, features: device.features };
 }

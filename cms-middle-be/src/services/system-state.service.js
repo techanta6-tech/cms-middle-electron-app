@@ -110,8 +110,8 @@ function getSystemSnapshot() {
 
   return {
     connections: [...connections],
-    sendServers: connections.filter((connection) => connection.mode === 'send'),
-    receiveServers: connections.filter((connection) => connection.mode === 'receive'),
+    sendServers: [],
+    receiveServers: [...connections],
     servers: Object.fromEntries(servers),
     devices: Object.fromEntries(devices),
     svmsServers: svmsServersWithDevices,

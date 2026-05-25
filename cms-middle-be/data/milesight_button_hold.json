@@ -1,0 +1,58 @@
+{
+    "deduplicationId": "c756156b-5205-4ce5-8ab5-40424d014978",
+    "time": "2026-05-25T10:04:47.026789900+00:00",
+    "deviceInfo": {
+        "tenantId": "eb8894b5-d418-4f32-86fa-2d01df7dabd0",
+        "tenantName": "ChirpStack",
+        "applicationId": "32dc910f-33ae-4526-ac0b-6344e378f00f",
+        "applicationName": "VSP_Radar_Monitor",
+        "deviceProfileId": "6b5a367d-911c-419b-b1b1-53b158ec30d9",
+        "deviceProfileName": "Milesight WS101",
+        "deviceName": "Milesight WS101_1",
+        "devEui": "24e124535e019607",
+        "deviceClassEnabled": "CLASS_A",
+        "tags": {}
+    },
+    "devAddr": "004fe836",
+    "adr": true,
+    "dr": 5,
+    "fCnt": 41,
+    "fPort": 85,
+    "confirmed": true,
+    "data": "/y4B",
+    "object": {
+        "button_event": {
+            "status": "short press",
+            "msgid": 732256.0
+        }
+    },
+    "rxInfo": [
+        {
+            "gatewayId": "7076ff00660403dc",
+            "uplinkId": 22777,
+            "gwTime": "2026-05-25T07:01:05.111407+00:00",
+            "nsTime": "2026-05-25T10:04:46.795924300+00:00",
+            "rssi": -21,
+            "snr": 9.5,
+            "channel": 1,
+            "board": 1,
+            "location": {
+                "latitude": 10.3761,
+                "longitude": 107.0907
+            },
+            "context": "2RfcZA==",
+            "crcStatus": "CRC_OK"
+        }
+    ],
+    "txInfo": {
+        "frequency": 921600000,
+        "modulation": {
+            "lora": {
+                "bandwidth": 125000,
+                "spreadingFactor": 7,
+                "codeRate": "CR_4_5"
+            }
+        }
+    },
+    "regionConfigId": "as923_2"
+}

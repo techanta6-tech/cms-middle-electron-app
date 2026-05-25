@@ -40,7 +40,7 @@ interface DevicesManagerProps {
   onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void;
   fetchCameras: () => void;
   handleAddMqttServer: (config: MqttServerConfig) => void;
-  handleAddExternalServer: (ip: string, port: string, mode: 'receive' | 'send') => void;
+  handleAddExternalServer: (ip: string, port: string) => void;
   svmsDeviceFeatures: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[];
   svmsKnownEvents: SvmsKnownEvent[];
   milesightKnownEvents: any[];
@@ -128,8 +128,8 @@ export function DevicesManager({
     }
   };
 
-  const handleSaveSvms = useCallback((ip: string, port: string, mode: 'receive' | 'send') => {
-    handleAddExternalServer(ip, port, mode);
+  const handleSaveSvms = useCallback((ip: string, port: string) => {
+    handleAddExternalServer(ip, port);
     setAddingForm(null);
   }, [handleAddExternalServer]);
 
@@ -209,14 +209,14 @@ export function DevicesManager({
           // onAdd={() => setAddingForm('svms')}
           />
           {expandedGroups.svms && (
-            <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-secondary/10 pl-2">
+            <div className="flex flex-col gap-2 ml-2 border-l-2 border-secondary/10 pl-2">
               {svmsServers.length === 0 && <EmptyHint text={t('app.devices.no_svms')} />}
               {svmsServers.map(srv => {
                 const sId = srv.id || srv.serial;
                 const matchDev = devices[sId] || devices[srv.id] || devices[srv.serial];
                 const expanded = !!expandedServers[`svms-${sId}`];
                 return (
-                  <div key={sId}>
+                  <div key={sId} className='flex flex-col gap-0.5'>
                     <TreeItem
                       label={srv.server_name || sId}
                       sublabel={srv.svms_ipv4_ip || srv.server_ip}
@@ -490,14 +490,6 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
     'camera': isSunell ? t('app.devices.sunell_cameras') : t('app.devices.camera_device'),
   };
 
-  const colorMap = {
-    'svms-server': 'text-secondary border-secondary/30',
-    'svms-device': 'text-secondary border-secondary/30',
-    'mqtt-server': 'text-amber-400 border-amber-400/30',
-    'mqtt-device': 'text-amber-400 border-amber-400/30',
-    'camera': isSunell ? 'text-green-500 border-green-500/30' : 'text-cyan-500 border-cyan-500/30',
-  };
-
   // Lấy dữ liệu mới nhất từ props để tránh lỗi stale-state khi React useState không tự cập nhật
   const latestCam = item.kind === 'camera'
     ? cameraDevices.find(c => c.id === item.data.id) || item.data
@@ -562,7 +554,7 @@ function SvmsServerDetail({ srv, devices }: { srv: ServerData; devices?: DeviceD
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">{srv.server_name || srv.id}</h3>
-      <div className="mb-3"><StatusBadge status={srv.connectionStatus} /></div>
+      <div className=""><StatusBadge status={srv.connectionStatus} /></div>
       <InfoRow label={t('app.monitor.server_id')} value={srv.id} mono />
       <InfoRow label={t('app.monitor.serial')} value={srv.serial} mono />
       <InfoRow label={t('app.monitor.server_ip')} value={srv.svms_ipv4_ip || srv.server_ip} mono />
@@ -627,20 +619,23 @@ function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
   return (
     <div className="flex flex-col gap-1">
       <h3 className="text-lg font-black text-on-surface mb-2">{dev.name}</h3>
-      <div className="mb-3"><StatusBadge status={dev.connectionStatus} /></div>
-      <InfoRow label={t('app.monitor.device_ip')} value={dev.ip} mono />
-      <InfoRow label={t('app.monitor.device_type')} value={dev.type} />
-      <InfoRow label={t('app.monitor.device_index')} value={dev.index} />
-      <InfoRow label={t('app.monitor.port')} value={dev.device_port} mono />
-      <InfoRow label={t('app.monitor.last_log')} value={dev.lastLogReceived} />
-      <div className="mt-4 pt-3 border-t border-outline-variant/10">
-        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{t('app.monitor.parent_server')}</span>
+      <div className=""><StatusBadge status={dev.connectionStatus} /></div>
+      <div className="pt-1 border-t border-outline-variant/10">
+        <span className="text-[9px] font-bold text-white uppercase tracking-widest">{t('app.monitor.this_device')}</span>
+        <InfoRow label={t('app.monitor.device_ip')} value={dev.ip} mono />
+        <InfoRow label={t('app.monitor.device_type')} value={dev.type} />
+        <InfoRow label={t('app.monitor.device_index')} value={dev.index} />
+        <InfoRow label={t('app.monitor.port')} value={dev.device_port} mono />
+        <InfoRow label={t('app.monitor.last_log')} value={dev.lastLogReceived} />
+      </div>
+      <div className="pt-2 border-t border-outline-variant/10">
+        <span className="text-[9px] font-bold text-white uppercase tracking-widest">{t('app.monitor.parent_server')}</span>
         <InfoRow label={t('app.monitor.server_name')} value={srv.server_name || srv.id} />
         <InfoRow label={t('app.monitor.server_ip')} value={srv.svms_ipv4_ip || srv.server_ip} mono />
       </div>
 
       <div className="mt-5 pt-4 border-t border-outline-variant/10">
-        <button 
+        <button
           onClick={() => setShowEventList(!showEventList)}
           className="flex items-center justify-between w-full mb-3 p-1 rounded-md transition-colors hover:bg-white/5"
         >
@@ -656,52 +651,52 @@ function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
         {showEventList && (
           <div className="animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="flex flex-col gap-1.5">
-          {SVMS_EVENTS.map(evt => {
-            const enabled = getEnabled(evt.code);
-            return (
-              <div key={evt.code} className="flex items-center justify-between gap-3 py-1.5 border-b border-outline-variant/5 last:border-0">
-                <div className="flex items-center gap-2">
-                  <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? 'bg-secondary' : 'bg-on-surface-variant/30'}`} />
-                  <span className={`text-[11px] font-medium transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'}`}>
-                    {evt.label}
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleToggle(evt.code, !enabled)}
-                  className={`flex items-center w-7 h-4 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
+              {SVMS_EVENTS.map(evt => {
+                const enabled = getEnabled(evt.code);
+                return (
+                  <div key={evt.code} className="flex items-center justify-between gap-3 py-1.5 border-b border-outline-variant/5 last:border-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? 'bg-secondary' : 'bg-on-surface-variant/30'}`} />
+                      <span className={`text-[11px] font-medium transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'}`}>
+                        {evt.label}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleToggle(evt.code, !enabled)}
+                      className={`flex items-center w-7 h-4 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
                     ${enabled ? 'bg-secondary justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
-                  title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
-                >
-                  <span className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200" />
-                </button>
+                      title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
+                    >
+                      <span className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Other Events toggle */}
+            <div className="mt-3 rounded-md border bg-surface-container/20 border-outline-variant/10 p-3 flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+                  ✦ {t('app.devices.radar_categories.other_events') || 'Sự kiện khác'}
+                </span>
+                <span className="text-[9px] text-on-surface-variant/40 leading-relaxed">
+                  {t('app.devices.radar_categories.other_events_hint') || 'Nhận tất cả event không thuộc danh sách trên'}
+                </span>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Other Events toggle */}
-        <div className="mt-3 rounded-md border bg-surface-container/20 border-outline-variant/10 p-3 flex items-center justify-between gap-3">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
-              ✦ {t('app.devices.radar_categories.other_events') || 'Sự kiện khác'}
-            </span>
-            <span className="text-[9px] text-on-surface-variant/40 leading-relaxed">
-              {t('app.devices.radar_categories.other_events_hint') || 'Nhận tất cả event không thuộc danh sách trên'}
-            </span>
-          </div>
-          <button
-            onClick={() => handleToggle(OTHER_EVENTS_CODE, !otherEventsEnabled)}
-            className={`flex items-center w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
+              <button
+                onClick={() => handleToggle(OTHER_EVENTS_CODE, !otherEventsEnabled)}
+                className={`flex items-center w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
               ${otherEventsEnabled ? 'bg-secondary justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
-            title={otherEventsEnabled ? 'Đang nhận sự kiện khác — Click để tắt' : 'Không nhận sự kiện khác — Click để bật'}
-          >
-            <span className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200" />
-          </button>
-        </div>
+                title={otherEventsEnabled ? 'Đang nhận sự kiện khác — Click để tắt' : 'Không nhận sự kiện khác — Click để bật'}
+              >
+                <span className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200" />
+              </button>
+            </div>
 
-        <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
-          {t('app.devices.radar_categories.hint')}
-        </p>
+            <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
+              {t('app.devices.radar_categories.hint')}
+            </p>
           </div>
         )}
       </div>
@@ -774,7 +769,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
   const getFeature = (code: string): { enabled: boolean; cameraId: string | null } => {
     const raw = features[code];
     const registryEvt = MILESIGHT_EVENTS.find(e => e.code === code);
-    const defaultEnabled = registryEvt?.defaultEnabled ?? false;
+    const defaultEnabled = code === '__other_events__' ? true : (registryEvt?.defaultEnabled ?? false);
 
     if (raw === undefined || raw === null) return { enabled: defaultEnabled, cameraId: null };
     if (typeof raw === 'boolean') return { enabled: raw, cameraId: null };
@@ -847,7 +842,7 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
           className="flex items-center justify-between w-full mb-3 p-1 rounded-md transition-colors hover:bg-white/5"
         >
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
+            <span className="text-[9px] font-black uppercase tracking-widest text-white">
               🎛 Event
             </span>
             <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
@@ -860,81 +855,81 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
         {showEventList && (
           <div className="animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="flex flex-col gap-1.5">
-          {MILESIGHT_EVENTS.map((evt) => {
-            const feat = getFeature(evt.code);
-            const enabled = feat.enabled;
+              {MILESIGHT_EVENTS.map((evt) => {
+                const feat = getFeature(evt.code);
+                const enabled = feat.enabled;
 
-            return (
-              <div
-                key={evt.code}
-                className="flex flex-col gap-1.5 py-1.5 border-b border-outline-variant/5 last:border-0"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 grow">
-                    <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? 'bg-cyan-400' : 'bg-on-surface-variant/30'}`} />
-                    <span className={`text-[11px] font-medium leading-tight transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'} min-w-[18%]`}>
-                      {evt.label}
-                    </span>
-                    {/* Per-event camera selector — chỉ hiện khi event đang bật */}
-                    <div className="ml-3 flex items-center gap-2">
-                      <select
-                        disabled={!enabled}
-                        value={feat.cameraId || ''}
-                        onChange={(e) => handleEventCamera(evt.code, e.target.value || null)}
-                        className={`
+                return (
+                  <div
+                    key={evt.code}
+                    className="flex flex-col gap-1.5 py-1.5 border-b border-outline-variant/5 last:border-0"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 grow">
+                        <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? 'bg-cyan-400' : 'bg-on-surface-variant/30'}`} />
+                        <span className={`text-[11px] font-medium leading-tight transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'} min-w-[18%]`}>
+                          {evt.label}
+                        </span>
+                        {/* Per-event camera selector — chỉ hiện khi event đang bật */}
+                        <div className="ml-3 flex items-center gap-2">
+                          <select
+                            disabled={!enabled}
+                            value={feat.cameraId || ''}
+                            onChange={(e) => handleEventCamera(evt.code, e.target.value || null)}
+                            className={`
                           ${!enabled && 'opacity-[50%]'}
                           transition-opacity duration-200
                           flex-1 text-[10px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors`}
+                          >
+                            <option value="">{t('app.monitor.camera_default')}</option>
+                            {allCameras.map(cam => (
+                              <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Enable toggle */}
+                      <button
+                        onClick={() => handleToggle(evt.code, !enabled)}
+                        className={`flex items-center w-7 h-4 rounded-full transition-colors transition-opacity cursor-pointer shrink-0 border-0 px-0.5
+                      ${enabled ? 'bg-cyan-400 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
+                        title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
                       >
-                        <option value="">{t('app.monitor.camera_default')}</option>
-                        {allCameras.map(cam => (
-                          <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
-                        ))}
-                      </select>
+                        <span
+                          className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200"
+                        />
+                      </button>
                     </div>
                   </div>
+                );
+              })}
+            </div>
 
-                  {/* Enable toggle */}
-                  <button
-                    onClick={() => handleToggle(evt.code, !enabled)}
-                    className={`flex items-center w-7 h-4 rounded-full transition-colors transition-opacity cursor-pointer shrink-0 border-0 px-0.5
-                      ${enabled ? 'bg-cyan-400 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
-                    title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
-                  >
-                    <span
-                      className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200"
-                    />
-                  </button>
-                </div>
+            {/* Other Events toggle */}
+            <div className="mt-3 rounded-md border bg-surface-container/20 border-outline-variant/10 p-3 flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+                  ✦ {t('app.devices.radar_categories.other_events') || 'Sự kiện khác'}
+                </span>
+                <span className="text-[9px] text-on-surface-variant/40 leading-relaxed">
+                  {t('app.devices.radar_categories.other_events_hint') || 'Nhận tất cả event không nằm trong danh sách trên'}
+                </span>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Other Events toggle */}
-        <div className="mt-3 rounded-md border bg-surface-container/20 border-outline-variant/10 p-3 flex items-center justify-between gap-3">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
-              ✦ {t('app.devices.radar_categories.other_events') || 'Sự kiện khác'}
-            </span>
-            <span className="text-[9px] text-on-surface-variant/40 leading-relaxed">
-              {t('app.devices.radar_categories.other_events_hint') || 'Nhận tất cả event không nằm trong danh sách trên'}
-            </span>
-          </div>
-          <button
-            onClick={() => handleToggle(OTHER_EVENTS_CODE, !otherEventsEnabled)}
-            className={`flex items-center w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
+              <button
+                onClick={() => handleToggle(OTHER_EVENTS_CODE, !otherEventsEnabled)}
+                className={`flex items-center w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
               ${otherEventsEnabled ? 'bg-cyan-400 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
-            title={otherEventsEnabled ? 'Đang nhận sự kiện khác — Click để tắt' : 'Không nhận sự kiện khác — Click để bật'}
-          >
-            <span className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200" />
-          </button>
-        </div>
+                title={otherEventsEnabled ? 'Đang nhận sự kiện khác — Click để tắt' : 'Không nhận sự kiện khác — Click để bật'}
+              >
+                <span className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200" />
+              </button>
+            </div>
 
-        {/* Footer hint */}
-        <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
-          {t('app.devices.radar_categories.hint')}
-        </p>
+            {/* Footer hint */}
+            <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
+              {t('app.devices.radar_categories.hint')}
+            </p>
           </div>
         )}
       </div>
@@ -1008,7 +1003,7 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
             className="flex items-center justify-between w-full mb-3 p-1 rounded-md transition-colors hover:bg-white/5"
           >
             <div className="flex items-center gap-2">
-              <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
+              <span className="text-[9px] font-black uppercase tracking-widest text-white">
                 🎛 Event Filter — Sunell SDK
               </span>
               <span className="text-[8px] font-mono text-on-surface-variant/40 bg-surface-container px-1.5 py-0.5 rounded">
@@ -1021,32 +1016,32 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
           {showEventList && (
             <div className="animate-in fade-in slide-in-from-top-1 duration-200">
               <div className="flex flex-col gap-1.5">
-            {SUNELL_EVENTS.map(evt => {
-              const enabled = getEnabled(evt.code);
-              return (
-                <div key={evt.code} className="flex items-center justify-between gap-3 py-1.5 border-b border-outline-variant/5 last:border-0">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? 'bg-green-500' : 'bg-on-surface-variant/30'}`} />
-                    <span className={`text-[11px] font-medium transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'}`}>
-                      {evt.label}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => handleToggle(evt.code, !enabled)}
-                    className={`flex items-center w-7 h-4 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
+                {SUNELL_EVENTS.map(evt => {
+                  const enabled = getEnabled(evt.code);
+                  return (
+                    <div key={evt.code} className="flex items-center justify-between gap-3 py-1.5 border-b border-outline-variant/5 last:border-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-1 h-1 rounded-full shrink-0 ${enabled ? 'bg-green-500' : 'bg-on-surface-variant/30'}`} />
+                        <span className={`text-[11px] font-medium transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'}`}>
+                          {evt.label}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleToggle(evt.code, !enabled)}
+                        className={`flex items-center w-7 h-4 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
                       ${enabled ? 'bg-green-500 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
-                    title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
-                  >
-                    <span className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                        title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
+                      >
+                        <span className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
 
-          <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
-            {t('app.devices.sunell_categories.hint')}
-          </p>
+              <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
+                {t('app.devices.sunell_categories.hint')}
+              </p>
             </div>
           )}
         </div>

@@ -183,4 +183,115 @@ app.get('/api/v1/debug/state', (req, res) => {
   });
 });
 
+app.post('/api/v1/debug/save-events-report', (req, res) => {
+  try {
+    const payload = req.body;
+    
+    // Format timestamp
+    const now = new Date();
+    const timestampStr = now.toLocaleString('vi-VN');
+    const fileTimestamp = now.toISOString().replace(/[:.]/g, '-');
+    
+    // Construct beautiful markdown report contents
+    let mdContent = `# BÁO CÁO GIÁM SÁT SỰ KIỆN (EVENT MONITORING REPORT)\n\n`;
+    mdContent += `* **Thời gian xuất báo cáo:** ${timestampStr}\n`;
+    mdContent += `* **Trạng thái Socket FE-BE:** ${payload.socketConnected ? '🟢 ĐÃ KẾT NỐI' : '🔴 MẤT KẾT NỐI'}\n`;
+    mdContent += `* **Cấu hình BE Target:** \`${payload.hostTarget}\`\n`;
+    mdContent += `* **Tổng số log hệ thống ghi nhận:** ${payload.totalLogs}\n\n`;
+    
+    mdContent += `---\n\n`;
+    
+    // SVMS Servers Section
+    mdContent += `## 1. DANH SÁCH SVMS SERVERS (${payload.totalSvmsServers})\n\n`;
+    if (payload.svmsServers && payload.svmsServers.length > 0) {
+      mdContent += `| Tên Server | Địa chỉ IP | Trạng thái | Số thiết bị |\n`;
+      mdContent += `| :--- | :--- | :--- | :--- |\n`;
+      payload.svmsServers.forEach(s => {
+        const statusEmoji = s.status === 'ONLINE' ? '🟢 ONLINE' : '🔴 OFFLINE';
+        mdContent += `| ${s.name} | \`${s.ip}\` | ${statusEmoji} | ${s.deviceCount} |\n`;
+      });
+    } else {
+      mdContent += `*Không có SVMS Server nào được cấu hình.*\n`;
+    }
+    mdContent += `\n`;
+    
+    // MQTT Servers Section
+    mdContent += `## 2. DANH SÁCH MQTT SERVERS (${payload.totalMqttServers})\n\n`;
+    if (payload.mqttServers && payload.mqttServers.length > 0) {
+      mdContent += `| Broker Host | Port | Trạng thái | Số thiết bị (Milesight) |\n`;
+      mdContent += `| :--- | :--- | :--- | :--- |\n`;
+      payload.mqttServers.forEach(s => {
+        const statusEmoji = s.status === 'CONNECTED' ? '🟢 CONNECTED' : '🔴 DISCONNECTED';
+        mdContent += `| \`${s.brokerHost}\` | ${s.brokerPort} | ${statusEmoji} | ${s.deviceCount} |\n`;
+      });
+    } else {
+      mdContent += `*Không có MQTT Server nào được cấu hình.*\n`;
+    }
+    mdContent += `\n`;
+
+    // Cameras Section
+    mdContent += `## 3. DANH SÁCH CAMERA ĐỘC LẬP (${payload.totalCameras})\n\n`;
+    if (payload.cameras && payload.cameras.length > 0) {
+      mdContent += `| Tên Camera | Địa chỉ | Loại | Trạng thái |\n`;
+      mdContent += `| :--- | :--- | :--- | :--- |\n`;
+      payload.cameras.forEach(c => {
+        const statusEmoji = c.status === 'connected' ? '🟢 CONNECTED' : '🔴 OFFLINE';
+        mdContent += `| ${c.name} | \`${c.ip}\` | ${c.type} | ${statusEmoji} |\n`;
+      });
+    } else {
+      mdContent += `*Không có camera độc lập nào được kết nối.*\n`;
+    }
+    mdContent += `\n`;
+
+    // Connections Section
+    mdContent += `## 4. KẾT NỐI CHUYỂN TIẾP (SEND/RECEIVE TARGETS)\n\n`;
+    mdContent += `### Kết nối Gửi (Send Targets - ${payload.totalSendConnections}):\n`;
+    if (payload.sendConnections && payload.sendConnections.length > 0) {
+      mdContent += `| Địa chỉ target | Port | Giao thức | Trạng thái |\n`;
+      mdContent += `| :--- | :--- | :--- | :--- |\n`;
+      payload.sendConnections.forEach(c => {
+        const statusEmoji = c.status === 'ONLINE' ? '🟢 ONLINE' : '🔴 OFFLINE';
+        mdContent += `| \`${c.ip}\` | ${c.port} | ${c.protocol || 'Socket.IO'} | ${statusEmoji} |\n`;
+      });
+    } else {
+      mdContent += `*Không có máy chủ nhận (Send Target) nào.*\n`;
+    }
+    mdContent += `\n`;
+    mdContent += `* **Số lượng kết nối Nhận (Receive Connections):** ${payload.totalReceiveConnections}\n\n`;
+
+    // Recent Logs Section
+    mdContent += `## 5. CÁC SỰ KIỆN GẦN NHẤT (TỐI ĐA 20 SỰ KIỆN)\n\n`;
+    if (payload.recentLogs && payload.recentLogs.length > 0) {
+      mdContent += `| Thời gian | Nguồn log | Loại sự kiện | Nội dung chi tiết |\n`;
+      mdContent += `| :--- | :--- | :--- | :--- |\n`;
+      payload.recentLogs.forEach(l => {
+        mdContent += `| ${l.time} | \`${l.source}\` | \`${l.type}\` | ${l.description} |\n`;
+      });
+    } else {
+      mdContent += `*Chưa nhận được sự kiện nào trong phiên giám sát.*\n`;
+    }
+    mdContent += `\n`;
+    
+    // Save directory (docs/ under project root)
+    const docsDir = path.join(__dirname, '..', '..', 'docs');
+    if (!fs.existsSync(docsDir)) {
+      fs.mkdirSync(docsDir, { recursive: true });
+    }
+    
+    const fileName = `events_report_${fileTimestamp}.md`;
+    const filePath = path.join(docsDir, fileName);
+    
+    fs.writeFileSync(filePath, mdContent, 'utf8');
+    
+    res.json({
+      success: true,
+      fileName,
+      filePath
+    });
+  } catch (error) {
+    console.error('Error saving events report:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 module.exports = app;

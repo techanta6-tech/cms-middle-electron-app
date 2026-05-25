@@ -386,7 +386,7 @@ export function Dashboard() {
     devices,
     systemConfig,
     setSystemConfig,
-    sendServers,
+
     receiveServers,
     handleAddExternalServer,
     handleRemoveConnection,
@@ -447,6 +447,7 @@ export function Dashboard() {
     return saved !== 'false';
   });
   const [langOpen, setLangOpen] = useState(false);
+  const [isAlertWallFullscreen, setIsAlertWallFullscreen] = useState(false);
 
   const toggleLogSaving = async () => {
     const newState = !isLogSaving;
@@ -581,35 +582,47 @@ export function Dashboard() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Synchronize isAlertWallFullscreen with actual document fullscreen element
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsAlertWallFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+
   return (
     <div className="app-dashboard-root flex flex-col h-screen overflow-hidden bg-background text-on-surface font-sans selection:bg-primary/30 antialiased">
-      <main className={`app-dashboard-main flex-1 overflow-hidden ${isNarrow ? 'flex flex-col' : mainTab === 'alert' ? 'grid grid-cols-4 gap-0' : 'flex'}`}>
+      <main className={`app-dashboard-main flex-1 overflow-hidden ${isNarrow ? 'flex flex-col' : (mainTab === 'alert' && !isAlertWallFullscreen) ? 'grid grid-cols-4 gap-0' : 'flex'}`}>
         {/* Main Section */}
-        <div className={`app-dashboard-left-section overflow-hidden bg-background border-outline-variant/20 ${isNarrow ? 'flex-1 border-b' : mainTab === 'alert' ? 'col-span-3 grid grid-rows-[1fr] h-full border-r' : 'flex-1 h-full'}`}>
+        <div className={`app-dashboard-left-section overflow-hidden bg-background border-outline-variant/20 ${isNarrow ? 'flex-1 border-b' : (mainTab === 'alert' && !isAlertWallFullscreen) ? 'col-span-3 grid grid-rows-[1fr] h-full border-r' : 'flex-1 h-full'}`}>
           <div className="flex flex-col overflow-hidden h-full">
-            <div className={`flex items-center border-b border-outline-variant/10 shrink-0 ${isNarrow ? '' : 'px-6 gap-4'}`}>
-              <button
-                className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'alert' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
-                onClick={() => setMainTab('alert')}
-              >
-                <Monitor className={`w-5 h-5 ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`} />
-                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.alert_wall')}</h2>
-              </button>
-              <button
-                className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
-                onClick={() => setMainTab('devices')}
-              >
-                <Cpu className={`w-5 h-5 ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`} />
-                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.devices')}</h2>
-              </button>
-              <button
-                className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'connections' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
-                onClick={() => setMainTab('connections')}
-              >
-                <Network className={`w-5 h-5 ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`} />
-                <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.connections_monitor')}</h2>
-              </button>
-            </div>
+            {!isAlertWallFullscreen && (
+              <div className={`appTabsBar flex items-center border-b border-outline-variant/10 shrink-0 ${isNarrow ? '' : 'px-6 gap-4'}`}>
+                <button
+                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'alert' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('alert')}
+                >
+                  <Monitor className={`w-5 h-5 ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.alert_wall')}</h2>
+                </button>
+                <button
+                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('devices')}
+                >
+                  <Cpu className={`w-5 h-5 ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.devices')}</h2>
+                </button>
+                <button
+                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'connections' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('connections')}
+                >
+                  <Network className={`w-5 h-5 ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.connections_monitor')}</h2>
+                </button>
+              </div>
+            )}
             {/* <button onClick={() => console.log(servers)}>CLick</button> */}
             {mainTab === 'alert' && (
               <AlertWall
@@ -621,6 +634,8 @@ export function Dashboard() {
                 setGridCols={setGridCols}
                 grids={grids}
                 setGrids={setGrids}
+                isFullscreen={isAlertWallFullscreen}
+                setIsFullscreen={setIsAlertWallFullscreen}
               />
             )}
             {mainTab === 'connections' && (
@@ -629,7 +644,7 @@ export function Dashboard() {
                 isConnected={isConnected}
                 systemConfig={systemConfig}
                 onSaveSystemConfig={(config) => { setSystemConfig(config) }}
-                sendServers={sendServers}
+
                 receiveServers={receiveServers}
                 logs={logs}
                 servers={servers}
@@ -668,7 +683,7 @@ export function Dashboard() {
         </div>
 
         {/* Right Section — only visible on Alert Wall tab */}
-        {mainTab === 'alert' && isNarrow && (
+        {mainTab === 'alert' && !isAlertWallFullscreen && isNarrow && (
           <button
             onClick={() => setRightPanelVisible(v => !v)}
             className="app-right-panel-toggle fixed bottom-4 right-4 z-50 flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary text-white shadow-lg text-[11px] font-bold tracking-wide transition-all hover:bg-primary/90 active:scale-95"
@@ -678,7 +693,7 @@ export function Dashboard() {
               : <><PanelRightOpen className="w-4 h-4" /></>}
           </button>
         )}
-        {mainTab === 'alert' && (
+        {mainTab === 'alert' && !isAlertWallFullscreen && (
           <aside
             className={`alert-wall-right-section bg-surface-container-lowest flex flex-col overflow-hidden shadow-2xl z-10 transition-transform duration-300 ${isNarrow
               ? `fixed bottom-0 left-0 right-0 h-1/4 border-t border-outline-variant/20 ${rightPanelVisible ? 'translate-y-0' : 'translate-y-full'}`
@@ -998,7 +1013,8 @@ export function Dashboard() {
       </main>
 
       {/* ── Footer Bar ──────────────────────────────────────────────────── */}
-      <footer className="app-footer shrink-0 h-6 bg-surface-container border-t border-outline-variant/10 flex items-center px-3 gap-4 text-[9px] font-mono select-none z-20">
+      {!isAlertWallFullscreen && (
+        <footer className="app-footer shrink-0 h-6 bg-surface-container border-t border-outline-variant/10 flex items-center px-3 gap-4 text-[9px] font-mono select-none z-20">
         {/* Logout Button */}
         <button
           onClick={() => authApi.logout()}
@@ -1053,7 +1069,7 @@ export function Dashboard() {
               console.log("8. MQTT Servers (snapshot):", mqttMilesightServers);
               console.log("9. MQTT Devices (snapshot):", mqttMilesightDevices);
               console.log("10. Camera Devices:", cameraDevices);
-              console.log("11. Connections SEND:", sendServers);
+
               console.log("12. Connections RECEIVE:", receiveServers);
               console.log("13. Event Types (FE filter):", eventTypes);
               console.log("14. Total Log Count:", totalLogCount);
@@ -1081,7 +1097,7 @@ export function Dashboard() {
                   totalCameraDevices: cameraDevices.length,
                   totalSvmsServersMap: Object.keys(servers).length,
                   totalSvmsDevicesMap: Object.keys(devices).length,
-                  totalSendConnections: sendServers.length,
+
                   totalReceiveConnections: receiveServers.length,
                   socketConnected: isConnected,
                   totalLogCount,
@@ -1101,7 +1117,7 @@ export function Dashboard() {
                   svmsDevicesMap: devices,
                   svmsServersSnapshot: newSvmsServers,
                   svmsDevicesSnapshot: newSvmsDevices,
-                  sendConnections: sendServers,
+
                   receiveConnections: receiveServers,
                   systemConfig,
                   eventTypes,
@@ -1121,7 +1137,7 @@ export function Dashboard() {
               URL.revokeObjectURL(url);
 
               alert(`Da xuat file: cms-debug-data_${timestamp}.txt\n\nTotal Logs: ${logs.length}\nMQTT Servers: ${mqttServers.length}\nMQTT Devices: ${mqttMilesightDevices.length}\nCamera Devices: ${cameraDevices.length}\nBackend state: ${backendState ? 'OK' : 'UNAVAILABLE'}`);
-            }}className="px-2 py-0.5 bg-primary text-on-primary text-[8px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity"
+            }} className="px-2 py-0.5 bg-primary text-on-primary text-[8px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity"
           >
             {t('app.footer.view_system_data')}
           </button>
@@ -1157,6 +1173,7 @@ export function Dashboard() {
           )}
         </div>
       </footer>
+      )}
 
       {/* Config System Modal */}
       {isConfigSystemOpen && (

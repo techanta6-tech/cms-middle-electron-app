@@ -18,7 +18,7 @@ router.get('/healthcheck', (req, res) => {
   let isLogged = false;
   if (ip && port) {
     const targetUrl = `http://${ip}:${port}`;
-    const exists = connections.find(c => c.url === targetUrl && c.mode === 'send');
+    const exists = connections.find(c => c.url === targetUrl);
     isLogged = !!exists;
   }
 
@@ -45,7 +45,7 @@ router.get('/server-information', authMiddleware, (req, res) => {
     ip: addresses[0] || '127.0.0.1',
     port,
     all_ips: addresses,
-    connections: connections.map(c => ({ url: c.url, status: c.status, mode: c.mode }))
+    connections: connections.map(c => ({ url: c.url, status: c.status, mode: 'receive' }))
   });
 });
 

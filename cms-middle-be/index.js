@@ -31,6 +31,7 @@ const connectivityMonitor = require('./src/services/connectivity-monitor.service
 const svmsEventRegistry = require('./src/services/svmsEventRegistry.service');
 const milesightEventRegistry = require('./src/services/milesightEventRegistry.service');
 const sunellEventRegistry = require('./src/services/sunellEventRegistry.service');
+const { bootstrapPersistedDevices, getFilePath: getPersistedDevicesPath } = require('./src/services/persisted-devices.service');
 
 svmsEventRegistry.loadRegistry();
 milesightEventRegistry.loadRegistry();
@@ -44,6 +45,7 @@ setupSocketEvents();
 httpServer.listen(port, '0.0.0.0', () => {
   console.log(`\nMIDDLE SERVER RUNNING AT: http://0.0.0.0:${port}`);
   console.log(`CLIENT SOCKET SERVER READY (PORT ${port})`);
+  console.log(`PERSISTED DEVICE REGISTRY: ${getPersistedDevicesPath()}`);
 
   startMonitoring();
 
@@ -51,4 +53,8 @@ httpServer.listen(port, '0.0.0.0', () => {
   console.log(`   Timeout: ${CONNECTIVITY_TIMEOUT_MS}ms`);
   console.log(`   SVMS Ports: ${SVMS_PORT_LIST.join(', ')}`);
   console.log(`   Timers: ${JSON.stringify(connectivityMonitor.getTimerStats())}\n`);
+
+  bootstrapPersistedDevices().catch((err) => {
+    console.error('[PERSISTED_DEVICES] Bootstrap failed:', err);
+  });
 });

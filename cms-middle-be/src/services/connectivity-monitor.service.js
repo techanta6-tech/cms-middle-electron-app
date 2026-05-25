@@ -148,7 +148,6 @@ function resetServerTimer(serverId) {
           }
         }
 
-        forwardStatusUpdate(serverId);
       }
     }
   }, CONNECTIVITY_TIMEOUT_MS);
@@ -233,7 +232,6 @@ function resetDeviceTimer(serverId, deviceIndex) {
         }
       }
 
-      forwardStatusUpdate(serverId);
     }
   }, CONNECTIVITY_TIMEOUT_MS);
 
@@ -310,28 +308,7 @@ function emitDeviceStatus(serverId, deviceIndex, status) {
  * Dùng lazy import để tránh circular dependency với server.routes.js.
  */
 async function forwardStatusUpdate(serverId) {
-  // Lazy import
-  const { forwardToSendTargets } = require('../routes/svms/server.routes');
-
-  const serverEntry = servers.get(serverId);
-  const deviceEntry = devices.get(serverId);
-
-  if (serverEntry) {
-    try {
-      await forwardToSendTargets('/api/v1/server', serverEntry);
-      console.log(`[CONNECTIVITY] Forwarded server status update for ${serverId} to send targets`);
-    } catch (err) {
-      console.error(`[CONNECTIVITY] Failed to forward server status: ${err.message}`);
-    }
-  }
-  if (deviceEntry) {
-    try {
-      await forwardToSendTargets('/api/v1/devices', deviceEntry);
-      console.log(`[CONNECTIVITY] Forwarded device status update for ${serverId} to send targets`);
-    } catch (err) {
-      console.error(`[CONNECTIVITY] Failed to forward device status: ${err.message}`);
-    }
-  }
+  console.log(`[CONNECTIVITY] Receive-only mode: status update for ${serverId} is local only`);
 }
 
 // ─── DEBUG ────────────────────────────────────────────────────────────────────

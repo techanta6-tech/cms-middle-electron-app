@@ -16,8 +16,8 @@
  * @returns {{ enabled: boolean, cameraId: string|null }}
  */
 function normalizeFeature(value, code) {
-  // Mặc định tắt tất cả, trừ té ngã (fall)
-  const defaultEnabled = code === 'fall';
+  // Default on for fall and unknown-event bucket.
+  const defaultEnabled = code === 'fall' || code === '__other_events__';
 
   if (value === undefined || value === null) {
     return { enabled: defaultEnabled, cameraId: null };

@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "svmsServers": [
+    {
+      "serverId": "PHUCDEMOSVMSID",
+      "data": {
+        "id": "PHUCDEMOSVMSID",
+        "serial": "ALL AI",
+        "server_ip": "192.168.52.1",
+        "server_name": "Ten SVMS Server Cua Phuc",
+        "version": "1.2.0.1  64 07.24.2023",
+        "location": "",
+        "day": 13,
+        "month": 4,
+        "year": 2026,
+        "svms_ipv4_ip": "192.168.1.105",
+        "sender_ip": "192.168.1.105",
+        "lastSeen": "2026-05-25T08:14:39.918Z",
+        "type": "direct",
+        "connectionStatus": "connected",
+        "lastLogReceived": "2026-05-25T08:14:39.909Z"
+      },
+      "recordedAt": "2026-05-25T08:14:39.919Z"
+    }
+  ],
+  "svmsDevices": [
+    {
+      "serverId": "PHUCDEMOSVMSID",
+      "data": {
+        "server": {
+          "serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID"
+        },
+        "devices": [
+          {
+            "name": "Channel 1",
+            "ip": "192.168.1.207:80",
+            "type": "camera",
+            "index": 0,
+            "device_ip": "192.168.1.207",
+            "device_port": 80,
+            "connectionStatus": "connected",
+            "lastLogReceived": "2026-05-25T08:14:39.930Z"
+          },
+          {
+            "name": "Channel 2",
+            "ip": "192.168.1.207:80",
+            "type": "camera",
+            "index": 1,
+            "device_ip": "192.168.1.207",
+            "device_port": 80,
+            "connectionStatus": "connected",
+            "lastLogReceived": "2026-05-25T08:14:39.930Z"
+          },
+          {
+            "name": "Channel 3",
+            "ip": "192.168.1.202:2000",
+            "type": "camera",
+            "index": 2,
+            "device_ip": "192.168.1.202",
+            "device_port": 2000,
+            "connectionStatus": "connected",
+            "lastLogReceived": "2026-05-25T08:14:39.930Z"
+          }
+        ],
+        "sender_ip": "192.168.1.105",
+        "lastSeen": "2026-05-25T08:14:39.930Z"
+      },
+      "recordedAt": "2026-05-25T08:14:39.930Z"
+    }
+  ],
+  "mqttServers": [
+    {
+      "id": "dfa99104",
+      "name": "",
+      "brokerHost": "192.168.1.93",
+      "brokerPort": "1883",
+      "protocol": "mqtt",
+      "topic": "application/32dc910f-33ae-4526-ac0b-6344e378f00f/device/24e124535e019607/event/up",
+      "defaultTopic": "application/32dc910f-33ae-4526-ac0b-6344e378f00f/device/24e124806e515126/event/up",
+      "cameraId": null,
+      "recordedAt": "2026-05-25T09:42:59.807Z"
+    }
+  ],
+  "cameras": [],
+  "updatedAt": "2026-05-25T09:42:59.807Z"
+}
