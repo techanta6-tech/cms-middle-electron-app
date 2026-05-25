@@ -1075,7 +1075,7 @@ export function Dashboard() {
                 _summary: {
                   totalAllLogs: logs.length,
                   totalSnapshotLogs: newSvmsLogs.length,
-                  totalMqttLogsLegacy: mqttLogs.length,
+                  totalMqttLogsFromAllLogs: mqttLogs.length,
                   totalMqttServersCanonical: mqttServers.length,
                   totalMqttDevicesSnapshot: mqttMilesightDevices.length,
                   totalCameraDevices: cameraDevices.length,
@@ -1095,7 +1095,7 @@ export function Dashboard() {
                   mqttServersCanonical: mqttServers,
                   mqttServersSnapshot: mqttMilesightServers,
                   mqttDevicesSnapshot: mqttMilesightDevices,
-                  mqttLogsLegacy: mqttLogs,
+                  mqttLogsFromAllLogs: mqttLogs,
                   cameraDevices,
                   svmsServersMap: servers,
                   svmsDevicesMap: devices,

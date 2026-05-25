@@ -153,6 +153,24 @@ const getFilterLogSource = (source: LogData['log_source'] | undefined): EventTyp
   return source || null;
 };
 
+const toMqttLogEntry = (log: LogData): MQTT_Milesight_LogEntry => {
+  const raw = log.raw || {};
+  const payload = raw.payload || raw;
+  const receiveTime = log.receive_time > 10_000_000_000
+    ? log.receive_time
+    : log.receive_time * 1000;
+  return {
+    time: new Date(receiveTime || Date.now()).toISOString(),
+    type: 'data',
+    topic: raw.topic || '',
+    payload,
+    snapshot: log.snapshot || undefined,
+    mqttServerId: log.server_unique_id.replace(/^mqtt-/, ''),
+    brokerHost: '',
+    brokerPort: '',
+  };
+};
+
 export function useSocketManager() {
   const [isConnected, setIsConnected] = useState(socket.connected);
   useEffect(() => {
@@ -164,7 +182,6 @@ export function useSocketManager() {
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
 
   const [eventTypes, setEventTypes] = useState<EventTypeItem[]>([]);
-  const [mqttLogs, setMqttLogs] = useState<MQTT_Milesight_LogEntry[]>([]);
   const [cameraDevices, setCameraDevices] = useState<MqttDeviceConfig[]>([]);
   const [deviceCameraLinks, setDeviceCameraLinks] = useState<DeviceCameraLink[]>([]);
   const [gridLayout, setGridLayout] = useState<{ grids: any[]; gridCols: number }>({ grids: [], gridCols: 3 });
@@ -212,7 +229,10 @@ export function useSocketManager() {
   // ─── Log Batching: buffer incoming logs and flush every 500ms ───────────────
   const logBufferRef = useRef<LogData[]>([]);
   const eventTypeBufferRef = useRef<EventTypeItem[]>([]);
-  const mqttLogBufferRef = useRef<MQTT_Milesight_LogEntry[]>([]);
+  const mqttLogs = useMemo(
+    () => logs.filter(log => log.log_source === 'milesight-radar').map(toMqttLogEntry),
+    [logs]
+  );
 
   useEffect(() => {
     const flushInterval = setInterval(() => {
@@ -224,13 +244,6 @@ export function useSocketManager() {
           return sliced;
         });
         setTotalLogCount(prev => prev + batch.length);
-      }
-      if (mqttLogBufferRef.current.length > 0) {
-        const mqttBatch = mqttLogBufferRef.current.splice(0);
-        setMqttLogs(prev => {
-          const merged = [...prev, ...mqttBatch];
-          return merged.length > env.MAX_LOGS_LIST ? merged.slice(-env.MAX_LOGS_LIST) : merged;
-        });
       }
       if (eventTypeBufferRef.current.length > 0) {
         const newItems = eventTypeBufferRef.current.splice(0);
@@ -430,12 +443,15 @@ export function useSocketManager() {
 
     socket.on('connect', fetchCameras);
     socket.on('connect', fetchDeviceCameraLinks);
-    socket.on('connect', fetchGridLayout);
+    socket.on('connect', fetchGridLayout);
+
+
 
     return () => {
       socket.off('connect', fetchCameras);
       socket.off('connect', fetchDeviceCameraLinks);
-      socket.off('connect', fetchGridLayout);
+      socket.off('connect', fetchGridLayout);
+
     };
   }, [fetchCameras, fetchDeviceCameraLinks, fetchGridLayout]);
 
@@ -814,78 +830,6 @@ export function useSocketManager() {
       console.log('%c[SOCKET] 📷 update-cameras — Nhận danh sách camera devices cập nhật', 'color: #06b6d4; font-weight: bold');
       setCameraDevices(devices);
     };
-
-    const onReceiveMqttLog = (raw: any) => {
-      const isSystem = raw.type === 'system';
-      const color = isSystem ? '#f59e0b' : '#22c55e';
-      const icon = isSystem ? '⚙️' : '📩';
-      console.log(`%c[SOCKET] ${icon} receive-mqtt-log [${raw.mqttServerId}] type=${raw.type}`, `color: ${color}; font-weight: bold`);
-      console.log(`[MQTT_LOG] Topic: ${raw.topic || 'N/A'}`);
-      if (isSystem) {
-        console.log(`[MQTT_LOG] System Message: ${raw.message || 'N/A'}`);
-      } else if (raw.payload) {
-        const deviceInfo = raw.payload?.deviceInfo;
-        if (deviceInfo) {
-          console.log(`[MQTT_LOG] Device: ${deviceInfo.deviceName} (${deviceInfo.devEui}) — Profile: ${deviceInfo.deviceProfileName}`);
-        }
-        const events = raw.payload?.object?.events;
-        if (events) {
-          console.log('[MQTT_LOG] Events:', events);
-        }
-      }
-
-      // Store raw MQTT_Milesight_LogEntry for device extraction (only data logs with payload)
-      if (!isSystem && raw.payload) {
-        const MQTT_Milesight_LogEntry: MQTT_Milesight_LogEntry = {
-          time: raw.time || new Date().toISOString(),
-          type: raw.type || 'data',
-          topic: raw.topic || '',
-          payload: raw.payload,
-          snapshot: raw.snapshot || undefined,
-          mqttServerId: raw.mqttServerId,
-          brokerHost: raw.brokerHost,
-          brokerPort: raw.brokerPort,
-        };
-        mqttLogBufferRef.current.push(MQTT_Milesight_LogEntry);
-      }
-
-      // Use individual event (1 log = 1 event now)
-      const deviceInfo = raw.payload?.deviceInfo;
-      const event = raw.event;
-      const eventDesc = event ? `${event.alarm_type}:${event.alarm_status}` : '';
-      const safeRaw = { ...raw };
-      if (safeRaw.snapshot) safeRaw.snapshot = '[BASE64_IMAGE_OMITTED_FROM_RAW]';
-
-      const newLog: any = {
-        id: crypto.randomUUID(),
-        time: Math.floor(new Date(raw.time || Date.now()).getTime() / 1000),
-        device_index: 0,
-        device_ip: raw.brokerHost || '',
-        device_type: 'mqtt',
-        device_name: deviceInfo?.deviceName || 'MQTT Device',
-        log_type: event?.alarm_type || raw.type || 'data',
-        description: eventDesc || `MQTT - ${raw.type || 'data'}`,
-        snapshot: raw.snapshot || undefined,
-        server: { server_id: `mqtt-${raw.mqttServerId}`, serial: deviceInfo?.devEui || '' },
-        ip: raw.brokerHost || '',
-        raw: safeRaw,
-        source: 'mqtt',
-        mqttServerId: raw.mqttServerId,
-      };
-
-
-      // Nếu là log debug_raw, chúng ta bỏ qua việc thêm vào danh sách hiển thị chính (AlertWall)
-      if (newLog.log_type === 'debug_raw') {
-        return;
-      }
-      // Main log state is fed by BE-owned `logs-batch`.
-      // Runtime discovery: event_type mới từ MQTT sẽ có log_source='mqtt'
-      eventTypeBufferRef.current.push({
-        event_type: resolveToGroupKey(newLog.log_type),
-        log_source: 'mqtt',
-      });
-    };
-
     socket.on('external-server-connecting', onConnectingExternalServer);
     socket.on('external-server-connect', onConnectedExternalServer);
     socket.on('external-server-disconnect', onDisconnectedExternalServer);
@@ -920,7 +864,6 @@ export function useSocketManager() {
     socket.on('device-connection-status', onDeviceConnectionStatus);
     socket.on('update-mqtt-servers', onUpdateMqttServers);
     socket.on('update-cameras', onUpdateCameras);
-    socket.on('receive-mqtt-log', onReceiveMqttLog);
     socket.on('test', (data) => {
       console.log('[TEST] test:', data);
     });
@@ -1073,7 +1016,6 @@ export function useSocketManager() {
       socket.off('device-connection-status', onDeviceConnectionStatus);
       socket.off('update-mqtt-servers', onUpdateMqttServers);
       socket.off('update-cameras', onUpdateCameras);
-      socket.off('receive-mqtt-log', onReceiveMqttLog);
       socket.off('debug-camera-snapshot', onDebugCameraSnapshot);
       socket.off('update-device-camera-links', onUpdateDeviceCameraLinks);
       socket.off('update-grid-layout', onUpdateGridLayout);

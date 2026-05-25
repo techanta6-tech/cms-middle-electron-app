@@ -45,13 +45,12 @@ router.post('/api/v1/mqtt-servers', (req, res) => {
     defaultTopic: defaultTopic || 'application/32dc910f-33ae-4526-ac0b-6344e378f00f/device/24e124806e515126/event/up',
     status: 'connecting',
     cameraId: cameraId || null,
-    logs: [],
   };
 
   mqttServers.push(serverConfig);
   connectMqttServer(serverConfig);
 
-  res.status(201).json({ success: true, message: `MQTT server '${id}' created and connecting`, server: { ...serverConfig, logs: undefined } });
+  res.status(201).json({ success: true, message: `MQTT server '${id}' created and connecting`, server: serverConfig });
 });
 
 // ─── PUT /api/v1/mqtt-servers/:id — Update MQTT server config (disconnect + reconnect) ─
@@ -78,14 +77,13 @@ router.put('/api/v1/mqtt-servers/:id', (req, res) => {
     defaultTopic: defaultTopic || mqttServers[idx].defaultTopic,
     cameraId: cameraId !== undefined ? cameraId : mqttServers[idx].cameraId,
     status: 'connecting',
-    logs: mqttServers[idx].logs || [], // preserve logs
   };
   mqttServers[idx] = updated;
 
   // Reconnect with new config
   connectMqttServer(updated);
 
-  res.json({ success: true, message: `MQTT server '${id}' updated and reconnecting`, server: { ...updated, logs: undefined } });
+  res.json({ success: true, message: `MQTT server '${id}' updated and reconnecting`, server: updated });
 });
 
 // ─── PATCH /api/v1/mqtt-servers/:id — Partially update MQTT server config ─────
@@ -109,7 +107,7 @@ router.patch('/api/v1/mqtt-servers/:id', (req, res) => {
     clientSockets.emit('update-mqtt-servers', getMqttServersList());
   }
 
-  res.json({ success: true, message: `MQTT server '${id}' partially updated`, server: { ...mqttServers[idx], logs: undefined } });
+  res.json({ success: true, message: `MQTT server '${id}' partially updated`, server: mqttServers[idx] });
 });
 
 // ─── DELETE /api/v1/mqtt-servers/:id — Remove MQTT server ────────────────────

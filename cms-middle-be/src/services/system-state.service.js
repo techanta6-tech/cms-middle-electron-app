@@ -83,7 +83,10 @@ function getSystemSnapshot() {
       defaultTopic: server.defaultTopic,
       cameraId: server.cameraId || null,
       status: server.status || 'disconnected',
-      logCount: (server.logs || []).length,
+      logCount: allLogs.filter(log =>
+        log.log_source === 'milesight-radar' &&
+        log.server_unique_id === `mqtt-${server.id}`
+      ).length,
       devices,
     };
   });

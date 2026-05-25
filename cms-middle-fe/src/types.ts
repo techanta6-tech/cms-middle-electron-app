@@ -366,3 +366,20 @@ export interface MQTT_Milesight_LogEntry {
   brokerHost?: string;
   brokerPort?: string;
 }
+
+export interface ExternalAlertPayload {
+  source: string;
+  camera_ip: string;
+  camera_url: string;
+  channel_id: number;
+  event_timestamp: number;
+  inserted_timestamp: number;
+  alarm_type: number;
+  event_type: string;
+  ai_score: number;
+  bbox_x: number;
+  bbox_y: number;
+  bbox_w: number;
+  bbox_h: number;
+  image_base64: string;
+} 
