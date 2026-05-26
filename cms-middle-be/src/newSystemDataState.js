@@ -35,17 +35,19 @@ const svmsServers = [];
 const svmsDevices = [];
 
 /**
- * Danh sách MQTT devices đã gặp, tổng hợp từ các log MQTT nhận được.
- * Mỗi device được định danh duy nhất bằng (devEui + mqttServerId) — giống logic FE.
+ * Danh sách MQTT devices đã cấu hình/đã gặp.
  * Structure: [{
- *   devEui: string,
- *   mqttServerId: string,
- *   deviceName: string,
- *   deviceProfileName: string,
- *   applicationId: string,
- *   applicationName: string,
- *   lastSeen: ISO string,
- *   raw: any   // payload.deviceInfo gốc
+ *   id: string,
+ *   groupId: string,
+ *   topic: string,
+ *   deviceInfo: object,
+ *   brokerHost: string,
+ *   brokerPort: string,
+ *   protocol: 'mqtt' | 'mqtts',
+ *   status: string,
+ *   cameraId: string | null,
+ *   features: object,
+ *   lastSeen: ISO string
  * }]
  */
 const mqttDeviceList = [];

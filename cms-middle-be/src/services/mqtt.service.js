@@ -1,511 +1,395 @@
 const mqtt = require('mqtt');
-const path = require('path');
-const { mqttServers, servers, deviceCameraLinks, getClientSockets, mqttDeviceList } = require('../socketState');
-let cameraModule;
-try {
-  cameraModule = require('./cameraModule');
-} catch (err) {
-  try {
-    cameraModule = require('../../cameraModule');
-  } catch (err2) {
-    cameraModule = { init: () => { } };
-  }
-}
-
+const { mqttGroups, mqttServers, servers, deviceCameraLinks, getClientSockets, mqttDeviceList } = require('../socketState');
 const { getSnapshotForCamera } = require('./cameras.service');
 const { normalizeFeature } = require('../helpers/featureNormalizer');
 const milesightEventRegistry = require('./milesightEventRegistry.service');
 const { appendLog } = require('./system-state.service');
 const persistedDevices = require('./persisted-devices.service');
 
-/** Map of active MQTT client instances, keyed by server config id */
 const mqttClients = new Map();
 
-// â”€â”€â”€ MQTT Connection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function makeId() {
+  return Math.random().toString(36).slice(2, 10);
+}
 
-/**
- * Connect to a single MQTT server config and start listening.
- * @param {object} serverConfig - { id, brokerHost, brokerPort, protocol, topic, defaultTopic, cameraId }
- */
-const connectMqttServer = (serverConfig, options = {}) => {
+function parseDeviceInfoFromTopic(topic = '') {
+  const match = String(topic).match(/application\/([^/]+)\/device\/([^/]+)\/event\/up/i);
+  return {
+    tenantId: '',
+    tenantName: '',
+    applicationId: match?.[1] || '',
+    applicationName: '',
+    deviceProfileId: '',
+    deviceProfileName: '',
+    deviceName: match?.[2] ? `Milesight ${match[2]}` : 'Milesight Device',
+    devEui: match?.[2] || '',
+    deviceClassEnabled: '',
+    tags: {},
+  };
+}
+
+function normalizeDeviceInfo(deviceInfo = {}, fallbackTopic = '') {
+  return {
+    ...parseDeviceInfoFromTopic(fallbackTopic),
+    ...deviceInfo,
+    tags: deviceInfo.tags || {},
+  };
+}
+
+function ensureDeviceEntry(deviceConfig) {
+  const id = deviceConfig.id || makeId();
+  const entry = {
+    id,
+    groupId: deviceConfig.groupId,
+    topic: String(deviceConfig.topic || '').trim(),
+    deviceInfo: normalizeDeviceInfo(deviceConfig.deviceInfo, deviceConfig.topic),
+    brokerHost: String(deviceConfig.brokerHost || '').trim(),
+    brokerPort: String(deviceConfig.brokerPort || '').trim(),
+    protocol: deviceConfig.protocol || 'mqtt',
+    status: deviceConfig.status || 'connecting',
+    cameraId: deviceConfig.cameraId || null,
+    features: deviceConfig.features || {},
+    lastSeen: deviceConfig.lastSeen || new Date().toISOString(),
+  };
+
+  const idx = mqttDeviceList.findIndex(d => d.id === id);
+  if (idx === -1) mqttDeviceList.push(entry);
+  else mqttDeviceList[idx] = { ...mqttDeviceList[idx], ...entry };
+  return entry;
+}
+
+function getMqttGroupsList() {
+  return mqttGroups.map(group => ({
+    ...group,
+    cameraId: group.cameraId || null,
+    devices: getMqttDevicesList().filter(device => device.groupId === group.id),
+  }));
+}
+
+function getMqttDevicesList() {
+  return mqttDeviceList.map(device => ({
+    ...device,
+    logCount: _getMqttAllLogs(device.id).length,
+  }));
+}
+
+function connectMqttDevice(deviceConfig, options = {}) {
   const { persistOnConnect = true } = options;
-  const { id, brokerHost, brokerPort, protocol, topic, cameraId } = serverConfig;
+  const entry = ensureDeviceEntry(deviceConfig);
+  const { id, groupId, brokerHost, brokerPort, protocol, topic } = entry;
   const brokerUrl = `${protocol || 'mqtt'}://${brokerHost}:${brokerPort}`;
 
-  console.log(`[MQTT] Connecting to server '${id}' at ${brokerUrl}...`);
+  console.log(`[MQTT] Connecting device '${id}' at ${brokerUrl}, topic=${topic}`);
 
-  // Update status in mqttServers array
-  const entry = mqttServers.find(s => s.id === id);
-
-  if (!topic || !topic.trim()) {
-    console.error(`[MQTT] Server '${id}' has no topic specified.`);
-    if (entry) entry.status = 'error';
-
-    // Register as a disconnected server entry for unified display on FE
-    servers.set(`mqtt-${id}`, {
-      id: `mqtt-${id}`,
-      serial: '',
-      server_ip: brokerHost,
-      server_name: serverConfig.name || `MQTT: ${brokerHost}:${brokerPort}`,
-      version: '',
-      location: '',
-      day: 0, month: 0, year: 0,
-      svms_ipv4_ip: brokerHost,
-      type: 'mqtt',
-      connectionStatus: 'disconnected',
-      lastSeen: new Date().toISOString(),
-      mqttTopic: '',
-    });
-
-    console.error(`[MQTT] Connection ERROR for '${id}': No topic specified for subscription`);
-    _emitMqttServersUpdate();
-    _emitServerInfoUpdate();
-    return;
+  if (!brokerHost || !brokerPort || !topic) {
+    entry.status = 'error';
+    _emitMqttStateUpdate();
+    return entry;
   }
 
-  if (entry) entry.status = 'connecting';
-
-  // Register as a server entry for unified display on FE
-  servers.set(`mqtt-${id}`, {
-    id: `mqtt-${id}`,
-    serial: '',
-    server_ip: brokerHost,
-    server_name: serverConfig.name || `MQTT: ${brokerHost}:${brokerPort}`,
-    version: '',
-    location: '',
-    day: 0, month: 0, year: 0,
-    svms_ipv4_ip: brokerHost,
-    type: 'mqtt',
-    connectionStatus: 'connecting',
-    lastSeen: new Date().toISOString(),
-    mqttTopic: topic,
-  });
-
-  // Emit server list update to FE
-  const clientSockets = getClientSockets();
-  if (clientSockets) {
-    clientSockets.emit('receive-server-information', {
-      allServers: Object.fromEntries(servers)
-    });
-  }
+  entry.status = 'connecting';
+  _registerGroupServer(groupId, 'connecting');
+  _emitMqttStateUpdate();
 
   try {
     const client = mqtt.connect(brokerUrl);
     mqttClients.set(id, client);
 
     client.on('connect', () => {
-      console.log(`[MQTT] Server '${id}' connected to ${brokerUrl}`);
-      if (entry) entry.status = 'connected';
+      console.log(`[MQTT] Device '${id}' connected`);
+      entry.status = 'connected';
+      entry.lastSeen = new Date().toISOString();
+      _registerGroupServer(groupId, 'connected');
+      if (persistOnConnect) persistedDevices.persistMqttDevice(entry);
+      _emitMqttStateUpdate();
 
-      // Update server entry status
-      const srvEntry = servers.get(`mqtt-${id}`);
-      if (srvEntry) {
-        srvEntry.connectionStatus = 'connected';
-        srvEntry.lastSeen = new Date().toISOString();
-      }
-
-      if (persistOnConnect && entry) {
-        persistedDevices.persistMqttServer(entry);
-      }
-
-      _emitMqttServersUpdate();
-      _emitServerInfoUpdate();
-
-      // Subscribe to topic
-      if (topic) {
-        client.subscribe(topic, (err) => {
-          if (err) {
-            console.error(`[MQTT] Server '${id}' subscription error for topic ${topic}:`, err);
-            console.error(`[MQTT] Subscription ERROR for '${id}' topic ${topic}: ${String(err)}`);
-          } else {
-            console.log(`[MQTT] Server '${id}' subscribed to topic: ${topic}`);
-          }
-        });
-      }
+      client.subscribe(topic, (err) => {
+        if (err) console.error(`[MQTT] Device '${id}' subscription error for ${topic}:`, err);
+        else console.log(`[MQTT] Device '${id}' subscribed: ${topic}`);
+      });
     });
 
     client.on('message', async (msgTopic, message) => {
-      console.log(`[MQTT][${id}] Data received on topic: ${msgTopic}`);
+      console.log(`[MQTT] Message on topic '${msgTopic}'`);
       try {
         const parsedBody = JSON.parse(message.toString());
-        const dataTarget = parsedBody.payload || parsedBody;
+        const payload = parsedBody.payload || parsedBody;
+        const deviceInfo = normalizeDeviceInfo(payload?.deviceInfo || parsedBody?.deviceInfo || entry.deviceInfo, msgTopic);
+        entry.deviceInfo = { ...entry.deviceInfo, ...deviceInfo };
+        entry.topic = msgTopic || entry.topic;
+        entry.lastSeen = new Date().toISOString();
+        upsertMqttDevice(entry);
 
+        const milesightEvents = payload?.object?.events;
+        const buttonEvent = payload?.object?.button_event;
 
-        if (dataTarget && dataTarget.object && Array.isArray(dataTarget.object.events) && dataTarget.object.events.length > 0) {
-          // â”€â”€ Device-level snapshot: tÃ¬m camera theo devEui cá»§a device gá»­i log â”€â”€
-          const devEui = (dataTarget?.deviceInfo?.devEui) || (parsedBody?.deviceInfo?.devEui) || '';
-          const deviceLink = devEui
-            ? deviceCameraLinks.find(l => l.devEui === devEui && l.mqttServerId === id)
-            : null;
-          // Fallback: dÃ¹ng server-level cameraId náº¿u khÃ´ng tÃ¬m tháº¥y device-level link
-          const resolvedCameraId = deviceLink?.cameraId || (entry && entry.cameraId) || null;
-
-          // Snapshot cache per-message: trÃ¡nh chá»¥p trÃ¹ng cÃ¹ng 1 camera trong cÃ¹ng 1 message
-          const snapshotCache = new Map();
-          const getSnapshotCached = async (camId) => {
-            if (!camId || camId === 'none') return null;
-            if (snapshotCache.has(camId)) return snapshotCache.get(camId);
-            const snap = await getSnapshotForCamera(camId);
-            snapshotCache.set(camId, snap);
-            return snap;
-          };
-
-          // Táº¡o 1 log entry riÃªng cho má»—i event trong máº£ng
-          for (const event of dataTarget.object.events) {
-            // Lá»c bá» cÃ¡c sá»± kiá»‡n cÃ³ tráº¡ng thÃ¡i deactivated hoáº·c ignored
-            const status = (event.alarm_status || '').toLowerCase();
-            if (status.includes('deactivated') || status.includes('ignored')) {
-              console.log(`[MQTT][${id}] Skipped event with status: ${event.alarm_status}`);
-              continue;
-            }
-
-            // Auto-discover if new event
-            const alarmType = (event.alarm_type || '').toLowerCase();
-            const isNewEvent = milesightEventRegistry.discoverEvent(alarmType);
-            if (isNewEvent) {
-              const { getClientSockets } = require('../socketState');
-              const clientSockets = getClientSockets();
-              if (clientSockets) {
-                clientSockets.emit('update-milesight-known-events', milesightEventRegistry.getEvents());
-              }
-            }
-
-            // Event Filtering + Per-event Camera Resolution
-            const linkFeatures = deviceLink?.features || {};
-
-            // Check if it's a known event from registry
-            const knownTypesSet = milesightEventRegistry.getKnownTypesSet();
-            const isKnownEvent = knownTypesSet.has(alarmType);
-
-            let feat = { enabled: true, cameraId: linkFeatures[alarmType]?.cameraId || null };
-            if (isKnownEvent) {
-              const defaultEnabled = milesightEventRegistry.getDefaultEnabled(alarmType);
-              feat = normalizeFeature(linkFeatures[alarmType], alarmType);
-              if (linkFeatures[alarmType] === undefined) {
-                feat.enabled = defaultEnabled; // Apply registry default if user hasn't overridden
-              }
-            } else {
-              // Event láº¡: dÃ¹ng feature __other_events__ Ä‘á»ƒ quyáº¿t Ä‘á»‹nh, máº·c Ä‘á»‹nh táº¯t
-              const otherFeat = normalizeFeature(linkFeatures['__other_events__'], '__other_events__');
-              if (!otherFeat.enabled) {
-                console.log(`[MQTT][${id}] Skipped unknown event (other_events disabled): ${alarmType} for devEui: ${devEui}`);
-                continue;
-              }
-              feat = { enabled: true, cameraId: otherFeat.cameraId };
-            }
-
-            if (!feat.enabled) {
-              console.log(`[MQTT][${id}] Skipped disabled event: ${alarmType} for devEui: ${devEui}`);
-              continue;
-            }
-
-            // Resolve camera cho event nÃ y: event-specific â†’ device default â†’ server default
-            const eventCameraId = feat.cameraId || resolvedCameraId;
-            let snapshot = await getSnapshotCached(eventCameraId);
-
-            // Fallback: camera riÃªng fail â†’ thá»­ camera máº·c Ä‘á»‹nh
-            if (!snapshot && feat.cameraId && resolvedCameraId && feat.cameraId !== resolvedCameraId) {
-              console.log(`[MQTT][${id}] Event camera ${feat.cameraId} failed, fallback to default ${resolvedCameraId}`);
-              snapshot = await getSnapshotCached(resolvedCameraId);
-            }
-
-            // TÃ¡ch riÃªng payload Ä‘á»ƒ má»—i log má»›i chá»‰ lÆ°u má»™t event
-            const isolatedPayload = {
-              ...parsedBody,
-              object: {
-                ...parsedBody.object,
-                events: [event]
-              }
-            };
-
-            // export interface LogData {
-            //   id?: string;
-            //   receive_time: number;
-            //   log_type: string;
-            //   log_description: string;
-            //   snapshot?: string;
-            //   log_source: 'svms' | 'milesight-radar' | 'sunell-camera';
-            //   // device_info: {
-            //   //   name: string;
-            //   //   ip: string;
-            //   //   index: number;
-            //   // }
-            //   // server_info: {
-
-            //   // }
-            //   device_info: {
-            //     name: string;
-            //     ip: string;
-            //   }
-            //   server_unique_id: string;
-            //   raw: any;
-            // }
-
-
-            // â”€â”€â”€ Ghi vÃ o allLogs tá»•ng (LogData shape) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-            const newLogData = {
-              id: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
-              receive_time: dataTarget.time ? new Date(dataTarget.time).getTime() : Date.now(),
-              log_type: event.alarm_type || 'mqtt_event',
-              log_description: event.alarm_status || event.alarm_type || 'MQTT event',
-              snapshot: snapshot || null,
-              log_source: 'milesight-radar',
-              device_info: {
-                name: dataTarget?.deviceInfo?.deviceName || 'Milesight Device',
-                id: devEui || dataTarget?.deviceInfo?.deviceName || 'unknown',
-              },
-              server_unique_id: `mqtt-${id}`,
-              raw: isolatedPayload,
-            };
-            appendLog(newLogData);
-
-            upsertMqttDevice(id, devEui, dataTarget?.deviceInfo || {});
-          }
-        } else {
-          const deviceInfo = dataTarget?.deviceInfo || parsedBody?.deviceInfo || {};
-          const devEui = deviceInfo.devEui || '';
-          const didUpsert = upsertMqttDevice(id, devEui, deviceInfo);
-          console.log(`[MQTT][${id}] Received payload without object.events; ${didUpsert ? 'updated MQTT device only' : 'no deviceInfo.devEui to update'}`);
+        if ((!Array.isArray(milesightEvents) || milesightEvents.length === 0) && (!buttonEvent)) {
+          _emitMqttStateUpdate();
+          return;
         }
-      } catch (e) {
-        // Binary/Protobuf â€” skip
-        console.log(`[MQTT][${id}] Skipped: non-JSON payload (binary/protobuf)`, e.message);
+        if (buttonEvent && buttonEvent.status) {
+          await _appendEventLogs(entry, parsedBody, payload, [buttonEvent], 'milesight-button');
+        }
+        if (Array.isArray(milesightEvents) && milesightEvents.length > 0) {
+          await _appendEventLogs(entry, parsedBody, payload, milesightEvents, 'milesight-radar');
+        }
+      } catch (err) {
+        console.log(`[MQTT][${id}] Skipped non-JSON payload: ${err.message}`);
       }
     });
 
     client.on('error', (err) => {
-      console.error(`[MQTT] Server '${id}' connection error:`, err);
-      if (entry) entry.status = 'error';
-      const srvEntry = servers.get(`mqtt-${id}`);
-      if (srvEntry) srvEntry.connectionStatus = 'disconnected';
-      _emitMqttServersUpdate();
-      _emitServerInfoUpdate();
+      console.error(`[MQTT] Device '${id}' connection error:`, err);
+      entry.status = 'error';
+      _registerGroupServer(groupId, 'disconnected');
+      _emitMqttStateUpdate();
     });
 
     client.on('close', () => {
-      console.log(`[MQTT] Server '${id}' connection closed`);
-      if (entry) entry.status = 'disconnected';
-      const srvEntry = servers.get(`mqtt-${id}`);
-      if (srvEntry) srvEntry.connectionStatus = 'disconnected';
-      _emitMqttServersUpdate();
-      _emitServerInfoUpdate();
+      entry.status = 'disconnected';
+      _registerGroupServer(groupId, 'disconnected');
+      _emitMqttStateUpdate();
     });
 
     client.on('reconnect', () => {
-      console.log(`[MQTT] Server '${id}' reconnecting...`);
-      if (entry) entry.status = 'connecting';
-      const srvEntry = servers.get(`mqtt-${id}`);
-      if (srvEntry) srvEntry.connectionStatus = 'connecting';
-      _emitMqttServersUpdate();
+      entry.status = 'connecting';
+      _registerGroupServer(groupId, 'connecting');
+      _emitMqttStateUpdate();
     });
-
-  } catch (error) {
-    console.error(`[MQTT] Server '${id}' initialization error:`, error);
-    if (entry) entry.status = 'error';
-    _emitMqttServersUpdate();
+  } catch (err) {
+    entry.status = 'error';
+    console.error(`[MQTT] Device '${id}' initialization error:`, err);
+    _emitMqttStateUpdate();
   }
-};
 
-/**
- * Disconnect a single MQTT server by id.
- * @param {string} id
- */
-const disconnectMqttServer = (id) => {
+  return entry;
+}
+
+function disconnectMqttDevice(id) {
   const client = mqttClients.get(id);
   if (client) {
     client.end(true);
     mqttClients.delete(id);
-    console.log(`[MQTT] Server '${id}' disconnected and cleaned up`);
   }
-  // Remove from servers Map
-  servers.delete(`mqtt-${id}`);
-  _emitServerInfoUpdate();
-};
+  const entry = mqttDeviceList.find(d => d.id === id);
+  if (entry) {
+    entry.status = 'disconnected';
+    _registerGroupServer(entry.groupId, 'disconnected');
+  }
+  _emitMqttStateUpdate();
+}
 
-function upsertMqttDevice(mqttServerId, devEui, deviceInfo = {}) {
-  if (!devEui) return false;
+function removeMqttDevice(id) {
+  disconnectMqttDevice(id);
+  const idx = mqttDeviceList.findIndex(d => d.id === id);
+  if (idx !== -1) mqttDeviceList.splice(idx, 1);
+  for (let i = deviceCameraLinks.length - 1; i >= 0; i -= 1) {
+    if (deviceCameraLinks[i].mqttDeviceId === id) deviceCameraLinks.splice(i, 1);
+  }
+  persistedDevices.removeMqttDevice(id);
+  _emitMqttStateUpdate();
+}
 
-  const deviceEntry = {
-    devEui,
-    mqttServerId,
-    deviceName: deviceInfo.deviceName || '',
-    deviceProfileName: deviceInfo.deviceProfileName || '',
-    applicationId: deviceInfo.applicationId || '',
-    applicationName: deviceInfo.applicationName || '',
-    lastSeen: new Date().toISOString(),
-    raw: deviceInfo,
+function upsertMqttDevice(deviceConfig) {
+  const entry = ensureDeviceEntry(deviceConfig);
+  _emitMqttStateUpdate();
+  return entry;
+}
+
+async function _appendEventLogs(entry, parsedBody, payload, events, log_source = 'milesight-radar') {
+  const devEui = entry.deviceInfo?.devEui || '';
+  const deviceLink = deviceCameraLinks.find(l => l.mqttDeviceId === entry.id)
+    || deviceCameraLinks.find(l => l.devEui === devEui && (l.groupId === entry.groupId || l.mqttServerId === entry.id));
+  const group = mqttGroups.find(g => g.id === entry.groupId);
+  const resolvedCameraId = deviceLink?.cameraId || group?.cameraId || entry.cameraId || null;
+  const snapshotCache = new Map();
+
+  const getSnapshotCached = async (cameraId) => {
+    if (!cameraId || cameraId === 'none') return null;
+    if (snapshotCache.has(cameraId)) return snapshotCache.get(cameraId);
+    const snapshot = await getSnapshotForCamera(cameraId);
+    snapshotCache.set(cameraId, snapshot);
+    return snapshot;
   };
 
-  const existing = mqttDeviceList.findIndex(
-    d => d.devEui === devEui && d.mqttServerId === mqttServerId
-  );
+  for (const event of events) {
+    const status = String(event.alarm_status || '').toLowerCase();
+    if (status.includes('deactivated') || status.includes('ignored')) continue;
 
-  if (existing !== -1) {
-    mqttDeviceList[existing] = deviceEntry;
-  } else {
-    mqttDeviceList.push(deviceEntry);
-  }
-
-  const clientSockets = getClientSockets();
-  if (clientSockets) {
-    clientSockets.emit('update-mqtt-milesight-devices', mqttDeviceList);
-  }
-
-  return true;
-}
-
-/**
- * Get sanitised list of MQTT server configs (without client instances).
- */
-const getMqttServersList = () => {
-  return mqttServers.map(s => ({
-    id: s.id,
-    name: s.name || '',
-    brokerHost: s.brokerHost,
-    brokerPort: s.brokerPort,
-    protocol: s.protocol,
-    topic: s.topic,
-    defaultTopic: s.defaultTopic,
-    cameraId: s.cameraId || null,
-    status: s.status || 'disconnected',
-    logCount: _getMqttAllLogs(s.id).length,
-  }));
-};
-
-/**
- * Get logs for a specific MQTT server.
- * @param {string} id
- * @returns {Array}
- */
-const getMqttServerLogs = (id) => {
-  return _getMqttAllLogs(id);
-};
-
-// â”€â”€â”€ Downlink / Command Publishing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-/**
- * Publish a downlink command to a device via ChirpStack MQTT.
- *
- * ChirpStack v4 topic:
- *   application/{applicationId}/device/{devEui}/command/down
- *
- * @param {string} mqttServerId  - ID cá»§a MQTT server Ä‘Ã£ Ä‘Æ°á»£c cáº¥u hÃ¬nh (pháº£i Ä‘ang `connected`)
- * @param {object} options
- * @param {string} options.applicationId - Application ID trÃªn ChirpStack
- * @param {string} options.devEui        - Device EUI cá»§a thiáº¿t bá»‹ Ä‘Ã­ch
- * @param {number} options.fPort         - Application port (VS373 dÃ¹ng 85)
- * @param {string} options.dataBase64    - Payload dÆ°á»›i dáº¡ng Base64
- * @param {boolean} [options.confirmed]  - CÃ³ yÃªu cáº§u ACK tá»« thiáº¿t bá»‹ khÃ´ng (máº·c Ä‘á»‹nh false)
- * @returns {{ success: boolean, topic?: string, error?: string }}
- */
-const publishDownlink = (mqttServerId, { applicationId, devEui, fPort, dataBase64, confirmed = false }) => {
-  const client = mqttClients.get(mqttServerId);
-  if (!client) {
-    const msg = `[MQTT][Downlink] No active client for server '${mqttServerId}'`;
-    console.error(msg);
-    return { success: false, error: msg };
-  }
-
-  const entry = mqttServers.find(s => s.id === mqttServerId);
-  if (!entry || entry.status !== 'connected') {
-    const msg = `[MQTT][Downlink] Server '${mqttServerId}' is not connected (status: ${entry?.status})`;
-    console.error(msg);
-    return { success: false, error: msg };
-  }
-
-  const topic = `application/${applicationId}/device/${devEui}/command/down`;
-  const payload = JSON.stringify({
-    devEui,
-    confirmed,
-    fPort,
-    data: dataBase64,
-  });
-
-  client.publish(topic, payload, { qos: 0 }, (err) => {
-    if (err) {
-      console.error(`[MQTT][Downlink] Publish error on topic '${topic}':`, err);
-    } else {
-      console.log(`[MQTT][Downlink] Published to '${topic}': ${payload}`);
-      _emitMqttServersUpdate();
+    const alarmType = log_source === 'milesight-button'
+      ? 'button_pressed'
+      : String(event.alarm_type || event.alarmType || '').toLowerCase();
+    const eventForLog = log_source === 'milesight-button'
+      ? { ...event, alarmType: 'button_pressed', alarm_type: event.alarm_type || 'button_pressed' }
+      : event;
+    const isNewEvent = milesightEventRegistry.discoverEvent(alarmType);
+    if (isNewEvent) {
+      const clientSockets = getClientSockets();
+      if (clientSockets) clientSockets.emit('update-milesight-known-events', milesightEventRegistry.getEvents());
     }
-  });
 
-  return { success: true, topic };
-};
+    const linkFeatures = deviceLink?.features || entry.features || {};
+    const knownTypesSet = milesightEventRegistry.getKnownTypesSet();
+    const isKnownEvent = knownTypesSet.has(alarmType);
+    let feat = { enabled: true, cameraId: linkFeatures[alarmType]?.cameraId || null };
 
-/**
- * Báº­t hoáº·c táº¯t cÃ²i bÃ¡o Ä‘á»™ng (Buzzer) trÃªn thiáº¿t bá»‹ VS373.
- *
- * Lá»‡nh theo tÃ i liá»‡u VS373:
- *   - Báº­t Buzzer  : Hex ff3e01 â†’ Base64 /z4B
- *   - Táº¯t Buzzer  : Hex ff3e00 â†’ Base64 /z4A
- *
- * @param {string} mqttServerId  - ID cá»§a MQTT server
- * @param {object} options
- * @param {string} options.applicationId - Application ID trÃªn ChirpStack
- * @param {string} options.devEui        - Device EUI cá»§a thiáº¿t bá»‹ VS373
- * @param {boolean} options.enable       - true = báº­t cÃ²i, false = táº¯t cÃ²i
- * @param {number}  [options.fPort]      - Application port (máº·c Ä‘á»‹nh 85 theo spec VS373)
- * @returns {{ success: boolean, topic?: string, error?: string }}
- */
-const controlBuzzer = (mqttServerId, { applicationId, devEui, enable, fPort = 85 }) => {
-  // Hex ff3e01 (enable) / ff3e00 (disable) â†’ Buffer â†’ Base64
-  const hexBytes = enable ? [0xff, 0x3e, 0x01] : [0xff, 0x3e, 0x00];
-  const dataBase64 = Buffer.from(hexBytes).toString('base64');
+    if (isKnownEvent) {
+      const defaultEnabled = milesightEventRegistry.getDefaultEnabled(alarmType);
+      feat = normalizeFeature(linkFeatures[alarmType], alarmType);
+      if (linkFeatures[alarmType] === undefined) feat.enabled = defaultEnabled;
+    } else {
+      const otherFeat = normalizeFeature(linkFeatures.__other_events__, '__other_events__');
+      if (!otherFeat.enabled) continue;
+      feat = { enabled: true, cameraId: otherFeat.cameraId };
+    }
 
-  console.log(`[MQTT][Buzzer] ${enable ? 'ON' : 'OFF'} â†’ devEui=${devEui} data=${dataBase64}`);
+    if (!feat.enabled) continue;
 
-  // return publishDownlink(mqttServerId, {
-  //   applicationId,
-  //   devEui,
-  //   fPort,
-  //   dataBase64,
-  //   confirmed: false,
-  // });
-  return publishDownlink(mqttServerId, {
-    applicationId,
-    devEui: '24e124806e515126',
-    fPort,
-    dataBase64,
-    confirmed: false,
-  });
-};
+    const eventCameraId = feat.cameraId || resolvedCameraId;
+    let snapshot = await getSnapshotCached(eventCameraId);
+    if (!snapshot && feat.cameraId && resolvedCameraId && feat.cameraId !== resolvedCameraId) {
+      snapshot = await getSnapshotCached(resolvedCameraId);
+    }
 
-// â”€â”€â”€ Internal Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    const isolatedPayload = {
+      ...parsedBody,
+      topic: entry.topic,
+      payload: {
+        ...payload,
+        deviceInfo: entry.deviceInfo,
+        object: {
+          ...payload.object,
+          events: [eventForLog],
+        },
+      },
+    };
 
-function _getMqttAllLogs(serverId) {
-  const { allLogs } = require('../socketState');
-  return allLogs.filter(log =>
-    log.log_source === 'milesight-radar' &&
-    log.server_unique_id === `mqtt-${serverId}`
-  );
-}
+    let log_type;
+    let log_description;
+    switch (log_source) {
+      case 'milesight-radar':
+        log_type = 'milesight_radar';
+        log_description = event.alarm_status || event.alarm_type || 'log_description'
+        break;
+      case 'milesight-button':
+        log_type = 'milesight_button';
+        log_description = event.status || 'log_description'
+        break;
+      default:
+        log_type = event.alarm_type || 'mqtt_event';
+        log_description = event.alarm_status || event.alarm_type || 'log_description'
+        break;
+    }
 
-function _emitMqttServersUpdate() {
-  const clientSockets = getClientSockets();
-  if (clientSockets) {
-    const list = getMqttServersList();
-    clientSockets.emit('update-mqtt-servers', list);
-    clientSockets.emit('update-mqtt-milesight-servers', list);
-  }
-}
-
-function _emitServerInfoUpdate() {
-  const clientSockets = getClientSockets();
-  if (clientSockets) {
-    clientSockets.emit('receive-server-information', {
-      allServers: Object.fromEntries(servers)
+    appendLog({
+      id: makeId() + makeId(),
+      receive_time: payload.time ? new Date(payload.time).getTime() : Date.now(),
+      log_type,
+      log_description,
+      snapshot: snapshot || null,
+      log_source,
+      device_info: {
+        name: entry.deviceInfo?.deviceName || 'Milesight Device',
+        id: devEui || entry.id,
+      },
+      server_unique_id: entry.groupId,
+      mqtt_device_id: entry.id,
+      raw: isolatedPayload,
     });
   }
 }
 
+function _registerGroupServer(groupId, status) {
+  if (!groupId) return;
+  const group = mqttGroups.find(g => g.id === groupId);
+  servers.set(groupId, {
+    id: groupId,
+    serial: '',
+    server_ip: '',
+    server_name: group?.name || `MQTT Group ${groupId}`,
+    version: '',
+    location: '',
+    day: 0,
+    month: 0,
+    year: 0,
+    svms_ipv4_ip: '',
+    type: 'mqtt',
+    connectionStatus: status,
+    lastSeen: new Date().toISOString(),
+  });
+}
+
+function getMqttServersList() {
+  return getMqttDevicesList().map(device => ({
+    id: device.id,
+    groupId: device.groupId,
+    name: device.deviceInfo?.deviceName || '',
+    brokerHost: device.brokerHost,
+    brokerPort: device.brokerPort,
+    protocol: device.protocol,
+    topic: device.topic,
+    defaultTopic: device.topic,
+    cameraId: device.cameraId || null,
+    status: device.status || 'disconnected',
+    logCount: device.logCount || 0,
+    deviceInfo: device.deviceInfo,
+  }));
+}
+
+function getMqttServerLogs(id) {
+  return _getMqttAllLogs(id);
+}
+
+function publishDownlink(mqttDeviceId, { applicationId, devEui, fPort, dataBase64, confirmed = false }) {
+  const client = mqttClients.get(mqttDeviceId);
+  if (!client) return { success: false, error: `[MQTT][Downlink] No active client for device '${mqttDeviceId}'` };
+
+  const entry = mqttDeviceList.find(d => d.id === mqttDeviceId);
+  if (!entry || entry.status !== 'connected') {
+    return { success: false, error: `[MQTT][Downlink] Device '${mqttDeviceId}' is not connected` };
+  }
+
+  const topic = `application/${applicationId}/device/${devEui}/command/down`;
+  client.publish(topic, JSON.stringify({ devEui, confirmed, fPort, data: dataBase64 }), { qos: 0 });
+  return { success: true, topic };
+}
+
+function controlBuzzer(mqttDeviceId, { applicationId, devEui, enable, fPort = 85 }) {
+  const dataBase64 = Buffer.from(enable ? [0xff, 0x3e, 0x01] : [0xff, 0x3e, 0x00]).toString('base64');
+  return publishDownlink(mqttDeviceId, { applicationId, devEui, fPort, dataBase64, confirmed: false });
+}
+
+function _getMqttAllLogs(deviceOrGroupId) {
+  const { allLogs } = require('../socketState');
+  return allLogs.filter(log =>
+    (log.log_source === 'milesight-radar' || log.log_source === 'milesight-button') &&
+    (log.mqtt_device_id === deviceOrGroupId || log.server_unique_id === deviceOrGroupId)
+  );
+}
+
+function _emitMqttStateUpdate() {
+  const clientSockets = getClientSockets();
+  if (!clientSockets) return;
+  const groups = getMqttGroupsList();
+  const devices = getMqttDevicesList();
+  clientSockets.emit('update-mqtt-groups', groups);
+  clientSockets.emit('update-mqtt-devices', devices);
+  clientSockets.emit('update-mqtt-servers', getMqttServersList());
+  clientSockets.emit('update-mqtt-milesight-servers', getMqttServersList());
+  clientSockets.emit('update-mqtt-milesight-devices', devices);
+  clientSockets.emit('receive-server-information', { allServers: Object.fromEntries(servers) });
+}
+
 module.exports = {
-  connectMqttServer,
-  disconnectMqttServer,
+  connectMqttDevice,
+  disconnectMqttDevice,
+  removeMqttDevice,
+  upsertMqttDevice,
+  getMqttGroupsList,
+  getMqttDevicesList,
   getMqttServersList,
   getMqttServerLogs,
   publishDownlink,
   controlBuzzer,
+  parseDeviceInfoFromTopic,
 };
-

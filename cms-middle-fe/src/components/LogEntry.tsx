@@ -6,7 +6,7 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
   const { t } = useTranslation();
 
   let serverName = log.server_unique_id;
-  if (log.log_source === 'milesight-radar' || serverName.startsWith('mqtt-')) {
+  if (log.log_source === 'milesight-radar' || log.log_source === 'milesight-button' || serverName.startsWith('mqtt-')) {
     const cleanId = serverName.replace('mqtt-', '').toLowerCase();
     const mqttSrv = (mqttServers || []).find(s => s.id?.toLowerCase() === cleanId);
     if (mqttSrv) {
@@ -29,7 +29,8 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
 
   let displayType;
   let displayDesc;
-  switch (log.log_source) {
+  const source = String(log.log_source);
+  switch (source) {
     case 'svms': {
       const normalizedType = log.log_type.replace(/\./g, '_');
       displayType = t(`app.logtype.svms_${normalizedType}`);
@@ -38,8 +39,16 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
     }
     case 'milesight-radar': {
       const normalizedType = log.log_type.replace(/\./g, '_');
-      displayType = t(`app.logtype.milesight_${normalizedType}`);
-      displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
+      const descKey = log.log_description?.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+      displayType = t(`app.logtype.${normalizedType.startsWith('milesight_') ? normalizedType : `milesight_${normalizedType}`}`);
+      displayDesc = descKey ? t(`app.logtype.${descKey}`, { defaultValue: log.log_description }) : t(`app.logtype.milesight_${normalizedType}_description`);
+      break;
+    }
+    case 'milesight-button': {
+      const normalizedType = log.log_type.replace(/\./g, '_');
+      const descKey = log.log_description?.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+      displayType = t(`app.logtype.${normalizedType.startsWith('milesight_') ? normalizedType : `milesight_${normalizedType}`}`);
+      displayDesc = descKey ? t(`app.logtype.${descKey}`, { defaultValue: log.log_description }) : undefined;
       break;
     }
     case 'sunell-camera': {
@@ -52,9 +61,7 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
       displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
       if (log.log_description) {
         const descKey = log.log_description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
-        displayDesc = t(`app.logtype.${descKey}`, {
-          defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
-        });
+        displayDesc = t(`app.logtype.${descKey}`, { defaultValue: log.log_description });
       }
       console.log("cant find, use: ", displayType, displayDesc, log)
   }

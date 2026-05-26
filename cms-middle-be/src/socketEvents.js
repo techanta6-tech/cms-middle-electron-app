@@ -49,11 +49,11 @@ const setupSocketEvents = () => {
       updateCameraFeatures(id, features);
     });
 
-    socket.on('update-device-features', ({ devEui, mqttServerId, features }) => {
+    socket.on('update-device-features', ({ mqttDeviceId, groupId, devEui, mqttServerId, features }) => {
       const { deviceCameraLinks } = require('./socketState');
-      let link = deviceCameraLinks.find(l => l.devEui === devEui && l.mqttServerId === mqttServerId);
+      let link = deviceCameraLinks.find(l => mqttDeviceId ? l.mqttDeviceId === mqttDeviceId : (l.devEui === devEui && l.mqttServerId === mqttServerId));
       if (!link) {
-        link = { devEui, mqttServerId, cameraId: null, features: {} };
+        link = { mqttDeviceId, groupId, devEui, mqttServerId, cameraId: null, features: {} };
         deviceCameraLinks.push(link);
       }
       if (!link.features) {

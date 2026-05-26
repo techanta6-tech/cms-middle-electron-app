@@ -17,14 +17,14 @@ router.get('/api/v1/device-camera-links', (req, res) => {
 
 // ─── PATCH /api/v1/mqtt-device-camera-link — Create or update a link ─────────
 router.patch('/api/v1/mqtt-device-camera-link', (req, res) => {
-  const { devEui, mqttServerId, cameraId } = req.body;
+  const { mqttDeviceId, groupId, devEui, mqttServerId, cameraId } = req.body;
 
-  if (!devEui || !mqttServerId) {
-    return res.status(400).json({ success: false, error: 'devEui and mqttServerId are required' });
+  if (!mqttDeviceId && (!devEui || !mqttServerId)) {
+    return res.status(400).json({ success: false, error: 'mqttDeviceId or devEui + mqttServerId are required' });
   }
 
   const existingIdx = deviceCameraLinks.findIndex(
-    l => l.devEui === devEui && l.mqttServerId === mqttServerId
+    l => mqttDeviceId ? l.mqttDeviceId === mqttDeviceId : (l.devEui === devEui && l.mqttServerId === mqttServerId)
   );
 
   if (existingIdx !== -1) {
@@ -33,7 +33,7 @@ router.patch('/api/v1/mqtt-device-camera-link', (req, res) => {
     console.log(`[Device-Camera-Link] Updated: ${devEui} → ${cameraId || 'DEFAULT'}`);
   } else if (cameraId) {
     // Create new link only if cameraId is provided
-    const linkEntry = { devEui, mqttServerId, cameraId, features: {} };
+    const linkEntry = { mqttDeviceId, groupId, devEui, mqttServerId, cameraId, features: {} };
     deviceCameraLinks.push(linkEntry);
     console.log(`[Device-Camera-Link] Created: ${devEui} → ${cameraId}`);
   }
@@ -44,14 +44,14 @@ router.patch('/api/v1/mqtt-device-camera-link', (req, res) => {
 
 // ─── DELETE /api/v1/mqtt-device-camera-link — Remove a link ──────────────────
 router.delete('/api/v1/mqtt-device-camera-link', (req, res) => {
-  const { devEui, mqttServerId } = req.body;
+  const { mqttDeviceId, devEui, mqttServerId } = req.body;
 
-  if (!devEui || !mqttServerId) {
-    return res.status(400).json({ success: false, error: 'devEui and mqttServerId are required' });
+  if (!mqttDeviceId && (!devEui || !mqttServerId)) {
+    return res.status(400).json({ success: false, error: 'mqttDeviceId or devEui + mqttServerId are required' });
   }
 
   const idx = deviceCameraLinks.findIndex(
-    l => l.devEui === devEui && l.mqttServerId === mqttServerId
+    l => mqttDeviceId ? l.mqttDeviceId === mqttDeviceId : (l.devEui === devEui && l.mqttServerId === mqttServerId)
   );
 
   if (idx !== -1) {

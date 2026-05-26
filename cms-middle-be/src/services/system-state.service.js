@@ -40,6 +40,7 @@ function getSystemSnapshot() {
     svmsServers,
     svmsDevices,
     mqttServers,
+    mqttGroups,
     mqttDeviceList,
     cameraDevices,
     prefilter,
@@ -65,9 +66,24 @@ function getSystemSnapshot() {
     };
   });
 
+  const mqttGroupsWithDevices = mqttGroups.map((group) => ({
+    ...group,
+    cameraId: group.cameraId || null,
+    devices: mqttDeviceList
+      .filter((device) => device.groupId === group.id)
+      .map((device) => ({
+        ...device,
+        type: device.type || 'milesight',
+        logCount: allLogs.filter(log =>
+          (log.log_source === 'milesight-radar' || log.log_source === 'milesight-button') &&
+          log.mqtt_device_id === device.id
+        ).length,
+      })),
+  }));
+
   const mqttServersWithDevices = mqttServers.map((server) => {
     const devices = mqttDeviceList
-      .filter((device) => device.mqttServerId === server.id)
+      .filter((device) => device.id === server.id || device.groupId === server.id)
       .map((device) => ({
         ...device,
         type: device.type || 'milesight',
@@ -75,16 +91,18 @@ function getSystemSnapshot() {
 
     return {
       id: server.id,
-      name: server.name || '',
+      groupId: server.groupId,
+      name: server.name || server.deviceInfo?.deviceName || '',
       brokerHost: server.brokerHost,
       brokerPort: server.brokerPort,
       protocol: server.protocol,
       topic: server.topic,
-      defaultTopic: server.defaultTopic,
+      defaultTopic: server.defaultTopic || server.topic,
+      deviceInfo: server.deviceInfo,
       cameraId: server.cameraId || null,
       status: server.status || 'disconnected',
       logCount: allLogs.filter(log =>
-        log.log_source === 'milesight-radar' &&
+        (log.log_source === 'milesight-radar' || log.log_source === 'milesight-button') &&
         log.server_unique_id === `mqtt-${server.id}`
       ).length,
       devices,
@@ -116,6 +134,7 @@ function getSystemSnapshot() {
     devices: Object.fromEntries(devices),
     svmsServers: svmsServersWithDevices,
     svmsDevices: [...svmsDevices],
+    mqttGroups: mqttGroupsWithDevices,
     mqttServers: mqttServersWithDevices,
     mqttDeviceList: [...mqttDeviceList],
     cameras,

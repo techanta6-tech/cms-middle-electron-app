@@ -315,6 +315,18 @@ const resources = {
           milesight_bradynea: 'Hô hấp chậm',
           milesight_tachypnea: 'Hô hấp nhanh',
 
+          milesight_button: 'Nút bấm khẩn cấp',
+          milesight_radar: 'Cảm biến té ngã',
+          milesight_button_pressed: 'Nút bấm khẩn cấp',
+          milesight_button_pressed_description: 'Có người nhấn nút khẩn cấp',
+          button_pressed: 'Nút bấm khẩn cấp',
+          short_press: 'Có người nhấn nút khẩn cấp',
+          double_press: 'Có người nhấn nút khẩn cấp hai lần',
+          long_press: 'Có người nhấn giữ nút khẩn cấp',
+          hold_press: 'Có người nhấn giữ nút khẩn cấp',
+          very_long_press: 'Có người nhấn giữ nút khẩn cấp rất lâu',
+          occupancy: 'Có người trong phòng',
+
           // Milesight event description keys (i18n từ điền bởi project, fallback: 'Thông báo MQTT')
           milesight_fall_description: 'Có người bị ngã',
           milesight_lying_description: 'Có người ngã quá lâu',
@@ -466,6 +478,11 @@ const resources = {
           'tachypnea': 'Thở nhanh bất thường',
           'lying': 'Đang nằm',
           'respiratory_status': 'Trạng thái sinh tồn',
+
+          // 'short_press': 'Có người nhấn nút khẩn cấp',
+          // 'double_press': 'Có người nhấn nút khẩn cấp hai lần',
+          // 'long_press': 'Có người nhấn giữ nút khẩn cấp',
+
           'debug_raw': 'Debug Raw',
         },
         mqtt_alarm_status: {
@@ -874,7 +891,19 @@ const resources = {
           milesight_bradynea: 'Bradynea',
           milesight_tachypnea: 'Tachypnea',
 
-          // Milesight event description keys (filled by project, fallback: 'MQTT Alert')
+          milesight_button: 'Button',
+          milesight_radar: 'Radar',
+          milesight_button_pressed: 'Emergency button',
+          milesight_button_pressed_description: 'Emergency button pressed',
+          button_pressed: 'Emergency button',
+          short_press: 'Emergency button pressed',
+          double_press: 'Emergency button double pressed',
+          long_press: 'Emergency button held',
+          hold_press: 'Emergency button held',
+          very_long_press: 'Emergency button held very long',
+          occupancy: 'Occupancy',
+
+          // // Milesight event description keys (filled by project, fallback: 'MQTT Alert')
           milesight_fall_description: 'Person fallen',
           milesight_lying_description: 'Person lying down too long',
           milesight_occupied_description: 'Room occupied',

@@ -132,7 +132,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
               let displayFilterType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
 
               if (log_source) {
-                switch (log_source) {
+                switch (String(log_source)) {
                   case 'svms': {
                     const normalizedType = lt.replace(/\./g, '_');
                     displayFilterType = t(`app.logtype.svms_${normalizedType}`);
@@ -141,7 +141,12 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
                   }
                   case 'milesight-radar': {
                     const normalizedType = lt.replace(/\./g, '_');
-                    displayFilterType = t(`app.logtype.milesight_${normalizedType}`);
+                    displayFilterType = t(`app.logtype.${normalizedType.startsWith('milesight_') ? normalizedType : `milesight_${normalizedType}`}`);
+                    break;
+                  }
+                  case 'milesight-button': {
+                    const normalizedType = lt.replace(/\./g, '_');
+                    displayFilterType = t(`app.logtype.${normalizedType.startsWith('milesight_') ? normalizedType : `milesight_${normalizedType}`}`);
                     break;
                   }
                   case 'sunell-camera': {
@@ -176,7 +181,8 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
             {displayedLogs.map((log, i) => {
               let displayType, displayDesc;
 
-              switch (log.log_source) {
+              const source = String(log.log_source);
+              switch (source) {
                 case 'svms': {
                   const normalizedType = log.log_type.replace(/\./g, '_');
                   displayType = t(`app.logtype.svms_${normalizedType}`);
@@ -185,8 +191,16 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
                 }
                 case 'milesight-radar': {
                   const normalizedType = log.log_type.replace(/\./g, '_');
-                  displayType = t(`app.logtype.milesight_${normalizedType}`);
-                  displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
+                  const descKey = log.log_description?.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+                  displayType = t(`app.logtype.${normalizedType.startsWith('milesight_') ? normalizedType : `milesight_${normalizedType}`}`);
+                  displayDesc = descKey ? t(`app.logtype.${descKey}`, { defaultValue: log.log_description }) : t(`app.logtype.milesight_${normalizedType}_description`);
+                  break;
+                }
+                case 'milesight-button': {
+                  const normalizedType = log.log_type.replace(/\./g, '_');
+                  const descKey = log.log_description?.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+                  displayType = t(`app.logtype.${normalizedType.startsWith('milesight_') ? normalizedType : `milesight_${normalizedType}`}`);
+                  displayDesc = descKey ? t(`app.logtype.${descKey}`, { defaultValue: log.log_description }) : undefined;
                   break;
                 }
                 case 'sunell-camera': {
@@ -199,9 +213,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
                   displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
                   if (log.log_description) {
                     const descKey = log.log_description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
-                    displayDesc = t(`app.logtype.${descKey}`, {
-                      defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
-                    });
+                    displayDesc = t(`app.logtype.${descKey}`, { defaultValue: log.log_description });
                   }
                   console.log("cant find, use: ", displayType, displayDesc, log)
               }
@@ -356,7 +368,7 @@ export function ConnectionsMonitor({
       const serverId = (device as any).mqttServerId;
       if (!serverId || !device.devEui) return;
       const deviceLogs = (throttledLogs || []).filter(log =>
-        log.log_source === 'milesight-radar' &&
+        (log.log_source === 'milesight-radar' || log.log_source === 'milesight-button') &&
         log.server_unique_id === `mqtt-${serverId}` &&
         log.device_info?.id === device.devEui
       );

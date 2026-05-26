@@ -4,6 +4,30 @@ import type { DeviceData, LogData, DeviceCameraLink } from '../types';
 import { CameraOff, X, Settings, Camera, ZoomIn, ZoomOut, Maximize, Minimize } from 'lucide-react';
 import { CameraFeed } from './CameraFeed';
 
+export type GridDevice = {
+  server_serial: string;
+  server_id: string;
+  device_ip: string;
+  device_name: string;
+  device_type: string;
+  mqtt_device_id?: string;
+};
+
+export type GridItem = {
+  gridID: number;
+  device?: GridDevice;
+  devices?: GridDevice[];
+};
+
+const normalizeGridDevices = (item?: GridItem): GridDevice[] => {
+  if (!item) return [];
+  if (Array.isArray(item.devices)) return item.devices.filter(Boolean);
+  if (item.device) return [item.device];
+  return [];
+};
+
+const normalizeAddress = (value?: string) => String(value || '').split(':')[0];
+
 export function AlertWall({
   logs,
   cameras,
@@ -16,178 +40,204 @@ export function AlertWall({
   isFullscreen,
   setIsFullscreen
 }: {
-  logs: LogData[],
-  cameras: DeviceData[],
-  deviceCameraLinks: DeviceCameraLink[],
-  onSelectLog: (log: LogData) => void,
-  gridCols: number,
-  setGridCols: React.Dispatch<React.SetStateAction<number>>,
-  grids: {
-    gridID: number,
-    device: {
-      server_serial: string,
-      server_id: string,
-      device_ip: string,
-      device_name: string,
-      device_type: string
-    }
-  }[],
-  setGrids: React.Dispatch<React.SetStateAction<{
-    gridID: number,
-    device: {
-      server_serial: string,
-      server_id: string,
-      device_ip: string,
-      device_name: string,
-      device_type: string
-    }
-  }[]>>,
-  isFullscreen?: boolean,
-  setIsFullscreen?: (val: boolean) => void
+  logs: LogData[];
+  cameras: DeviceData[];
+  deviceCameraLinks: DeviceCameraLink[];
+  onSelectLog: (log: LogData) => void;
+  gridCols: number;
+  setGridCols: React.Dispatch<React.SetStateAction<number>>;
+  grids: GridItem[];
+  setGrids: React.Dispatch<React.SetStateAction<GridItem[]>>;
+  isFullscreen?: boolean;
+  setIsFullscreen?: (val: boolean) => void;
 }) {
   const { t } = useTranslation();
   const [showGridSettings, setShowGridSettings] = useState(false);
   const colsBreakPoints = [5, 5];
-  const cameraList = [
-    ...cameras.flatMap(server =>
-      (server.devices || []).map(dev => ({
-        ...dev,
-        server_serial: server.server.serial,
-        server_id: server.server.server_id
-      }))
-    ).filter(dev => dev.type === "camera"),
-  ];
-  // KHU VỰC 1: KHUNG CONTAINER & BỐ CỤC LƯỚI (GRID LAYOUT)
-  // flex-1 để chiếm toàn bộ không gian. overflow-y-auto để cuộn nếu lưới bị quá to
+
+  const cameraList = cameras.flatMap(server =>
+    (server.devices || []).map(dev => ({
+      ...dev,
+      server_serial: server.server.serial,
+      server_id: server.server.server_id,
+    }))
+  ).filter(dev => dev.type === 'camera');
+
+  const getLatestMqttLog = (device: GridDevice) => {
+    const groupId = device.server_id || device.server_serial;
+    for (let i = logs.length - 1; i >= 0; i -= 1) {
+      const log = logs[i];
+      if (
+        (log.log_source === 'milesight-radar' || String(log.log_source) === 'milesight-button') &&
+        ((device.mqtt_device_id && (log as any).mqtt_device_id === device.mqtt_device_id) || log.device_info?.id === device.device_ip) &&
+        log.server_unique_id === groupId
+      ) {
+        return log;
+      }
+    }
+    return undefined;
+  };
+
+  const getLatestCameraLog = (camera: any) => {
+    if (!camera) return undefined;
+    for (let i = logs.length - 1; i >= 0; i -= 1) {
+      const log = logs[i];
+      if (camera.type === 'sunell') {
+        if (log.log_source === 'sunell-camera' && log.device_info?.id === camera.ip) return log;
+      } else if (log.log_source === 'svms') {
+        const rawDeviceName = log.raw?.device_name;
+        const rawServerSerial = log.raw?.server?.serial;
+        const rawDeviceIp = log.raw?.device_ip;
+        if (
+          rawDeviceName === camera.name &&
+          (rawServerSerial === camera.server_serial || rawServerSerial === camera.server_id) &&
+          normalizeAddress(rawDeviceIp) === normalizeAddress(camera.ip)
+        ) return log;
+      } else if (
+        normalizeAddress(log.device_info?.id) === normalizeAddress(camera.ip) &&
+        log.device_info?.name === camera.name &&
+        (log.server_unique_id === camera.server_id || log.server_unique_id === camera.server_serial)
+      ) {
+        return log;
+      }
+    }
+    return undefined;
+  };
+
+  const getCameraForDevice = (device: GridDevice) => {
+    if (device.device_type === 'sunell') {
+      return {
+        ip: device.device_ip,
+        name: device.device_name,
+        server_id: device.server_id,
+        server_serial: device.server_serial,
+        type: 'sunell',
+      };
+    }
+    return cameraList.find(dev =>
+      normalizeAddress(dev.ip) === normalizeAddress(device.device_ip) &&
+      dev.name === device.device_name &&
+      dev.server_id === device.server_id &&
+      dev.server_serial === device.server_serial
+    );
+  };
+
+  const getLatestLogForDevice = (device: GridDevice) => {
+    if (device.device_type === 'mqtt-sensor') return getLatestMqttLog(device);
+    return getLatestCameraLog(getCameraForDevice(device));
+  };
+
+  const getLogTime = (log?: LogData) => {
+    if (!log) return 0;
+    if (typeof log.receive_time === 'number') return log.receive_time;
+    const parsed = new Date(log.receive_time).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const getHoverLabelFontSize = () => {
+    const baseSize = 12;
+    const minSize = baseSize * 0.75;
+    if (gridCols <= 3) return baseSize;
+    if (gridCols >= 10) return minSize;
+    const progress = (gridCols - 3) / 7;
+    return baseSize - ((baseSize - minSize) * progress);
+  };
+
+  const sortDevicesByLatestLog = (devices: GridDevice[]) => (
+    [...devices].sort((a, b) => getLogTime(getLatestLogForDevice(b)) - getLogTime(getLatestLogForDevice(a)))
+  );
+
+  const hasMqttCameraLink = (device: GridDevice) => {
+    const groupId = device.server_id || device.server_serial;
+    return deviceCameraLinks.some(link =>
+      ((device.mqtt_device_id && link.mqttDeviceId === device.mqtt_device_id) ||
+        (link.devEui === device.device_ip && (link.groupId || link.mqttServerId) === groupId)) &&
+      !!link.cameraId
+    );
+  };
+
+  const renderDevice = (device: GridDevice, index: number) => {
+    if (device.device_type === 'mqtt-sensor') {
+      const log = getLatestMqttLog(device);
+      if (log?.snapshot) {
+        return <CameraFeed key={`${device.server_id}-${device.device_ip}-${index}`} cam={log} onClick={() => onSelectLog(log)} />;
+      }
+      const waiting = hasMqttCameraLink(device) && !log;
+      return (
+        <div
+          key={`${device.server_id}-${device.device_ip}-${index}`}
+          className={`no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-2 py-2 bg-black ${log ? 'cursor-pointer hover:bg-surface-container-highest/50' : ''}`}
+          onClick={() => log && onSelectLog(log)}
+        >
+          <Camera className={`opacity-30 ${gridCols > colsBreakPoints[1] ? 'w-[80%] h-[80%]' : gridCols > colsBreakPoints[0] ? 'w-8 h-8' : 'w-12 h-12'} transition-all`} />
+          <span className={`opacity-30 text-[9px] uppercase tracking-widest font-bold line-clamp-1 transition-all ${gridCols > colsBreakPoints[1] ? 'hidden' : ''}`}>
+            {waiting ? t('app.alert_wall.waiting_data') : device.device_name}
+          </span>
+        </div>
+      );
+    }
+
+    const camera = getCameraForDevice(device);
+    const log = getLatestCameraLog(camera);
+    if (log?.snapshot) {
+      return <CameraFeed key={`${device.server_id}-${device.device_ip}-${index}`} cam={log} onClick={() => onSelectLog(log)} />;
+    }
+    return (
+      <div
+        key={`${device.server_id}-${device.device_ip}-${index}`}
+        className={`no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-2 py-2 bg-black ${log ? 'cursor-pointer hover:bg-surface-container-highest/50' : ''}`}
+        onClick={() => log && onSelectLog(log)}
+      >
+        <Camera className={`opacity-30 ${gridCols > colsBreakPoints[1] ? 'w-[80%] h-[80%]' : gridCols > colsBreakPoints[0] ? 'w-8 h-8' : 'w-12 h-12'} transition-all`} />
+        <span className={`opacity-30 text-[10px] uppercase tracking-widest font-bold line-clamp-1 transition-all ${gridCols > colsBreakPoints[1] ? 'hidden' : ''}`}>
+          {log ? t('app.alert_wall.has_event', 'Co su kien') : t('app.alert_wall.waiting_data')}
+        </span>
+      </div>
+    );
+  };
+
+  const parseDroppedDevices = (raw: string): GridDevice[] => {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed.devices)) return parsed.devices.filter(Boolean);
+    return [{
+      server_serial: parsed.server_serial,
+      server_id: parsed.server_id,
+      device_ip: parsed.device_ip,
+      device_name: parsed.device_name,
+      device_type: parsed.device_type,
+      mqtt_device_id: parsed.mqtt_device_id,
+    }];
+  };
+
   return (
     <div className="AlertWall flex-1 p-1 overflow-y-auto custom-scrollbar bg-surface-container-low/20">
       <div
         className="relative h-full w-full grid gap-0.5"
         style={{
-          // Khởi tạo kích thước grid vuông dự theo state gridCols (Ví dụ: 3x3)
           gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
-          gridTemplateRows: `repeat(${gridCols}, minmax(0, 1fr))`
+          gridTemplateRows: `repeat(${gridCols}, minmax(0, 1fr))`,
         }}
       >
-        {/* KHU VỰC 2: TẠO CÁC Ô TRONG LƯỚI VÀ MAP DỮ LIỆU CAMERA VÀO TỪNG Ô */}
-
-        {/* Lặp tính toán số ô dựa theo gridCols^2 */}
         {Array.from({ length: Math.pow(gridCols, 2) }).map((_, idx) => {
-          // gridItem: dữ liệu map cấu hình cho đúng ô chỉ số 'idx' hiện tại
           const gridItem = grids[idx];
-          const isMqttSensor = gridItem?.device?.device_type === 'mqtt-sensor';
+          const gridDevices = normalizeGridDevices(gridItem);
+          const hasDevice = gridDevices.length > 0;
+          const sortedGridDevices = sortDevicesByLatestLog(gridDevices);
+          const visibleDevice = sortedGridDevices[0];
 
-          // ── MQTT Sensor Device: 3-case render logic ──
-          let mqttRenderState: 'waiting' | 'black' | 'snapshot' | null = null;
-          let mqttCameraLog: LogData | undefined;
-
-          if (isMqttSensor && gridItem) {
-            const devEui = gridItem.device.device_ip;
-            const mqttServerId = gridItem.device.server_serial;
-            const link = deviceCameraLinks.find(l => l.devEui === devEui && l.mqttServerId === mqttServerId);
-            const hasCamera = !!link?.cameraId;
-
-            // Tìm log mới nhất từ device này (từ cuối mảng do logs lưu theo thứ tự cũ -> mới)
-            let latestLog: LogData | undefined;
-            for (let i = logs.length - 1; i >= 0; i--) {
-              const log = logs[i];
-              if (log.log_source === 'milesight-radar' && log.device_info?.id === devEui && log.server_unique_id === `mqtt-${mqttServerId}`) {
-                latestLog = log;
-                break;
-              }
-            }
-
-            if (latestLog) {
-              mqttCameraLog = latestLog;
-            }
-
-            if (latestLog && latestLog.snapshot) {
-              // ƯU TIÊN 1: Có log + có snapshot → show ảnh (kể cả khi frontend chưa kịp đồng bộ link camera)
-              mqttRenderState = 'snapshot';
-            } else if (!hasCamera) {
-              // TRƯỜNG HỢP 2: Chưa liên kết camera → background đen
-              mqttRenderState = 'black';
-            } else if (hasCamera && !latestLog) {
-              // TRƯỜNG HỢP 3: Đã liên kết nhưng chưa có log → "Đang chờ Log"
-              mqttRenderState = 'waiting';
-            } else {
-              // TRƯỜNG HỢP 4: Đã liên kết + có log nhưng log không có snapshot → background đen
-              mqttRenderState = 'black';
-            }
-          }
-
-          // ── SVMS / Sunell Camera logic ──
-          let camera: any = undefined;
-          if (!isMqttSensor && gridItem) {
-            if (gridItem.device.device_type === 'sunell') {
-              camera = {
-                ip: gridItem.device.device_ip,
-                name: gridItem.device.device_name,
-                server_id: gridItem.device.server_id,
-                server_serial: gridItem.device.server_serial,
-                type: 'sunell'
-              };
-            } else {
-              camera = cameraList.find(dev =>
-                dev.ip === gridItem.device.device_ip
-                && dev.name === gridItem.device.device_name
-                && dev.server_id === gridItem.device.server_id
-                && dev.server_serial === gridItem.device.server_serial
-              );
-            }
-          }
-
-          let cameraLog: LogData | undefined;
-          if (camera) {
-            for (let i = logs.length - 1; i >= 0; i--) {
-              const log = logs[i];
-              if (camera.type === 'sunell') {
-                if (log.log_source === 'sunell-camera' && log.device_info?.id === camera.ip) {
-                  cameraLog = log;
-                  break;
-                }
-              } else if (log.log_source === 'svms') {
-                const rawDeviceName = log.raw?.device_name;
-                const rawServerSerial = log.raw?.server?.serial;
-                const rawDeviceIp = log.raw?.device_ip;
-
-                if (
-                  rawDeviceName === camera.name &&
-                  (rawServerSerial === camera.server_serial || rawServerSerial === camera.server_id) &&
-                  rawDeviceIp === camera.ip
-                ) {
-                  cameraLog = log;
-                  break;
-                }
-              } else {
-                if (
-                  log.device_info?.id === camera.ip &&
-                  log.device_info?.name === camera.name &&
-                  (log.server_unique_id === camera.server_id || log.server_unique_id === camera.server_serial)
-                ) {
-                  cameraLog = log;
-                  break;
-                }
-              }
-            }
-          }
-
-          const hasDevice = !!gridItem;
-
-          // KHU VỰC 3: LOGIC SỰ KIỆN KÉO THẢ (DRAG & DROP) CHO TỪNG Ô COMPONENT
           return (
             <div
               key={idx}
-              // Xác nhận có cho phép kéo để chuyển sang ô khác
               draggable={hasDevice}
               onDragStart={(e) => {
-                if (!gridItem) {
+                if (!hasDevice) {
                   e.preventDefault();
                   return;
                 }
                 e.dataTransfer.setData('application/json', JSON.stringify({
-                  ...gridItem.device,
-                  sourceFieldIndex: idx
+                  ...gridDevices[0],
+                  devices: gridDevices,
+                  sourceFieldIndex: idx,
                 }));
               }}
               onDragOver={(e) => {
@@ -200,138 +250,52 @@ export function AlertWall({
               onDrop={(e) => {
                 e.preventDefault();
                 e.currentTarget.classList.remove('ring-2', 'ring-primary', 'ring-inset');
-
                 const data = e.dataTransfer.getData('application/json');
-                if (data) {
-                  try {
-                    const parsed = JSON.parse(data);
-                    setGrids(prev => {
-                      const clone = [...prev];
-                      const sourceIndex = parsed.sourceFieldIndex;
-
-                      if (sourceIndex !== undefined && sourceIndex !== idx) {
-                        const targetItem = clone[idx];
-                        clone[idx] = {
-                          gridID: idx,
-                          device: {
-                            server_serial: parsed.server_serial,
-                            server_id: parsed.server_id,
-                            device_ip: parsed.device_ip,
-                            device_name: parsed.device_name,
-                            device_type: parsed.device_type
-                          }
-                        };
-                        if (targetItem) {
-                          clone[sourceIndex] = { ...targetItem, gridID: sourceIndex };
-                        } else {
-                          delete clone[sourceIndex];
-                        }
-                      } else if (sourceIndex === undefined) {
-                        clone[idx] = {
-                          gridID: idx,
-                          device: {
-                            server_serial: parsed.server_serial,
-                            server_id: parsed.server_id,
-                            device_ip: parsed.device_ip,
-                            device_name: parsed.device_name,
-                            device_type: parsed.device_type
-                          }
-                        };
-                      }
-                      return clone;
-                    });
-                  } catch { /* ignore invalid JSON */ }
+                if (!data) return;
+                try {
+                  const droppedDevices = parseDroppedDevices(data);
+                  const parsed = JSON.parse(data);
+                  setGrids(prev => {
+                    const clone = [...prev];
+                    const sourceIndex = parsed.sourceFieldIndex;
+                    const nextItem = { gridID: idx, devices: droppedDevices, device: droppedDevices[0] };
+                    if (sourceIndex !== undefined && sourceIndex !== idx) {
+                      const targetItem = clone[idx];
+                      clone[idx] = nextItem;
+                      if (targetItem) clone[sourceIndex] = { ...targetItem, gridID: sourceIndex };
+                      else delete clone[sourceIndex];
+                    } else if (sourceIndex === undefined) {
+                      clone[idx] = nextItem;
+                    }
+                    return clone;
+                  });
+                } catch {
+                  // ignore invalid drag payload
                 }
               }}
               className={`relative group camera-feed-item h-full w-full bg-surface-container-low/50 border border-outline-variant/10 rounded-xs overflow-hidden transition-all ${hasDevice ? 'cursor-grab active:cursor-grabbing' : ''}`}
             >
-              {/* KHU VỰC 4: RENDER GIAO DIỆN THEO TRẠNG THÁI */}
-
-              {/* ── MQTT Sensor rendering ── */}
-              {isMqttSensor && mqttRenderState === 'snapshot' && mqttCameraLog ? (
+              {hasDevice ? (
                 <>
-                  <CameraFeed key={idx} cam={mqttCameraLog} onClick={() => onSelectLog(mqttCameraLog!)} />
-                  {/* Remove button */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setGrids(prev => { const c = [...prev]; delete c[idx]; return c; }); }}
-                    className="opacity-0 group-hover:opacity-100 absolute top-0 right-0 z-10 w-10 h-10 bg-gradient-to-bl from-surface-container-high/90 from-[50%] to-transparent to-[50%] hover:from-primary/90 transition-all duration-300 cursor-pointer text-on-surface hover:text-white group flex items-start justify-end p-[6px]"
-                  >
-                    <div className="w-3 h-3 flex items-center justify-center"><X className="w-full h-full" /></div>
-                  </button>
-                  <div className="opacity-0 group-hover:opacity-100 absolute bottom-0 left-0 z-10 w-full bg-surface-container-high/70 backdrop-blur-md shadow-[0_-5px_15px_rgba(0,0,0,0.2)] border-t border-outline-variant/10 transition-all duration-300 pointer-events-none px-3 py-1 text-[12px]">
-                    🔗 {gridItem?.device.device_name}
-                  </div>
-                </>
-              ) : isMqttSensor && mqttRenderState === 'black' ? (
-                <>
-                  <div
-                    className={`no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-4 py-2 bg-black ${mqttCameraLog ? 'cursor-pointer hover:bg-surface-container-highest/50' : ''}`}
-                    onClick={() => mqttCameraLog && onSelectLog(mqttCameraLog)}
-                  >
-                    <Camera className={`opacity-30 ${gridCols > colsBreakPoints[1] ? 'w-[80%] h-[80%]' : gridCols > colsBreakPoints[0] ? 'w-8 h-8' : 'w-12 h-12'} transition-all`} />
-                    <span className={`opacity-30 text-[9px] uppercase tracking-widest font-bold line-clamp-1 transition-all ${gridCols > colsBreakPoints[1] ? 'hidden' : ''}`}>
-                      {gridItem?.device.device_name}
-                    </span>
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setGrids(prev => { const c = [...prev]; delete c[idx]; return c; }); }}
-                    className="opacity-0 group-hover:opacity-100 absolute top-0 right-0 z-10 w-10 h-10 bg-gradient-to-bl from-surface-container-high/90 from-[50%] to-transparent to-[50%] hover:from-primary/90 transition-all duration-300 cursor-pointer text-on-surface hover:text-white group flex items-start justify-end p-[6px]"
-                  >
-                    <div className="w-3 h-3 flex items-center justify-center"><X className="w-full h-full" /></div>
-                  </button>
-                </>
-              ) : isMqttSensor && mqttRenderState === 'waiting' ? (
-                <>
-                  <div className="no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-4 py-2">
-                    <Camera className={`opacity-30 ${gridCols > colsBreakPoints[1] ? 'w-[80%] h-[80%]' : gridCols > colsBreakPoints[0] ? 'w-8 h-8' : 'w-12 h-12'} transition-all`} />
-
-                    <span className={`opacity-30 text-[11px] uppercase tracking-widest font-bold line-clamp-1 transition-all ${gridCols > colsBreakPoints[1] ? 'hidden' : ''}`}>
-                      {t('app.alert_wall.waiting_data')}
-                    </span>
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setGrids(prev => { const c = [...prev]; delete c[idx]; return c; }); }}
-                    className="opacity-0 group-hover:opacity-100 absolute top-0 right-0 z-10 w-10 h-10 bg-gradient-to-bl from-surface-container-high/90 from-[50%] to-transparent to-[50%] hover:from-primary/90 transition-all duration-300 cursor-pointer text-on-surface hover:text-white group flex items-start justify-end p-[6px]"
-                  >
-                    <div className="w-3 h-3 flex items-center justify-center"><X className="w-full h-full" /></div>
-                  </button>
-                </>
-
-                /* ── SVMS Camera rendering (original logic) ── */
-              ) : camera ? (
-                <>
-                  {cameraLog && cameraLog.snapshot ? (
-                    <CameraFeed key={idx} cam={cameraLog} onClick={() => onSelectLog(cameraLog!)} />
-                  ) : (
-                    <div
-                      className={`no-camera w-full h-full flex flex-col items-center justify-center gap-[10%] text-center px-4 py-2 bg-black ${cameraLog ? 'cursor-pointer hover:bg-surface-container-highest/50' : ''}`}
-                      onClick={() => cameraLog && onSelectLog(cameraLog)}
-                    >
-                      <Camera className={`opacity-30 ${gridCols > colsBreakPoints[1] ? 'w-[80%] h-[80%]' : gridCols > colsBreakPoints[0] ? 'w-8 h-8' : 'w-12 h-12'} transition-all`} />
-                      <span className={`opacity-30 text-[11px] uppercase tracking-widest font-bold line-clamp-1 transition-all ${gridCols > colsBreakPoints[1] ? 'hidden' : ''}`}>
-                        {cameraLog ? t('app.alert_wall.has_event', 'Có sự kiện') : t('app.alert_wall.waiting_data')}
-                      </span>
-                    </div>
-                  )}
+                  {renderDevice(visibleDevice, 0)}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setGrids(prev => { const clone = [...prev]; delete clone[idx]; return clone; });
                     }}
-                    className={`opacity-0 group-hover:opacity-100 absolute top-0 right-0 z-10 w-10 h-10 bg-gradient-to-bl from-surface-container-high/90 from-[50%] to-transparent to-[50%] hover:from-primary/90 transition-all duration-300 ease-in-out cursor-pointer text-on-surface hover:text-white group flex items-start justify-end p-[6px]`}
+                    className="opacity-0 group-hover:opacity-100 absolute top-0 right-0 z-10 w-10 h-10 bg-gradient-to-bl from-surface-container-high/90 from-[50%] to-transparent to-[50%] hover:from-primary/90 transition-all duration-300 cursor-pointer text-on-surface hover:text-white group flex items-start justify-end p-[6px]"
                   >
-                    <div className="w-3 h-3 group-hover:scale-110 transition-transform opacity-70 group-hover:opacity-100 flex items-center justify-center">
-                      <X className="w-full h-full" />
-                    </div>
+                    <div className="w-3 h-3 flex items-center justify-center"><X className="w-full h-full" /></div>
                   </button>
                   <div
-                    className={`opacity-0 group-hover:opacity-100 absolute bottom-0 left-0 z-10 w-full bg-surface-container-high/70 backdrop-blur-md shadow-[0_-5px_15px_rgba(0,0,0,0.2)] border-t border-outline-variant/10 transition-all duration-300 ease-in-out pointer-events-none text-on-surface hover:text-white px-3 py-1 text-[12px]`}
+                    className="leading-5 opacity-0 group-hover:opacity-100 absolute bottom-0 left-0 z-10 w-full bg-surface-container-high/40 backdrop-blur-md shadow-[0_-5px_15px_rgba(0,0,0,0.2)] border-t border-outline-variant/10 transition-all duration-300 pointer-events-none px-3 py-1"
+                    style={{ fontSize: `${getHoverLabelFontSize()}px` }}
                   >
-                    {camera.server_id} - {camera.name}
+                    {gridDevices.length > 1
+                      ? `${visibleDevice.server_id} - ${visibleDevice.device_name} (+${gridDevices.length - 1})`
+                      : `${visibleDevice.server_id} - ${visibleDevice.device_name}`}
                   </div>
                 </>
-
-                /* ── Empty cell (no device assigned) ── */
               ) : (
                 <div className="no-camera w-full h-full flex flex-col items-center justify-center opacity-30 gap-[10%] text-center px-4 py-2">
                   <CameraOff className={`${gridCols > colsBreakPoints[1] ? 'w-[80%] h-[80%]' : gridCols > colsBreakPoints[0] ? 'w-8 h-8' : 'w-12 h-12'} transition-all`} />
@@ -344,8 +308,7 @@ export function AlertWall({
           );
         })}
 
-        {/* KHU VỰC 6: MENU TIỆN ÍCH NỔI BÊN GÓC PHẢI DƯỚI (SETTING GRID OVERLAY) */}
-        <div className="absolute bottom-4 right-4 opacity-25 hover:opacity-100 transition-all duration-300 z-10 adlute bottom-4 right-4 flex flex-col gap-2">
+        <div className="absolute bottom-4 right-4 opacity-25 hover:opacity-100 transition-all duration-300 z-10 flex flex-col gap-2">
           {!showGridSettings ? (
             <button
               onClick={() => setShowGridSettings(true)}
@@ -356,8 +319,7 @@ export function AlertWall({
             </button>
           ) : (
             <div className="flex flex-col bg-surface-container-high/50 backdrop-blur-xl p-1 rounded-full border border-outline-variant/30 shadow-2xl animate-in slide-in-from-bottom-4 duration-300 zoom-in-95 fade-in">
-              <div className='flex flex-col gap-1'>
-                {/* Nút Phóng to (Zoom In): Giảm ma trận lưới (Tối thiểu phải còn 1x1) */}
+              <div className="flex flex-col gap-1">
                 <button
                   onClick={() => gridCols > 1 && setGridCols(gridCols - 1)}
                   className="p-2.5 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
@@ -365,7 +327,6 @@ export function AlertWall({
                 >
                   <ZoomIn className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 </button>
-                {/* Nút Thu nhỏ (Zoom Out): Tăng ma trận lưới thành (gridCols+1) x (gridCols+1) */}
                 <button
                   onClick={() => gridCols < 6 && setGridCols(gridCols + 1)}
                   className="p-2.5 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
@@ -373,35 +334,23 @@ export function AlertWall({
                 >
                   <ZoomOut className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 </button>
-                {/* Nút Toggle Full Screen: Bật/tắt chế độ toàn màn hình cho Alert Wall */}
                 <button
                   onClick={() => {
                     const nextVal = !isFullscreen;
                     if (nextVal) {
-                      document.documentElement.requestFullscreen().catch(err => {
-                        console.error('Error entering fullscreen:', err);
-                      });
-                    } else {
-                      if (document.fullscreenElement) {
-                        document.exitFullscreen().catch(err => {
-                          console.error('Error exiting fullscreen:', err);
-                        });
-                      }
+                      document.documentElement.requestFullscreen().catch(err => console.error('Error entering fullscreen:', err));
+                    } else if (document.fullscreenElement) {
+                      document.exitFullscreen().catch(err => console.error('Error exiting fullscreen:', err));
                     }
                     setIsFullscreen?.(nextVal);
                   }}
                   className="p-2.5 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-full transition-colors group cursor-pointer"
-                  title={isFullscreen ? t('app.alert_wall.exit_fullscreen', 'Thoát toàn màn hình') : t('app.alert_wall.enter_fullscreen', 'Toàn màn hình')}
+                  title={isFullscreen ? t('app.alert_wall.exit_fullscreen', 'Thoat toan man hinh') : t('app.alert_wall.enter_fullscreen', 'Toan man hinh')}
                 >
-                  {isFullscreen ? (
-                    <Minimize className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  ) : (
-                    <Maximize className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  )}
+                  {isFullscreen ? <Minimize className="w-4 h-4 group-hover:scale-110 transition-transform" /> : <Maximize className="w-4 h-4 group-hover:scale-110 transition-transform" />}
                 </button>
               </div>
               <div className="h-[1px] w-full bg-outline-variant/20 my-0.5" />
-              {/* Nút (X): Ẩn panel Setting */}
               <button
                 onClick={() => setShowGridSettings(false)}
                 className="p-2.5 bg-error/10 hover:bg-surface-container-highest text-error hover:text-white rounded-full transition-all duration-300 group cursor-pointer"

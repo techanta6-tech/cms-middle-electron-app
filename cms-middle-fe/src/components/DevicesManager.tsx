@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink } from '../types';
+import type { ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink, MqttGroup, MqttDevice } from '../types';
 import type { SvmsKnownEvent } from '../hooks/useSocketManager';
 import {
   ChevronRight, ChevronDown, Plus, Cpu, Radio, Camera,
@@ -17,8 +17,8 @@ const NOOP = () => { };
 type SelectedItemType =
   | { kind: 'svms-server'; data: ServerData; devices?: DeviceData }
   | { kind: 'svms-device'; data: any; server: ServerData }
-  | { kind: 'mqtt-server'; data: MqttServerConfig; mqttDevices: MQTT_Milesight_DeviceInfo[] }
-  | { kind: 'mqtt-device'; data: MQTT_Milesight_DeviceInfo; server: MqttServerConfig }
+  | { kind: 'mqtt-group'; data: MqttGroup; mqttDevices: MqttDevice[] }
+  | { kind: 'mqtt-device'; data: MqttDevice; group: MqttGroup }
   | { kind: 'camera'; data: MqttDeviceConfig };
 
 interface MQTT_Milesight_DeviceInfo {
@@ -33,13 +33,20 @@ interface DevicesManagerProps {
   servers: Record<string, ServerData>;
   devices: Record<string, DeviceData>;
   mqttServers: MqttServerConfig[];
+  mqttGroups: MqttGroup[];
+  mqttDevices: MqttDevice[];
   mqttLogs: MQTT_Milesight_LogEntry[];
   cameraDevices: MqttDeviceConfig[];
   deviceCameraLinks: DeviceCameraLink[];
-  onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
+  onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null, mqttDeviceId?: string, groupId?: string) => void;
   onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void;
   fetchCameras: () => void;
   handleAddMqttServer: (config: MqttServerConfig) => void;
+  handleAddMqttGroup: (name: string) => void;
+  handleUpdateMqttGroup: (groupId: string, config: Partial<MqttGroup>) => void;
+  handleAddMqttDevice: (groupId: string, config: Partial<MqttDevice>) => void;
+  handleRemoveMqttGroup: (groupId: string) => void;
+  handleRemoveMqttDevice: (deviceId: string) => void;
   handleAddExternalServer: (ip: string, port: string) => void;
   svmsDeviceFeatures: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[];
   svmsKnownEvents: SvmsKnownEvent[];
@@ -49,9 +56,9 @@ interface DevicesManagerProps {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export function DevicesManager({
-  servers, devices, mqttServers, mqttLogs, cameraDevices,
+  servers, devices, mqttServers, mqttGroups, mqttDevices, mqttLogs, cameraDevices,
   deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera,
-  fetchCameras, handleAddMqttServer, handleAddExternalServer,
+  fetchCameras, handleAddMqttServer, handleAddMqttGroup, handleUpdateMqttGroup, handleAddMqttDevice, handleRemoveMqttGroup, handleRemoveMqttDevice, handleAddExternalServer,
   svmsDeviceFeatures, svmsKnownEvents, milesightKnownEvents, sunellKnownEvents
 }: DevicesManagerProps) {
   const { t } = useTranslation();
@@ -60,7 +67,11 @@ export function DevicesManager({
     svms: true, mqtt: true, cameras: true, sunell: true
   });
   const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({});
-  const [addingForm, setAddingForm] = useState<'svms' | 'mqtt' | 'camera' | 'sunell_camera' | null>(null);
+  const [addingForm, setAddingForm] = useState<'svms' | 'mqtt' | 'mqtt_device' | 'camera' | 'sunell_camera' | null>(null);
+  const [targetMqttGroupId, setTargetMqttGroupId] = useState<string | null>(null);
+  const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [editingMqttGroup, setEditingMqttGroup] = useState<MqttGroup | null>(null);
   const [editingMqtt, setEditingMqtt] = useState<MqttServerConfig | null>(null);
   const [editingCamera, setEditingCamera] = useState<any | null>(null);
 
@@ -69,31 +80,14 @@ export function DevicesManager({
   const toggleServer = (key: string) =>
     setExpandedServers(p => ({ ...p, [key]: !p[key] }));
 
-  // Extract MQTT devices per server from logs
-  const mqttDevicesByServer = useMemo(() => {
-    const map: Record<string, MQTT_Milesight_DeviceInfo[]> = {};
-    (mqttLogs || []).forEach(log => {
-      const sid = log.mqttServerId;
-      const di = log.payload?.deviceInfo;
-      if (!sid || !di?.devEui) return;
-      if (!map[sid]) map[sid] = [];
-      const existing = map[sid].find(d => d.devEui === di.devEui);
-      const evtCount = log.payload?.object?.events?.length || 0;
-      if (existing) {
-        existing.alarmCount += evtCount;
-        existing.lastSeen = log.time;
-      } else {
-        map[sid].push({
-          devEui: di.devEui,
-          deviceName: di.deviceName || 'Unknown',
-          deviceProfileName: di.deviceProfileName || 'Unknown',
-          alarmCount: evtCount,
-          lastSeen: log.time,
-        });
-      }
+  const mqttDevicesByGroup = useMemo(() => {
+    const map: Record<string, MqttDevice[]> = {};
+    (mqttDevices || []).forEach(device => {
+      if (!map[device.groupId]) map[device.groupId] = [];
+      map[device.groupId].push(device);
     });
     return map;
-  }, [mqttLogs]);
+  }, [mqttDevices]);
 
   const svmsServers = Object.values(servers).filter(s => s.type !== 'mqtt');
   const otherCameras = cameraDevices.filter(cam => cam.type !== 'sunell');
@@ -113,18 +107,27 @@ export function DevicesManager({
     }
   };
 
-  const handleDeleteMqttServer = async (serverId: string) => {
-    if (!confirm(t('app.devices.confirm_delete_mqtt') || 'Xóa MQTT server này?')) return;
+  const handleDeleteMqttGroup = async (groupId: string) => {
+    if (!confirm(t('app.devices.confirm_delete_mqtt') || 'Xóa group này?')) return;
     try {
-      await apiClient.delete(`/api/v1/mqtt-servers/${serverId}`);
-      if (selected?.kind === 'mqtt-server' && (selected.data as MqttServerConfig).id === serverId) {
+      await handleRemoveMqttGroup(groupId);
+      if (selected?.kind === 'mqtt-group' && (selected.data as MqttGroup).id === groupId) {
         setSelected(null);
       }
-      // Refresh MQTT servers list via socket
-      socket.emit('get-mqtt-servers');
     } catch (err: any) {
-      console.error('Delete MQTT server error:', err);
-      alert('Không thể xóa MQTT server: ' + (err.response?.data?.error || err.message));
+      console.error('Delete MQTT group error:', err);
+      alert('Không thể xóa group: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleDeleteMqttDevice = async (deviceId: string) => {
+    if (!confirm(t('app.devices.confirm_delete_mqtt') || 'Xóa MQTT device này?')) return;
+    try {
+      await handleRemoveMqttDevice(deviceId);
+      if (selected?.kind === 'mqtt-device' && (selected.data as MqttDevice).id === deviceId) setSelected(null);
+    } catch (err: any) {
+      console.error('Delete MQTT device error:', err);
+      alert('Không thể xóa MQTT device: ' + (err.response?.data?.error || err.message));
     }
   };
 
@@ -134,9 +137,39 @@ export function DevicesManager({
   }, [handleAddExternalServer]);
 
   const handleSaveMqtt = useCallback((cfg: MqttServerConfig) => {
-    handleAddMqttServer(cfg);
+    if (targetMqttGroupId) {
+      handleAddMqttDevice(targetMqttGroupId, cfg as any);
+    } else {
+      handleAddMqttServer(cfg);
+    }
+    setTargetMqttGroupId(null);
     setAddingForm(null);
-  }, [handleAddMqttServer]);
+  }, [handleAddMqttServer, handleAddMqttDevice, targetMqttGroupId]);
+
+  const handleOpenMqttGroupPanel = useCallback(() => {
+    setNewGroupName('');
+    setEditingMqttGroup(null);
+    setIsGroupPanelOpen(true);
+  }, []);
+
+  const handleOpenUpdateMqttGroupPanel = useCallback((group: MqttGroup) => {
+    setEditingMqttGroup(group);
+    setNewGroupName(group.name || '');
+    setIsGroupPanelOpen(true);
+  }, []);
+
+  const handleSaveMqttGroup = useCallback(() => {
+    const name = newGroupName.trim();
+    if (!name) return;
+    if (editingMqttGroup) {
+      handleUpdateMqttGroup(editingMqttGroup.id, { name });
+    } else {
+      handleAddMqttGroup(name);
+    }
+    setNewGroupName('');
+    setEditingMqttGroup(null);
+    setIsGroupPanelOpen(false);
+  }, [editingMqttGroup, handleAddMqttGroup, handleUpdateMqttGroup, newGroupName]);
 
   const handleCloseForm = useCallback(() => {
     setAddingForm(null);
@@ -149,6 +182,58 @@ export function DevicesManager({
 
   return (
     <div className="DevicesManager flex-1 overflow-hidden flex flex-col h-full">
+      {isGroupPanelOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-surface-container-low border border-outline-variant/30 rounded-lg shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-outline-variant/20 bg-surface-container flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Radio className="w-4 h-4 text-amber-400" />
+                <h3 className="text-xs font-black uppercase tracking-widest text-on-surface">{editingMqttGroup ? 'Update Group' : 'Add Group'}</h3>
+              </div>
+              <button
+                onClick={() => { setIsGroupPanelOpen(false); setEditingMqttGroup(null); }}
+                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-container-highest transition-colors text-on-surface-variant hover:text-on-surface"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveMqttGroup();
+              }}
+              className="p-5 flex flex-col gap-4"
+            >
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">Group name</span>
+                <input
+                  autoFocus
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  placeholder="VD: Tang 1 / Phong ICU"
+                  className="w-full bg-black/40 border border-outline-variant/30 focus:border-amber-400/50 focus:ring-1 focus:ring-amber-400/20 rounded-sm px-3 py-2.5 text-sm text-on-surface outline-none transition-all"
+                />
+              </label>
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setIsGroupPanelOpen(false); setEditingMqttGroup(null); }}
+                  className="flex-1 px-4 py-2 border border-outline-variant/30 text-[11px] font-black uppercase tracking-widest rounded-sm hover:bg-surface-container-high transition-all text-on-surface-variant"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!newGroupName.trim()}
+                  className="flex-1 px-4 py-2 text-[11px] font-black uppercase tracking-widest rounded-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-amber-500 text-black hover:bg-amber-400"
+                >
+                  {editingMqttGroup ? 'Update' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       {/* Add forms (modals) */}
       {addingForm === 'svms' && (
         <AddExternalServer
@@ -158,7 +243,7 @@ export function DevicesManager({
           onClose={handleCloseForm}
         />
       )}
-      {addingForm === 'mqtt' && (
+      {(addingForm === 'mqtt' || addingForm === 'mqtt_device') && (
         <AddExternalServer
           onSave={NOOP}
           onSaveMqtt={handleSaveMqtt}
@@ -242,37 +327,38 @@ export function DevicesManager({
             </div>
           )}
 
-          {/* MQTT Servers */}
-          <GroupHeader icon={<Radio className="w-3.5 h-3.5" />} label={t('app.devices.lora_server')} color="text-amber-400" count={mqttServers.length}
+          {/* MQTT Groups */}
+          <GroupHeader icon={<Radio className="w-3.5 h-3.5" />} label="GROUP" color="text-amber-400" count={mqttGroups.length}
             expanded={!!expandedGroups.mqtt} onToggle={() => toggleGroup('mqtt')}
-            onAdd={() => setAddingForm('mqtt')}
+            onAdd={handleOpenMqttGroupPanel}
           />
           {expandedGroups.mqtt && (
             <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-amber-400/10 pl-2">
-              {mqttServers.length === 0 && <EmptyHint text={t('app.devices.no_lora')} />}
-              {mqttServers.map(ms => {
-                const expanded = !!expandedServers[`mqtt-${ms.id}`];
-                const mqttDevs = mqttDevicesByServer[ms.id] || [];
+              {mqttGroups.length === 0 && <EmptyHint text={t('app.devices.no_lora')} />}
+              {mqttGroups.map(group => {
+                const expanded = !!expandedServers[`mqtt-group-${group.id}`];
+                const mqttDevs = mqttDevicesByGroup[group.id] || [];
                 return (
-                  <div className='flex flex-col gap-1' key={ms.id}>
+                  <div className='flex flex-col gap-1' key={group.id}>
                     <TreeItem
-                      label={ms.name || `${ms.brokerHost}:${ms.brokerPort}`}
-                      sublabel={ms.name ? `${ms.protocol}://${ms.brokerHost}:${ms.brokerPort}` : (ms.topic || ms.defaultTopic || '')}
+                      label={group.name}
+                      sublabel={group.id}
                       hasChildren={mqttDevs.length > 0}
                       expanded={expanded}
-                      onToggle={() => toggleServer(`mqtt-${ms.id}`)}
-                      onClick={() => setSelected({ kind: 'mqtt-server', data: ms, mqttDevices: mqttDevs })}
-                      isSelected={selected?.kind === 'mqtt-server' && (selected.data as MqttServerConfig).id === ms.id}
-                      status={ms.status === 'connected' ? 'connected' : ms.status === 'error' ? 'disconnected' : ms.status}
-                      onEdit={() => setEditingMqtt(ms)}
-                      onDelete={() => handleDeleteMqttServer(ms.id)}
+                      onToggle={() => toggleServer(`mqtt-group-${group.id}`)}
+                      onClick={() => setSelected({ kind: 'mqtt-group', data: group, mqttDevices: mqttDevs })}
+                      isSelected={selected?.kind === 'mqtt-group' && (selected.data as MqttGroup).id === group.id}
+                      onAdd={() => { setTargetMqttGroupId(group.id); setAddingForm('mqtt_device'); }}
+                      onDelete={() => handleDeleteMqttGroup(group.id)}
                     />
                     {expanded && mqttDevs.map(d => (
-                      <TreeItem key={d.devEui}
-                        label={d.deviceName} sublabel={d.devEui} indent
+                      <TreeItem key={d.id}
+                        label={d.deviceInfo?.deviceName || 'MQTT Device'} sublabel={d.topic} indent
                         icon={<MonitorSmartphone className="w-3 h-3 text-on-surface-variant/60" />}
-                        onClick={() => setSelected({ kind: 'mqtt-device', data: d, server: ms })}
-                        isSelected={selected?.kind === 'mqtt-device' && (selected.data as MQTT_Milesight_DeviceInfo).devEui === d.devEui}
+                        onClick={() => setSelected({ kind: 'mqtt-device', data: d, group })}
+                        isSelected={selected?.kind === 'mqtt-device' && (selected.data as MqttDevice).id === d.id}
+                        status={d.status === 'error' ? 'disconnected' : d.status}
+                        onDelete={() => handleDeleteMqttDevice(d.id)}
                       />
                     ))}
                   </div>
@@ -346,13 +432,14 @@ export function DevicesManager({
               deviceCameraLinks={deviceCameraLinks}
               onLinkDeviceCamera={onLinkDeviceCamera}
               onLinkMqttServerCamera={onLinkMqttServerCamera}
+              onUpdateMqttGroup={handleUpdateMqttGroup}
               svmsDeviceFeatures={svmsDeviceFeatures}
               svmsKnownEvents={svmsKnownEvents}
               milesightKnownEvents={milesightKnownEvents}
               sunellKnownEvents={sunellKnownEvents}
               onEdit={(item) => {
-                if (item.kind === 'mqtt-server') {
-                  setEditingMqtt(item.data);
+                if (item.kind === 'mqtt-group') {
+                  handleOpenUpdateMqttGroupPanel(item.data);
                 } else if (item.kind === 'camera') {
                   setEditingCamera(item.data);
                 }
@@ -388,11 +475,11 @@ function GroupHeader({ icon, label, color, count, expanded, onToggle, onAdd }: {
   );
 }
 
-function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onClick, isSelected, indent, status, onDelete, onEdit, draggable, dragData }: {
+function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onClick, isSelected, indent, status, onDelete, onEdit, onAdd, draggable, dragData }: {
   label: string; sublabel?: string; icon?: React.ReactNode;
   hasChildren?: boolean; expanded?: boolean; onToggle?: () => void;
   onClick: () => void; isSelected?: boolean; indent?: boolean;
-  status?: string; onDelete?: () => void; onEdit?: () => void;
+  status?: string; onDelete?: () => void; onEdit?: () => void; onAdd?: () => void;
   draggable?: boolean; dragData?: string;
 }) {
   return (
@@ -444,6 +531,15 @@ function TreeItem({ label, sublabel, icon, hasChildren, expanded, onToggle, onCl
           <Edit2 className="w-3 h-3" />
         </button>
       )}
+      {onAdd && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onAdd(); }}
+          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-amber-400/20 text-amber-400 hover:text-amber-300 cursor-pointer"
+          title="Add MQTT device"
+        >
+          <Plus className="w-3 h-3" />
+        </button>
+      )}
       {onDelete && (
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
@@ -464,14 +560,15 @@ function EmptyHint({ text }: { text: string }) {
 }
 
 // ── Detail Panel ─────────────────────────────────────────────────────────────
-function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera, svmsDeviceFeatures, svmsKnownEvents, milesightKnownEvents, sunellKnownEvents, onEdit }: {
+function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera, onUpdateMqttGroup, svmsDeviceFeatures, svmsKnownEvents, milesightKnownEvents, sunellKnownEvents, onEdit }: {
   item: SelectedItemType;
   onClose: () => void;
   cameraDevices: MqttDeviceConfig[];
   mqttServers: MqttServerConfig[];
   deviceCameraLinks: DeviceCameraLink[];
-  onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void;
+  onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null, mqttDeviceId?: string, groupId?: string) => void;
   onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void;
+  onUpdateMqttGroup: (groupId: string, config: Partial<MqttGroup>) => void;
   svmsDeviceFeatures: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[];
   svmsKnownEvents: SvmsKnownEvent[];
   milesightKnownEvents: any[];
@@ -485,7 +582,7 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
   const titleMap = {
     'svms-server': t('app.devices.svms_server'),
     'svms-device': t('app.devices.svms_device'),
-    'mqtt-server': t('app.devices.mqtt_server'),
+    'mqtt-group': 'MQTT Group',
     'mqtt-device': t('app.devices.mqtt_device'),
     'camera': isSunell ? t('app.devices.sunell_cameras') : t('app.devices.camera_device'),
   };
@@ -495,21 +592,13 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
     ? cameraDevices.find(c => c.id === item.data.id) || item.data
     : null;
 
-  const latestMqttServer = item.kind === 'mqtt-server'
-    ? mqttServers.find(s => s.id === item.data.id) || item.data
-    : null;
-
-  const latestMqttDeviceServer = item.kind === 'mqtt-device'
-    ? mqttServers.find(s => s.id === item.server.id) || item.server
-    : null;
-
   return (
     <div className="animate-in fade-in duration-300">
       {/* Content */}
       {item.kind === 'svms-server' && <SvmsServerDetail srv={item.data} devices={item.devices} />}
       {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} svmsDeviceFeatures={svmsDeviceFeatures} svmsKnownEvents={svmsKnownEvents} />}
-      {item.kind === 'mqtt-server' && latestMqttServer && <MqttServerDetail srv={latestMqttServer} devices={item.mqttDevices} allCameras={cameraDevices} onLinkMqttServerCamera={onLinkMqttServerCamera} onEdit={() => onEdit?.(item)} />}
-      {item.kind === 'mqtt-device' && latestMqttDeviceServer && <MqttDeviceDetail dev={item.data} srv={latestMqttDeviceServer} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} milesightKnownEvents={milesightKnownEvents} />}
+      {item.kind === 'mqtt-group' && <MqttGroupDetail group={item.data} devices={item.mqttDevices} allCameras={cameraDevices} onUpdateMqttGroup={onUpdateMqttGroup} onEdit={() => onEdit?.(item)} />}
+      {item.kind === 'mqtt-device' && <MqttDeviceDetail dev={item.data} group={item.group} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} milesightKnownEvents={milesightKnownEvents} />}
       {item.kind === 'camera' && latestCam && <CameraDetail cam={latestCam} sunellKnownEvents={sunellKnownEvents} onEdit={() => onEdit?.(item)} />}
     </div>
   );
@@ -704,6 +793,43 @@ function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
   );
 }
 
+function MqttGroupDetail({ group, devices, allCameras, onUpdateMqttGroup, onEdit }: { group: MqttGroup; devices: MqttDevice[]; allCameras: MqttDeviceConfig[]; onUpdateMqttGroup: (groupId: string, config: Partial<MqttGroup>) => void; onEdit?: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-lg font-black text-on-surface">{group.name}</h3>
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-amber-400 border border-amber-400/20 hover:border-amber-400/50 bg-amber-400/5 hover:bg-amber-400/10 rounded-md transition-all cursor-pointer"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+            Cập nhật tên
+          </button>
+        )}
+      </div>
+      <InfoRow label={t('app.monitor.server_id')} value={group.id} mono />
+      <InfoRow label={t('app.monitor.devices_seen')} value={devices.length} />
+      <div className="mt-4 border-t border-outline-variant/10 flex items-center gap-3">
+        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest shrink-0">
+          Camera mặc định của nhóm
+        </span>
+        <select
+          value={group.cameraId || ''}
+          onChange={(e) => onUpdateMqttGroup(group.id, { cameraId: e.target.value || null })}
+          className="flex-1 text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors"
+        >
+          <option value="">{t('app.monitor.no_camera_disabled')}</option>
+          {allCameras.map(cam => (
+            <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
 function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera, onEdit }: { srv: MqttServerConfig; devices: MQTT_Milesight_DeviceInfo[]; allCameras: MqttDeviceConfig[]; onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void; onEdit?: () => void; }) {
   const { t } = useTranslation();
   return (
@@ -727,7 +853,7 @@ function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera, on
       <InfoRow label={t('app.monitor.log_count')} value={srv.logCount ?? 0} />
       <InfoRow label={t('app.monitor.camera_id')} value={srv.cameraId || '(none)'} mono />
       <InfoRow label={t('app.monitor.devices_seen')} value={devices.length} />
-      <div className="mt-4 pt-3 border-t border-outline-variant/10 flex items-center gap-3">
+      <div className="mt-4 border-t border-outline-variant/10 flex items-center gap-3">
         <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest shrink-0">{t('app.monitor.default_camera') || 'Bound Camera'}</span>
         <select
           value={srv.cameraId || ''}
@@ -744,7 +870,7 @@ function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera, on
   );
 }
 
-function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDeviceCamera, milesightKnownEvents }: { dev: MQTT_Milesight_DeviceInfo; srv: MqttServerConfig; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null) => void; milesightKnownEvents: any[]; }) {
+function MqttDeviceDetail({ dev, group, allCameras, deviceCameraLinks, onLinkDeviceCamera, milesightKnownEvents }: { dev: MqttDevice; group: MqttGroup; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null, mqttDeviceId?: string, groupId?: string) => void; milesightKnownEvents: any[]; }) {
   const { t, i18n } = useTranslation();
   const [dragOverCatId, setDragOverCatId] = useState<string | null>(null);
   const [showEventList, setShowEventList] = useState(true);
@@ -758,9 +884,11 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
     return { code: evt.event_type, label, defaultEnabled: evt.default_enabled };
   });
 
-  const link = deviceCameraLinks.find(l => l.devEui === dev.devEui && l.mqttServerId === srv.id);
+  const deviceInfo = dev.deviceInfo || ({} as any);
+  const devEui = deviceInfo.devEui || dev.id;
+  const link = deviceCameraLinks.find(l => l.mqttDeviceId === dev.id || (l.devEui === devEui && l.groupId === group.id));
 
-  const parentCamera = srv.cameraId ? allCameras.find(c => c.id === srv.cameraId) : null;
+  const parentCamera = group.cameraId ? allCameras.find(c => c.id === group.cameraId) : null;
   const parentCameraName = parentCamera ? ((parentCamera as any).name || `${parentCamera.type.toUpperCase()} - ${parentCamera.cameraIp}:${parentCamera.cameraPort}`) : '';
 
   const features = (link as any)?.features || {};
@@ -781,16 +909,20 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
 
   const handleToggle = (code: string, value: boolean) => {
     socket.emit('update-device-features', {
-      devEui: dev.devEui,
-      mqttServerId: srv.id,
+      devEui,
+      mqttServerId: dev.id,
+      mqttDeviceId: dev.id,
+      groupId: group.id,
       features: { [code]: { enabled: value } }
     });
   };
 
   const handleEventCamera = (code: string, cameraId: string | null) => {
     socket.emit('update-device-features', {
-      devEui: dev.devEui,
-      mqttServerId: srv.id,
+      devEui,
+      mqttServerId: dev.id,
+      mqttDeviceId: dev.id,
+      groupId: group.id,
       features: { [code]: { cameraId } }
     });
   };
@@ -798,29 +930,30 @@ function MqttDeviceDetail({ dev, srv, allCameras, deviceCameraLinks, onLinkDevic
   const totalEnabled = MILESIGHT_EVENTS.filter(e => getFeature(e.code).enabled).length + (otherEventsEnabled ? 1 : 0);
   const totalEvents = MILESIGHT_EVENTS.length + 1; // +1 cho Sự kiện khác
 
-  const activeCameraId = link?.cameraId === 'none' ? null : (link?.cameraId || srv.cameraId);
+  const activeCameraId = link?.cameraId === 'none' ? null : (link?.cameraId || group.cameraId);
   const activeCamera = activeCameraId ? allCameras.find(c => c.id === activeCameraId) : null;
   const activeCameraName = activeCamera
     ? ((activeCamera as any).name || `${activeCamera.type.toUpperCase()} - ${activeCamera.cameraIp}:${activeCamera.cameraPort}`)
     : t('app.devices.radar_categories.unassigned');
-  const isInherited = activeCameraId && activeCameraId === srv.cameraId && (!link || !link.cameraId);
+  const isInherited = activeCameraId && activeCameraId === group.cameraId && (!link || !link.cameraId);
 
   return (
     <div className="flex flex-col gap-1">
-      <h3 className="text-lg font-black text-on-surface mb-2">{dev.deviceName}</h3>
-      <InfoRow label={t('app.monitor.dev_eui')} value={dev.devEui} mono />
-      <InfoRow label={t('app.monitor.profile')} value={dev.deviceProfileName} />
-      <InfoRow label={t('app.monitor.alarm_count')} value={dev.alarmCount} />
+      <h3 className="text-lg font-black text-on-surface mb-2">{deviceInfo.deviceName || 'MQTT Device'}</h3>
+      <InfoRow label={t('app.monitor.dev_eui')} value={devEui} mono />
+      <InfoRow label={t('app.monitor.profile')} value={deviceInfo.deviceProfileName || ''} />
+      <InfoRow label={t('app.monitor.alarm_count')} value={dev.logCount || 0} />
       <InfoRow label={t('app.monitor.last_seen')} value={formatDate(dev.lastSeen)} />
-      <div className="mt-4 pt-3 border-t border-outline-variant/10">
-        <InfoRow label={t('app.monitor.mqtt_ip')} value={srv.name || `${srv.brokerHost}:${srv.brokerPort}`} mono />
-        <InfoRow label={t('app.monitor.topic')} value={srv.topic || srv.defaultTopic} mono />
+      <div className="mt-4 border-t border-outline-variant/10">
+        <InfoRow label="Group" value={group.name} mono />
+        <InfoRow label={t('app.monitor.mqtt_ip')} value={`${dev.brokerHost}:${dev.brokerPort}`} mono />
+        <InfoRow label={t('app.monitor.topic')} value={dev.topic} mono />
       </div>
-      <div className="mt-4 pt-3 border-t border-outline-variant/10 flex items-center gap-3">
+      <div className="mt-4 border-t border-outline-variant/10 flex items-center gap-3">
         <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest shrink-0">📷 {t('app.monitor.bound_camera') || 'Bound Camera'}</span>
         <select
           value={link?.cameraId || ''}
-          onChange={(e) => onLinkDeviceCamera(dev.devEui, srv.id, e.target.value || null)}
+          onChange={(e) => onLinkDeviceCamera(devEui, dev.id, e.target.value || null, dev.id, group.id)}
           className="flex-1 text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors"
         >
           <option value="">
@@ -1049,3 +1182,4 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
     </div>
   );
 }
+

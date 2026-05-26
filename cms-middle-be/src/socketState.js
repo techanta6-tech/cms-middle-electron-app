@@ -36,6 +36,12 @@ const devices = new Map();
 const mqttServers = [];
 
 /**
+ * In-memory store for LoRa/MQTT groups.
+ * Structure: [{ id: string, name: string, createdAt?: string, updatedAt?: string }]
+ */
+const mqttGroups = [];
+
+/**
  * In-memory store for manually added camera devices (independent of MQTT).
  * Structure: [{ id, name, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl, snapshotDir, sdkPath, status, handle }]
  */
@@ -90,6 +96,7 @@ module.exports = {
   servers,
   devices,
   mqttServers,
+  mqttGroups,
   cameraDevices,
   deviceCameraLinks,
   gridLayout, svmsDeviceFeatures,

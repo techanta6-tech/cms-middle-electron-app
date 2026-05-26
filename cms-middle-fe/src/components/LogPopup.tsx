@@ -57,7 +57,7 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
     }
   }
 
-  if (log.log_source === 'milesight-radar' || serverId.startsWith('mqtt-')) {
+  if (log.log_source === 'milesight-radar' || log.log_source === 'milesight-button' || serverId.startsWith('mqtt-')) {
     const cleanId = serverId.replace('mqtt-', '').toLowerCase();
     const mqttSrv = (mqttServers || []).find(s => s.id?.toLowerCase() === cleanId);
     if (mqttSrv) {
@@ -86,38 +86,48 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
   const importantMetadata = allMetadata.filter(item => item.isImportant);
   const detailedMetadata = allMetadata.filter(item => !item.isImportant);
 
+  const resolveLogTypeLabel = (rawType?: string) => {
+    if (!rawType) return undefined;
+    const normalizedType = rawType.replace(/\./g, '_');
+    const source = String(log.log_source);
+    switch (source) {
+      case 'svms':
+        return t(`app.logtype.svms_${normalizedType}`);
+      case 'milesight-radar':
+      case 'milesight-button':
+        return t(`app.logtype.${normalizedType.startsWith('milesight_') ? normalizedType : `milesight_${normalizedType}`}`);
+      case 'sunell-camera':
+        return t(`app.logtype.sunell_${normalizedType}`);
+      default:
+        return t(`app.logtype.${normalizedType.toLowerCase().replace(/ /g, '_')}`, { defaultValue: rawType });
+    }
+  };
+
+  const resolveLogDescriptionLabel = (rawDescription?: string, rawType?: string) => {
+    const source = String(log.log_source);
+    if (source === 'milesight-radar' || source === 'milesight-button') {
+      if (!rawDescription) return undefined;
+      const descKey = rawDescription.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+      return t(`app.logtype.${descKey}`, { defaultValue: rawDescription });
+    }
+    if (source === 'svms' && rawType) {
+      const normalizedType = rawType.replace(/\./g, '_');
+      return t(`app.logtype.svms_${normalizedType}_description`);
+    }
+    if (source === 'sunell-camera' && rawType) {
+      const normalizedType = rawType.replace(/\./g, '_');
+      return t(`app.logtype.sunell_${normalizedType}_description`);
+    }
+    if (!rawDescription) return undefined;
+    const descKey = rawDescription.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
+    return t(`app.logtype.${descKey}`, { defaultValue: rawDescription });
+  };
+
   const renderEventSummary = () => {
     if (log.raw?.payload?.object?.events?.length > 0) {
       return log.raw.payload.object.events.map((evt: any, idx: number) => {
-        let displayType, displayDesc;
-        switch (log.log_source) {
-          case 'svms': {
-            const normalizedType = log.log_type.replace(/\./g, '_');
-            displayType = t(`app.logtype.svms_${normalizedType}`);
-            displayDesc = t(`app.logtype.svms_${normalizedType}_description`);
-            break;
-          }
-          case 'milesight-radar': {
-            const normalizedType = log.log_type.replace(/\./g, '_');
-            displayType = t(`app.logtype.milesight_${normalizedType}`);
-            displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
-            break;
-          }
-          case 'sunell-camera': {
-            const normalizedType = log.log_type.replace(/\./g, '_');
-            displayType = t(`app.logtype.sunell_${normalizedType}`);
-            displayDesc = t(`app.logtype.sunell_${normalizedType}_description`);
-            break;
-          }
-          default:
-            displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
-            if (log.log_description) {
-              const descKey = log.log_description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
-              displayDesc = t(`app.logtype.${descKey}`, {
-                defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
-              });
-            }
-        }
+        const displayType = resolveLogTypeLabel(log.log_type || log.raw?.body?.log_type);
+        const displayDesc = resolveLogDescriptionLabel(log.log_description || evt?.alarm_status || evt?.alarm_type || evt?.status, log.log_type);
         return (
           <span key={idx} className="flex items-center gap-2">
             {idx > 0 && <span className="text-on-surface-variant/50">•</span>}
@@ -128,36 +138,8 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
         );
       });
     } else if (log.raw?.body?.log_type || log.log_type) {
-      let displayType, displayDesc;
-      switch (log.log_source) {
-        case 'svms': {
-          const normalizedType = log.log_type.replace(/\./g, '_');
-          displayType = t(`app.logtype.svms_${normalizedType}`);
-          displayDesc = t(`app.logtype.svms_${normalizedType}_description`);
-          break;
-        }
-        case 'milesight-radar': {
-          const normalizedType = log.log_type.replace(/\./g, '_');
-          displayType = t(`app.logtype.milesight_${normalizedType}`);
-          displayDesc = t(`app.logtype.milesight_${normalizedType}_description`);
-          break;
-        }
-        case 'sunell-camera': {
-          const normalizedType = log.log_type.replace(/\./g, '_');
-          displayType = t(`app.logtype.sunell_${normalizedType}`);
-          displayDesc = t(`app.logtype.sunell_${normalizedType}_description`);
-          break;
-        }
-        default:
-          displayType = t(`app.logtype.${(log.log_type || log.raw?.body?.log_type).toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`)
-          if (log.log_description) {
-            const descKey = log.log_description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
-            displayDesc = t(`app.logtype.${descKey}`, {
-              defaultValue: t(`app.mqtt_alarm_type.${descKey}`, { defaultValue: displayDesc })
-            });
-          }
-          console.log("cant find, use: ", displayType, displayDesc, log)
-      }
+      const displayType = resolveLogTypeLabel(log.log_type || log.raw?.body?.log_type);
+      const displayDesc = resolveLogDescriptionLabel(log.log_description || log.raw?.body?.description, log.log_type || log.raw?.body?.log_type);
       // const typeStr = t(`app.logtype.${(log.raw?.body?.log_type || log.log_type).toLowerCase()}`, { defaultValue: (log.raw?.body?.log_type || log.log_type).toLowerCase() });
       const typeStr = allMetadata.find(item => item.label === t('app.log_popup.log_type'))?.value;
       // const descStr = (log.raw?.body?.description || log.log_description) ? t(`app.logtype.${(log.raw?.body?.description || log.log_description).toLowerCase().replace(/ /g, '_').replace(/\./g, '')}`, { defaultValue: (log.raw?.body?.description || log.log_description).toLowerCase() }) : '';

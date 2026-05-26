@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { socket, updateSocketUrlAsync, getBeHost, getBePort } from '../socket';
-import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink, SVMSServer, SMVSDevices, MQTT_Milesight_DeviceInfo, EventTypeItem } from '../types';
+import type { LogData, SystemConnection, SystemConfig, ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink, SVMSServer, SMVSDevices, MQTT_Milesight_DeviceInfo, EventTypeItem, MqttGroup, MqttDevice } from '../types';
 import apiClient from '../api/apiClient';
 import { normalizeServerData, normalizeServersRecord } from '../utils/serverData';
 
@@ -132,6 +132,7 @@ type SystemSnapshot = {
   svmsServers?: SVMSServer[];
   svmsDevices?: SMVSDevices[];
   mqttServers?: (MqttServerConfig & { devices?: MQTT_Milesight_DeviceInfo[] })[];
+  mqttGroups?: MqttGroup[];
   mqttDeviceList?: MQTT_Milesight_DeviceInfo[];
   cameras?: MqttDeviceConfig[];
   allLogs?: LogData[];
@@ -149,7 +150,7 @@ type SystemSnapshot = {
 };
 
 const getFilterLogSource = (source: LogData['log_source'] | undefined): EventTypeItem['log_source'] => {
-  if (source === 'milesight-radar') return 'mqtt';
+  if (source === 'milesight-radar' || source === 'milesight-button') return 'mqtt';
   return source || null;
 };
 
@@ -166,6 +167,8 @@ const toMqttLogEntry = (log: LogData): MQTT_Milesight_LogEntry => {
     payload,
     snapshot: log.snapshot || undefined,
     mqttServerId: log.server_unique_id.replace(/^mqtt-/, ''),
+    mqttDeviceId: (log as any).mqtt_device_id,
+    groupId: log.server_unique_id,
     brokerHost: '',
     brokerPort: '',
   };
@@ -230,7 +233,7 @@ export function useSocketManager() {
   const logBufferRef = useRef<LogData[]>([]);
   const eventTypeBufferRef = useRef<EventTypeItem[]>([]);
   const mqttLogs = useMemo(
-    () => logs.filter(log => log.log_source === 'milesight-radar').map(toMqttLogEntry),
+    () => logs.filter(log => log.log_source === 'milesight-radar' || log.log_source === 'milesight-button').map(toMqttLogEntry),
     [logs]
   );
 
@@ -282,6 +285,8 @@ export function useSocketManager() {
 
   const [receiveServers, setReceiveServers] = useState<SystemConnection[]>([]);
   const [mqttServers, setMqttServers] = useState<MqttServerConfig[]>([]);
+  const [mqttGroups, setMqttGroups] = useState<MqttGroup[]>([]);
+  const [mqttDevices, setMqttDevices] = useState<MqttDevice[]>([]);
 
   // ─── New System Data State ────────────────────────────────────────────────────────
   /** BE-owned normalized logs from all sources. */
@@ -336,11 +341,17 @@ export function useSocketManager() {
   // Fetch MQTT servers from BE
   const fetchMqttServers = useCallback(async () => {
     try {
-      const { data } = await apiClient.get('/api/v1/mqtt-servers');
-      setMqttServers(data.servers || []);
-      console.log('[FETCH_MQTT_SERVERS] Synced from BE:', data.servers);
+      const [serversRes, groupsRes, devicesRes] = await Promise.all([
+        apiClient.get('/api/v1/mqtt-servers'),
+        apiClient.get('/api/v1/mqtt-groups'),
+        apiClient.get('/api/v1/mqtt-devices'),
+      ]);
+      setMqttServers(serversRes.data.servers || []);
+      setMqttGroups(groupsRes.data.groups || []);
+      setMqttDevices(devicesRes.data.devices || []);
+      console.log('[FETCH_MQTT_STATE] Synced from BE:', groupsRes.data.groups, devicesRes.data.devices);
     } catch (err) {
-      console.error('[FETCH_MQTT_SERVERS] Failed:', err);
+      console.error('[FETCH_MQTT_STATE] Failed:', err);
     }
   }, [systemConfig.be.ip, systemConfig.be.port]);
 
@@ -389,17 +400,19 @@ export function useSocketManager() {
   }, []);
 
   // ─── Link/unlink MQTT device to camera ──────────────────────────────────────
-  const handleLinkDeviceCamera = useCallback(async (devEui: string, mqttServerId: string, cameraId: string | null) => {
+  const handleLinkDeviceCamera = useCallback(async (devEui: string, mqttServerId: string, cameraId: string | null, mqttDeviceId?: string, groupId?: string) => {
     // Optimistic Update: update local state instantly for 0ms lag
     setDeviceCameraLinks((prev) => {
-      const existing = prev.find(l => l.devEui === devEui && l.mqttServerId === mqttServerId);
-      const filtered = prev.filter(l => !(l.devEui === devEui && l.mqttServerId === mqttServerId));
+      const existing = prev.find(l => mqttDeviceId ? l.mqttDeviceId === mqttDeviceId : (l.devEui === devEui && l.mqttServerId === mqttServerId));
+      const filtered = prev.filter(l => !(mqttDeviceId ? l.mqttDeviceId === mqttDeviceId : (l.devEui === devEui && l.mqttServerId === mqttServerId)));
 
       // Always keep the link entry if it has features or a cameraId
       if (cameraId || (existing && Object.keys(existing.features || {}).length > 0)) {
         return [...filtered, {
           devEui,
           mqttServerId,
+          mqttDeviceId,
+          groupId,
           cameraId: cameraId || null,
           features: existing?.features || {}
         }];
@@ -408,7 +421,7 @@ export function useSocketManager() {
     });
 
     try {
-      const { data } = await apiClient.patch('/api/v1/mqtt-device-camera-link', { devEui, mqttServerId, cameraId });
+      const { data } = await apiClient.patch('/api/v1/mqtt-device-camera-link', { devEui, mqttServerId, cameraId, mqttDeviceId, groupId });
       setDeviceCameraLinks(data.links || []);
       console.log('[LINK_DEVICE_CAMERA] Updated:', { devEui, mqttServerId, cameraId });
     } catch (err) {
@@ -574,6 +587,34 @@ export function useSocketManager() {
       console.error('%c[MQTT_UPDATE] ❌ Cập nhật thất bại!', 'color: #ef4444; font-weight: bold');
       console.error('[MQTT_UPDATE] Error:', err?.response?.data || err?.message || err);
     }
+  }, [fetchMqttServers]);
+
+  const handleAddMqttGroup = useCallback(async (name: string) => {
+    const res = await apiClient.post('/api/v1/mqtt-groups', { name });
+    await fetchMqttServers();
+    return res.data.group as MqttGroup;
+  }, [fetchMqttServers]);
+
+  const handleUpdateMqttGroup = useCallback(async (groupId: string, config: Partial<MqttGroup>) => {
+    const res = await apiClient.put(`/api/v1/mqtt-groups/${groupId}`, config);
+    await fetchMqttServers();
+    return res.data.group as MqttGroup;
+  }, [fetchMqttServers]);
+
+  const handleAddMqttDevice = useCallback(async (groupId: string, config: Partial<MqttDevice>) => {
+    const res = await apiClient.post(`/api/v1/mqtt-groups/${groupId}/devices`, config);
+    await fetchMqttServers();
+    return res.data.device as MqttDevice;
+  }, [fetchMqttServers]);
+
+  const handleRemoveMqttGroup = useCallback(async (groupId: string) => {
+    await apiClient.delete(`/api/v1/mqtt-groups/${groupId}`);
+    await fetchMqttServers();
+  }, [fetchMqttServers]);
+
+  const handleRemoveMqttDevice = useCallback(async (deviceId: string) => {
+    await apiClient.delete(`/api/v1/mqtt-devices/${deviceId}`);
+    await fetchMqttServers();
   }, [fetchMqttServers]);
 
   const handleRemoveConnection = useCallback((ip: string, port: string) => {
@@ -837,7 +878,11 @@ export function useSocketManager() {
         setMqttServers(data.mqttServers);
         setMqttMilesightServers(data.mqttServers);
       }
-      if (Array.isArray(data.mqttDeviceList)) setMqttMilesightDevices(data.mqttDeviceList);
+      if (Array.isArray(data.mqttGroups)) setMqttGroups(data.mqttGroups);
+      if (Array.isArray(data.mqttDeviceList)) {
+        setMqttMilesightDevices(data.mqttDeviceList as any);
+        setMqttDevices(data.mqttDeviceList as any);
+      }
       if (Array.isArray(data.cameras)) setCameraDevices(data.cameras);
       if (data.gridLayout) setGridLayout({ grids: data.gridLayout.grids || [], gridCols: data.gridLayout.gridCols || 3 });
       if (Array.isArray(data.knownEvents?.svms)) setSvmsKnownEvents(data.knownEvents.svms);
@@ -892,13 +937,18 @@ export function useSocketManager() {
     };
     const onUpdateMqttMilesightDevices = (data: MQTT_Milesight_DeviceInfo[]) => {
       setMqttMilesightDevices(data);
+      setMqttDevices(data as any);
     };
+    const onUpdateMqttGroups = (data: MqttGroup[]) => setMqttGroups(data);
+    const onUpdateMqttDevices = (data: MqttDevice[]) => setMqttDevices(data);
 
     socket.on('new-svms-log', onNewSvmsLog);
     socket.on('new-svms-servers', onNewSvmsServers);
     socket.on('new-svms-devices', onNewSvmsDevices);
     socket.on('update-mqtt-milesight-servers', onUpdateMqttMilesightServers);
     socket.on('update-mqtt-milesight-devices', onUpdateMqttMilesightDevices);
+    socket.on('update-mqtt-groups', onUpdateMqttGroups);
+    socket.on('update-mqtt-devices', onUpdateMqttDevices);
 
     const onUpdateSvmsKnownEvents = (events: SvmsKnownEvent[]) => {
       console.log('[SOCKET] update-svms-known-events:', events.length, 'events');
@@ -946,6 +996,8 @@ export function useSocketManager() {
       socket.off('new-svms-devices', onNewSvmsDevices);
       socket.off('update-mqtt-milesight-servers', onUpdateMqttMilesightServers);
       socket.off('update-mqtt-milesight-devices', onUpdateMqttMilesightDevices);
+      socket.off('update-mqtt-groups', onUpdateMqttGroups);
+      socket.off('update-mqtt-devices', onUpdateMqttDevices);
       socket.off('system-snapshot', applySystemSnapshot);
       socket.off('sync-new-system-data', onSyncNewSystemData);
       socket.off('logs-batch', onLogsBatch);
@@ -985,11 +1037,18 @@ export function useSocketManager() {
     totalLogCount,
     KEEP_TOTAL_LOG_COUNT: env.KEEP_TOTAL_LOG_COUNT,
     mqttServers,
+    mqttGroups,
+    mqttDevices,
     mqttLogs,
     cameraDevices,
     handleAddMqttServer,
     handleRemoveMqttServer,
     handleUpdateMqttServer,
+    handleAddMqttGroup,
+    handleUpdateMqttGroup,
+    handleAddMqttDevice,
+    handleRemoveMqttGroup,
+    handleRemoveMqttDevice,
     fetchCameras,
     deviceCameraLinks,
     handleLinkDeviceCamera,

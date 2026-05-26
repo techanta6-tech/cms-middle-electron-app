@@ -20,6 +20,8 @@ function createEmptyState() {
     svmsServers: [],
     svmsDevices: [],
     mqttServers: [],
+    mqttGroups: [],
+    mqttDevices: [],
     cameras: [],
     updatedAt: null,
   };
@@ -37,6 +39,8 @@ function readState() {
       svmsServers: Array.isArray(parsed.svmsServers) ? parsed.svmsServers : [],
       svmsDevices: Array.isArray(parsed.svmsDevices) ? parsed.svmsDevices : [],
       mqttServers: Array.isArray(parsed.mqttServers) ? parsed.mqttServers : [],
+      mqttGroups: Array.isArray(parsed.mqttGroups) ? parsed.mqttGroups : [],
+      mqttDevices: Array.isArray(parsed.mqttDevices) ? parsed.mqttDevices : [],
       cameras: Array.isArray(parsed.cameras) ? parsed.cameras : [],
     };
   } catch (err) {
@@ -146,6 +150,54 @@ function removeMqttServer(id) {
   writeState(state);
 }
 
+function persistMqttGroup(group) {
+  if (!group?.id) return;
+  const state = readState();
+  const entry = {
+    id: group.id,
+    name: group.name || '',
+    cameraId: group.cameraId || null,
+    createdAt: group.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  upsertBy(state.mqttGroups, item => item.id === entry.id, entry);
+  writeState(state);
+}
+
+function removeMqttGroup(id) {
+  const state = readState();
+  state.mqttGroups = state.mqttGroups.filter(item => item.id !== id);
+  state.mqttDevices = state.mqttDevices.filter(item => item.groupId !== id);
+  writeState(state);
+}
+
+function persistMqttDevice(deviceConfig) {
+  if (!deviceConfig?.id) return;
+
+  const state = readState();
+  const entry = {
+    id: deviceConfig.id,
+    groupId: deviceConfig.groupId,
+    topic: deviceConfig.topic || '',
+    deviceInfo: deviceConfig.deviceInfo || {},
+    brokerHost: deviceConfig.brokerHost || '',
+    brokerPort: String(deviceConfig.brokerPort || ''),
+    protocol: deviceConfig.protocol || 'mqtt',
+    cameraId: deviceConfig.cameraId || null,
+    features: deviceConfig.features || {},
+    recordedAt: new Date().toISOString(),
+  };
+
+  upsertBy(state.mqttDevices, item => item.id === entry.id, entry);
+  writeState(state);
+}
+
+function removeMqttDevice(id) {
+  const state = readState();
+  state.mqttDevices = state.mqttDevices.filter(item => item.id !== id);
+  writeState(state);
+}
+
 function persistCamera(cameraConfig) {
   if (!cameraConfig?.id) return;
 
@@ -181,10 +233,11 @@ async function bootstrapPersistedDevices() {
     svmsServers,
     svmsDevices,
     mqttServers,
+    mqttGroups,
     cameraDevices,
     getClientSockets,
   } = require('../socketState');
-  const { connectMqttServer } = require('./mqtt.service');
+  const { connectMqttDevice, parseDeviceInfoFromTopic } = require('./mqtt.service');
   const { addCameraDevice, removeCameraDevice } = require('./cameras.service');
   let restoredSvms = 0;
   let restoredMqtt = 0;
@@ -237,24 +290,63 @@ async function bootstrapPersistedDevices() {
     });
   }
 
-  for (const persisted of state.mqttServers) {
+  const defaultGroupId = state.mqttGroups[0]?.id || 'default';
+  if (state.mqttServers.length > 0 && state.mqttGroups.length === 0) {
+    const group = {
+      id: defaultGroupId,
+      name: 'Default Group',
+      cameraId: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    mqttGroups.push(group);
+    persistMqttGroup(group);
+  }
+
+  for (const group of state.mqttGroups) {
+    if (!group.id || mqttGroups.some(item => item.id === group.id)) continue;
+    mqttGroups.push({
+      id: group.id,
+      name: group.name || 'MQTT Group',
+      cameraId: group.cameraId || null,
+      createdAt: group.createdAt,
+      updatedAt: group.updatedAt,
+    });
+  }
+
+  const persistedDevices = [
+    ...state.mqttDevices,
+    ...state.mqttServers.map(server => ({
+      id: server.id,
+      groupId: defaultGroupId,
+      brokerHost: server.brokerHost,
+      brokerPort: server.brokerPort,
+      protocol: server.protocol,
+      topic: server.topic,
+      deviceInfo: parseDeviceInfoFromTopic(server.topic),
+      cameraId: server.cameraId,
+    })),
+  ];
+
+  for (const persisted of persistedDevices) {
     if (!persisted.id || mqttServers.some(server => server.id === persisted.id)) continue;
 
     const serverConfig = {
       id: persisted.id,
-      name: persisted.name || '',
+      groupId: persisted.groupId || defaultGroupId,
       brokerHost: persisted.brokerHost,
       brokerPort: String(persisted.brokerPort),
       protocol: persisted.protocol || 'mqtt',
       topic: persisted.topic || '',
-      defaultTopic: persisted.defaultTopic || '',
+      deviceInfo: persisted.deviceInfo || parseDeviceInfoFromTopic(persisted.topic),
       cameraId: persisted.cameraId || null,
+      features: persisted.features || {},
       status: 'connecting',
     };
     if (!serverConfig.brokerHost || !serverConfig.brokerPort) continue;
 
     mqttServers.push(serverConfig);
-    connectMqttServer(serverConfig, { persistOnConnect: false });
+    connectMqttDevice(serverConfig, { persistOnConnect: false });
     restoredMqtt += 1;
   }
 
@@ -290,6 +382,10 @@ module.exports = {
   persistSvmsDevices,
   persistMqttServer,
   removeMqttServer,
+  persistMqttGroup,
+  removeMqttGroup,
+  persistMqttDevice,
+  removeMqttDevice,
   persistCamera,
   removeCamera,
   bootstrapPersistedDevices,

@@ -43,5 +43,10 @@
     "event_type": "lying",
     "event_description": "milesight_lying_description",
     "default_enabled": true
+  },
+  {
+    "event_type": "button_pressed",
+    "event_description": "milesight_button_pressed_description",
+    "default_enabled": true
   }
 ]

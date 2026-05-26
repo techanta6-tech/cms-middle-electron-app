@@ -398,6 +398,8 @@ export function Dashboard() {
     KEEP_TOTAL_LOG_COUNT,
     handleAddMqttServer,
     mqttServers,
+    mqttGroups,
+    mqttDevices,
     mqttLogs,
     cameraDevices,
     fetchCameras,
@@ -416,6 +418,11 @@ export function Dashboard() {
     svmsDevices: newSvmsDevices,
     mqttMilesightServers,
     mqttMilesightDevices,
+    handleAddMqttGroup,
+    handleUpdateMqttGroup,
+    handleAddMqttDevice,
+    handleRemoveMqttGroup,
+    handleRemoveMqttDevice,
   } = useSocketManager();
 
   // Grid state synced from BE
@@ -429,6 +436,21 @@ export function Dashboard() {
     const newCols = typeof updater === 'function' ? updater(gridLayout.gridCols) : updater;
     saveGridLayout(gridLayout.grids, newCols);
   }, [gridLayout, saveGridLayout]);
+
+  const getGridDevices = useCallback((grid: any) => {
+    if (!grid) return [];
+    if (Array.isArray(grid.devices)) return grid.devices;
+    if (grid.device) return [grid.device];
+    return [];
+  }, []);
+
+  const gridHasDevice = useCallback((grid: any, device: any) => {
+    return getGridDevices(grid).some((item: any) =>
+      item.server_id === device.server_id &&
+      item.device_ip === device.device_ip &&
+      item.device_name === device.device_name
+    );
+  }, [getGridDevices]);
 
   const displayLogCount = KEEP_TOTAL_LOG_COUNT ? totalLogCount : logs.length;
 
@@ -462,25 +484,27 @@ export function Dashboard() {
   // MQTT devices come from BE snapshot; logs are only used for display/counting.
   const mqttDevicesByServer = useMemo(() => {
     const map: Record<string, { devEui: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[]> = {};
-    (mqttMilesightDevices || []).forEach((device: any) => {
-      const sid = device.mqttServerId;
-      if (!sid || !device.devEui) return;
+    (mqttDevices || []).forEach((device: any) => {
+      const sid = device.groupId;
+      const info = device.deviceInfo || device;
+      if (!sid || !info.devEui) return;
       const alarmCount = logs.filter(log =>
-        log.log_source === 'milesight-radar' &&
-        log.server_unique_id === `mqtt-${sid}` &&
-        log.device_info.id === device.devEui
+        (log.log_source === 'milesight-radar' || log.log_source === 'milesight-button') &&
+        log.server_unique_id === sid &&
+        log.device_info.id === info.devEui
       ).length;
       if (!map[sid]) map[sid] = [];
       map[sid].push({
-        devEui: device.devEui,
-        deviceName: device.deviceName || 'Unknown',
-        deviceProfileName: device.deviceProfileName || 'Unknown',
+        ...(device as any),
+        devEui: info.devEui,
+        deviceName: info.deviceName || 'Unknown',
+        deviceProfileName: info.deviceProfileName || 'Unknown',
         alarmCount,
         lastSeen: device.lastSeen || '',
       });
     });
     return map;
-  }, [logs, mqttMilesightDevices]);
+  }, [logs, mqttDevices]);
 
   const toggleServer = useCallback((id: string) => {
     const isSelecting = !selectedServers.has(id);
@@ -503,11 +527,9 @@ export function Dashboard() {
       }
 
       if (mqttDevicesByServer[id]) {
-        const mqttSrv = mqttServers?.find(m => m.id === id);
-        const brokerHost = mqttSrv?.brokerHost || '';
         mqttDevicesByServer[id].forEach(dev => {
           const devName = dev.deviceName || 'MQTT Device';
-          const devKey = `mqtt-${id}_${brokerHost}_${devName}`;
+          const devKey = `${id}_${dev.devEui}_${devName}`;
           if (isSelecting) d.add(devKey);
           else d.delete(devKey);
         });
@@ -515,7 +537,7 @@ export function Dashboard() {
 
       return d;
     });
-  }, [selectedServers, devices, mqttDevicesByServer, mqttServers]);
+  }, [selectedServers, devices, mqttDevicesByServer]);
 
   const toggleDevice = (ip: string) =>
     setSelectedDevices(prev => {
@@ -548,20 +570,19 @@ export function Dashboard() {
         const isLinkedToSelectedRadar = Array.from(selectedDevices).some(selectedKey => {
           return deviceCameraLinks.some(link => {
             if (link.cameraId !== log.device_info.id) return false;
-            const mqttSrv = mqttServers?.find(s => s.id === link.mqttServerId);
-            const brokerHost = mqttSrv?.brokerHost || '';
-            const devs = mqttDevicesByServer[link.mqttServerId] || [];
+            const groupId = link.groupId || link.mqttServerId || '';
+            const devs = mqttDevicesByServer[groupId] || [];
             const dev = devs.find(d => d.devEui === link.devEui);
             if (!dev) return false;
             const devName = dev.deviceName || 'MQTT Device';
-            const radarKey = `mqtt-${link.mqttServerId}_${brokerHost}_${devName}`;
+            const radarKey = `${groupId}_${dev.devEui}_${devName}`;
             return selectedKey === radarKey;
           });
         });
 
         const isLinkedToSelectedServer = Array.from(selectedServers).some(selectedServerId => {
           return deviceCameraLinks.some(link => {
-            return link.cameraId === log.device_info.id && `mqtt-${link.mqttServerId}` === selectedServerId;
+            return link.cameraId === log.device_info.id && (link.groupId || link.mqttServerId) === selectedServerId;
           });
         });
 
@@ -665,6 +686,8 @@ export function Dashboard() {
                 servers={servers}
                 devices={devices}
                 mqttServers={mqttServers}
+                mqttGroups={mqttGroups}
+                mqttDevices={mqttDevices}
                 mqttLogs={mqttLogs}
                 cameraDevices={cameraDevices}
                 deviceCameraLinks={deviceCameraLinks}
@@ -672,6 +695,11 @@ export function Dashboard() {
                 onLinkMqttServerCamera={handleLinkMqttServerCamera}
                 fetchCameras={fetchCameras}
                 handleAddMqttServer={handleAddMqttServer}
+                handleAddMqttGroup={handleAddMqttGroup}
+                handleUpdateMqttGroup={handleUpdateMqttGroup}
+                handleAddMqttDevice={handleAddMqttDevice}
+                handleRemoveMqttGroup={handleRemoveMqttGroup}
+                handleRemoveMqttDevice={handleRemoveMqttDevice}
                 handleAddExternalServer={handleAddExternalServer}
                 svmsDeviceFeatures={svmsDeviceFeatures}
                 svmsKnownEvents={svmsKnownEvents}
@@ -786,15 +814,16 @@ export function Dashboard() {
                         }));
                       });
 
-                      const mqttDevices = mqttServers.flatMap(ms => {
+                      const mqttDevices = mqttGroups.flatMap(ms => {
                         const mqttDevs = mqttDevicesByServer[ms.id] || [];
                         return mqttDevs.map(dev => ({
                           server_serial: ms.id,
-                          server_id: `mqtt-${ms.id}`,
-                          device_ip: dev.devEui,
-                          device_name: dev.deviceName,
-                          device_type: 'mqtt-sensor'
-                        }));
+                                server_id: ms.id,
+                                device_ip: dev.devEui,
+                                device_name: dev.deviceName,
+                                device_type: 'mqtt-sensor',
+                                mqtt_device_id: (dev as any).id
+                              }));
                       });
 
                       const sunellDevices = cameraDevices.filter(cam => cam.type === 'sunell').map(cam => ({
@@ -819,7 +848,7 @@ export function Dashboard() {
                       const newGrids = [...grids];
 
                       for (const dev of allDevices) {
-                        const isAssigned = newGrids.some(g => g && g.device.server_id === dev.server_id && g.device.device_ip === dev.device_ip && g.device.device_name === dev.device_name);
+                        const isAssigned = newGrids.some(g => gridHasDevice(g, dev));
                         if (isAssigned) continue;
 
                         let emptyGridID = -1;
@@ -834,13 +863,8 @@ export function Dashboard() {
 
                         newGrids[emptyGridID] = {
                           gridID: emptyGridID,
-                          device: {
-                            server_serial: dev.server_serial,
-                            server_id: dev.server_id,
-                            device_ip: dev.device_ip,
-                            device_name: dev.device_name,
-                            device_type: dev.device_type
-                          }
+                          device: dev,
+                          devices: [dev]
                         };
                       }
                       console.log('newGrids', newGrids, 'newGridCols', newGridCols);
@@ -852,6 +876,81 @@ export function Dashboard() {
                   </button>
                 </div>
 
+                {/* Server & Group Section */}
+                <div className="flex items-center gap-2 mb-1 px-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/80">Server & Group</span>
+                  <div className="flex-1 h-px bg-outline-variant/10"></div>
+                </div>
+
+                {Object.values(devices).flatMap(server => {
+                  if (!server.server || !server.devices?.length) return [];
+                  const groupDevices = server.devices.map(dev => ({
+                    server_serial: server.server.serial,
+                    server_id: server.server.server_id,
+                    device_ip: dev.ip,
+                    device_name: dev.name,
+                    device_type: dev.type || 'vms'
+                  }));
+                  const assignedGrids = grids.filter((g: any) => groupDevices.some(dev => gridHasDevice(g, dev)));
+                  return (
+                    <div
+                      key={`svms-group-${server.server.server_id}`}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('application/json', JSON.stringify({
+                          server_serial: server.server.serial,
+                          server_id: server.server.server_id,
+                          device_ip: server.server.server_id,
+                          device_name: server.server.server_name || server.server.server_id,
+                          device_type: 'svms-server',
+                          devices: groupDevices,
+                        }));
+                      }}
+                      className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-primary/5 border-primary/20' : 'bg-surface-container border-outline-variant/10'}`}
+                    >
+                      <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-primary transition-colors truncate">
+                        {server.server.server_name || server.server.server_id}
+                      </span>
+                      <span className="text-[9px] text-on-surface-variant/70 font-mono">{groupDevices.length} devices</span>
+                    </div>
+                  );
+                })}
+
+                {mqttGroups.map(group => {
+                  const groupDevices = (mqttDevicesByServer[group.id] || []).map((dev: any) => ({
+                    server_serial: group.id,
+                    server_id: group.id,
+                    device_ip: dev.devEui,
+                    device_name: dev.deviceName,
+                    device_type: 'mqtt-sensor',
+                    mqtt_device_id: dev.id
+                  }));
+                  if (groupDevices.length === 0) return null;
+                  const assignedGrids = grids.filter((g: any) => groupDevices.some(dev => gridHasDevice(g, dev)));
+                  return (
+                    <div
+                      key={`mqtt-group-${group.id}`}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('application/json', JSON.stringify({
+                          server_serial: group.id,
+                          server_id: group.id,
+                          device_ip: group.id,
+                          device_name: group.name,
+                          device_type: 'mqtt-group',
+                          devices: groupDevices,
+                        }));
+                      }}
+                      className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-amber-400/5 border-amber-400/20' : 'bg-surface-container border-outline-variant/10'}`}
+                    >
+                      <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-amber-400 transition-colors truncate">
+                        {group.name}
+                      </span>
+                      <span className="text-[9px] text-on-surface-variant/70 font-mono">{groupDevices.length} devices</span>
+                    </div>
+                  );
+                })}
+
                 {/* SVMS Camera Devices Section */}
                 <div className="flex items-center gap-2 mb-1 px-1">
                   <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">{t('app.alert_wall.svms_camera_devices')}</span>
@@ -861,7 +960,14 @@ export function Dashboard() {
                 {Object.values(devices).flatMap(server => {
                   if (!server.server) return [];
                   return (server.devices || []).map(dev => {
-                    const assignedGrids = grids.filter(g => g && g.device && g.device.server_id === server.server.server_id && g.device.device_ip === dev.ip && g.device.device_name === dev.name);
+                    const dragDevice = {
+                      server_serial: server.server.serial,
+                      server_id: server.server.server_id,
+                      device_ip: dev.ip,
+                      device_name: dev.name,
+                      device_type: dev.type || 'vms'
+                    };
+                    const assignedGrids = grids.filter(g => gridHasDevice(g, dragDevice));
                     const assignedText = assignedGrids.map(g => g.gridID + 1).join(', ');
                     return (
                       <div
@@ -870,11 +976,7 @@ export function Dashboard() {
                         title={assignedGrids.length > 0 ? `${t('app.alert_wall.assigned_to_grid')}${assignedText}` : undefined}
                         onDragStart={(e) => {
                           e.dataTransfer.setData('application/json', JSON.stringify({
-                            server_serial: server.server.serial,
-                            server_id: server.server.server_id,
-                            device_ip: dev.ip,
-                            device_name: dev.name,
-                            device_type: dev.type || 'vms'
+                            ...dragDevice
                           }));
                         }}
                         className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-primary/5 border-primary/20' : 'bg-surface-container border-outline-variant/10'}`}
@@ -909,18 +1011,26 @@ export function Dashboard() {
                   </span>
                 </div>
 
-                {mqttServers.map(ms => {
+                {mqttGroups.map(ms => {
                   const mqttDevs = mqttDevicesByServer[ms.id] || [];
                   if (mqttDevs.length === 0) return null;
                   return (
                     <div key={ms.id} className="flex flex-col gap-1 mb-2">
                       <div className="text-[8px] font-bold uppercase tracking-widest text-on-surface-variant/50 px-1">
-                        {ms.brokerHost}:{ms.brokerPort}
+                        {ms.name}
                       </div>
                       {mqttDevs.map(dev => {
-                        const assignedGrids = grids.filter((g: any) => g && g.device.device_ip === dev.devEui && g.device.server_id === `mqtt-${ms.id}`);
+                        const dragDevice = {
+                          server_serial: ms.id,
+                          server_id: ms.id,
+                          device_ip: dev.devEui,
+                          device_name: dev.deviceName,
+                          device_type: 'mqtt-sensor',
+                          mqtt_device_id: (dev as any).id
+                        };
+                        const assignedGrids = grids.filter((g: any) => gridHasDevice(g, dragDevice));
                         const assignedText = assignedGrids.map((g: any) => g.gridID + 1).join(', ');
-                        const link = deviceCameraLinks.find(l => l.devEui === dev.devEui && l.mqttServerId === ms.id);
+                        const link = deviceCameraLinks.find(l => l.mqttDeviceId === (dev as any).id || (l.devEui === dev.devEui && l.groupId === ms.id));
                         return (
                           <div
                             key={`${ms.id}-${dev.devEui}`}
@@ -928,11 +1038,7 @@ export function Dashboard() {
                             title={assignedGrids.length > 0 ? `${t('app.alert_wall.assigned_to_grid')}${assignedText}` : undefined}
                             onDragStart={(e) => {
                               e.dataTransfer.setData('application/json', JSON.stringify({
-                                server_serial: ms.id,
-                                server_id: `mqtt-${ms.id}`,
-                                device_ip: dev.devEui,
-                                device_name: dev.deviceName,
-                                device_type: 'mqtt-sensor'
+                                ...dragDevice
                               }));
                             }}
                             className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-amber-400/5 border-amber-400/20' : 'bg-surface-container border-outline-variant/10'}`}
@@ -956,7 +1062,7 @@ export function Dashboard() {
                   );
                 })}
 
-                {!mqttServers.some(ms => (mqttDevicesByServer[ms.id] || []).length > 0) && (
+                {!mqttGroups.some(ms => (mqttDevicesByServer[ms.id] || []).length > 0) && (
                   <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
                     <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.alert_wall.no_mqtt_devices')}</span>
                   </div>
@@ -968,7 +1074,14 @@ export function Dashboard() {
                   <div className="flex-1 h-px bg-secondary/10"></div>
                 </div>
                 {cameraDevices.filter(cam => cam.type === 'sunell').map(cam => {
-                  const assignedGrids = grids.filter((g: any) => g && g.device && g.device.server_id === 'SUNELL-LOCAL' && g.device.device_ip === cam.id);
+                  const dragDevice = {
+                    server_serial: 'SUNELL',
+                    server_id: 'SUNELL-LOCAL',
+                    device_ip: cam.id,
+                    device_name: cam.name || cam.cameraIp,
+                    device_type: 'sunell'
+                  };
+                  const assignedGrids = grids.filter((g: any) => gridHasDevice(g, dragDevice));
                   const assignedText = assignedGrids.map((g: any) => g.gridID + 1).join(', ');
                   return (
                     <div
@@ -977,11 +1090,7 @@ export function Dashboard() {
                       title={assignedGrids.length > 0 ? `${t('app.alert_wall.assigned_to_grid')}${assignedText}` : undefined}
                       onDragStart={(e) => {
                         e.dataTransfer.setData('application/json', JSON.stringify({
-                          server_serial: 'SUNELL',
-                          server_id: 'SUNELL-LOCAL',
-                          device_ip: cam.id,
-                          device_name: cam.name || cam.cameraIp,
-                          device_type: 'sunell'
+                          ...dragDevice
                         }));
                       }}
                       className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-secondary/5 border-secondary/20' : 'bg-surface-container border-outline-variant/10'}`}

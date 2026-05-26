@@ -22,6 +22,7 @@ const SEED_EVENTS = [
   { event_type: 'bradynea',    event_description: 'milesight_bradynea_description',    default_enabled: false },
   { event_type: 'tachypnea',   event_description: 'milesight_tachypnea_description',   default_enabled: false },
   { event_type: 'lying',       event_description: 'milesight_lying_description',       default_enabled: false },
+  { event_type: 'button_pressed', event_description: 'milesight_button_pressed_description', default_enabled: true },
 ];
 
 function loadRegistry() {
@@ -44,7 +45,12 @@ function loadRegistry() {
     const parsed = JSON.parse(raw);
     milesightEvents = _migrateLegacyEntries(parsed);
 
-    const hadMigration = parsed.some(e => e.default_enabled === undefined);
+    const missingSeeds = SEED_EVENTS.filter(seed => !milesightEvents.some(e => e.event_type === seed.event_type));
+    if (missingSeeds.length > 0) {
+      milesightEvents.push(...missingSeeds);
+    }
+
+    const hadMigration = parsed.some(e => e.default_enabled === undefined) || missingSeeds.length > 0;
     if (hadMigration) {
       _writeFile(filePath, milesightEvents);
       console.log(`[Milesight-Registry] Migrated legacy file (added default_enabled) → ${filePath}`);
@@ -77,12 +83,13 @@ function discoverEvent(eventType) {
   const alreadyExists = milesightEvents.some(e => e.event_type === eventType);
   if (alreadyExists) return false;
 
-  const i18nDescKey = 'milesight_' + eventType.replace(/\./g, '_') + '_description';
+  const seed = SEED_EVENTS.find(s => s.event_type === eventType);
+  const i18nDescKey = seed?.event_description || ('milesight_' + eventType.replace(/\./g, '_') + '_description');
 
   const newEntry = {
     event_type: eventType,
     event_description: i18nDescKey,
-    default_enabled: false,
+    default_enabled: seed ? seed.default_enabled : false,
   };
   milesightEvents.push(newEntry);
 

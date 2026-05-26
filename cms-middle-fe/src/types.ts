@@ -97,7 +97,7 @@ export interface LogData {
   log_description: string;
   snapshot?: string;
   log_snapshot_image_path?: string;
-  log_source: 'svms' | 'milesight-radar' | 'sunell-camera' | 'other';
+  log_source: 'svms' | 'milesight-radar' | 'milesight-button' | 'sunell-camera' | 'other';
   device_info: {
     name: string;
     id: string;
@@ -267,6 +267,7 @@ export interface MQTT_Milesight_Radar {
 
 export interface MqttServerConfig {
   id: string;
+  groupId?: string;
   name?: string;
   brokerHost: string;
   brokerPort: string;
@@ -276,6 +277,31 @@ export interface MqttServerConfig {
   status?: 'connecting' | 'connected' | 'disconnected' | 'error';
   logCount?: number;
   cameraId?: string;
+  deviceInfo?: MQTT_Milesight_DeviceInfo;
+}
+
+export interface MqttGroup {
+  id: string;
+  name: string;
+  cameraId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  devices?: MqttDevice[];
+}
+
+export interface MqttDevice {
+  id: string;
+  groupId: string;
+  topic: string;
+  deviceInfo: MQTT_Milesight_DeviceInfo;
+  brokerHost: string;
+  brokerPort: string;
+  protocol: 'mqtt' | 'mqtts';
+  status?: 'connecting' | 'connected' | 'disconnected' | 'error';
+  logCount?: number;
+  cameraId?: string | null;
+  features?: Record<string, boolean | { enabled: boolean; cameraId?: string | null }>;
+  lastSeen?: string;
 }
 
 export interface CameraFeatures {
@@ -305,8 +331,10 @@ export type MqttDeviceConfig = ManualAddedCamera;
 
 /** Links a specific MQTT sensor device to a manually added camera. */
 export interface DeviceCameraLink {
-  devEui: string;
-  mqttServerId: string;
+  mqttDeviceId?: string;
+  groupId?: string;
+  devEui?: string;
+  mqttServerId?: string;
   cameraId: string | null;
   features?: Record<string, boolean | { enabled: boolean; cameraId?: string | null }>;
 }
@@ -382,6 +410,8 @@ export interface MQTT_Milesight_LogEntry {
   payload: MQTT_Milesight_LogPayload;  // Raw payload gốc
   snapshot?: string;        // Base64 image snapshot (nếu có)
   mqttServerId: string;     // ID của MqttServerConfig — key để đối chiếu
+  mqttDeviceId?: string;
+  groupId?: string;
   brokerHost?: string;
   brokerPort?: string;
 }

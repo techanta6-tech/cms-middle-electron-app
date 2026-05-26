@@ -82,6 +82,29 @@
       "recordedAt": "2026-05-25T09:42:59.807Z"
     }
   ],
-  "cameras": [],
-  "updatedAt": "2026-05-25T09:42:59.807Z"
+  "mqttGroups": [
+    {
+      "id": "8e0f6ed1",
+      "name": "Tang 1",
+      "cameraId": "cam-1779770858066-vwrun",
+      "createdAt": "2026-05-26T02:10:25.323Z",
+      "updatedAt": "2026-05-26T04:47:56.879Z"
+    }
+  ],
+  "mqttDevices": [],
+  "cameras": [
+    {
+      "id": "cam-1779770858066-vwrun",
+      "name": "Cam 192.168.1.252",
+      "type": "other",
+      "cameraIp": "192.168.1.252",
+      "cameraPort": 30001,
+      "cameraUser": "admin",
+      "cameraPass": "admin1234",
+      "rtspUrl": "rtsp://admin:admin1234@127.0.0.1:8554/cam01",
+      "features": {},
+      "recordedAt": "2026-05-26T04:47:40.061Z"
+    }
+  ],
+  "updatedAt": "2026-05-26T04:47:56.879Z"
 }
