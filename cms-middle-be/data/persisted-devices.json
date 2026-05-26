@@ -104,7 +104,22 @@
       "rtspUrl": "rtsp://admin:admin1234@127.0.0.1:8554/cam01",
       "features": {},
       "recordedAt": "2026-05-26T04:47:40.061Z"
+    },
+    {
+      "id": "cam-1779777496725-jvnoi",
+      "name": "Cam 192.168.1.208",
+      "type": "sunell",
+      "cameraIp": "192.168.1.208",
+      "cameraPort": 30001,
+      "cameraUser": "admin",
+      "cameraPass": "admin1234",
+      "rtspUrl": "rtsp://admin:admin1234@192.168.1.208:554/snl/live/1/1",
+      "features": {
+        "motion_event": false,
+        "lpr_event": true
+      },
+      "recordedAt": "2026-05-26T07:46:27.436Z"
     }
   ],
-  "updatedAt": "2026-05-26T04:47:56.879Z"
+  "updatedAt": "2026-05-26T07:46:27.436Z"
 }

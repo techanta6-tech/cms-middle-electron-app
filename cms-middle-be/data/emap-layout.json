@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "pins": [
+    {
+      "id": "emap-1779782053237-ukjbo6",
+      "lat": 10.751786345881538,
+      "lng": 106.68299758047162,
+      "label": "PHUCDEMOSVMSID (3)",
+      "devices": [
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.207:80",
+          "device_name": "Channel 1",
+          "device_type": "camera"
+        },
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.207:80",
+          "device_name": "Channel 2",
+          "device_type": "camera"
+        },
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.202:2000",
+          "device_name": "Channel 3",
+          "device_type": "camera"
+        }
+      ],
+      "createdAt": "2026-05-26T07:54:13.237Z",
+      "updatedAt": "2026-05-26T08:14:48.504Z"
+    },
+    {
+      "id": "emap-1779782578890-ok13ta",
+      "lat": 10.75397800011755,
+      "lng": 106.71479332713155,
+      "label": "Milesight 24e124535e019607",
+      "devices": [
+        {
+          "server_serial": "8e0f6ed1",
+          "server_id": "8e0f6ed1",
+          "device_ip": "24e124535e019607",
+          "device_name": "Milesight 24e124535e019607",
+          "device_type": "mqtt-sensor",
+          "mqtt_device_id": "dfa99104"
+        }
+      ],
+      "createdAt": "2026-05-26T08:02:58.890Z",
+      "updatedAt": "2026-05-26T08:02:58.890Z"
+    },
+    {
+      "id": "emap-1779782592068-k4lay8",
+      "lat": 10.75617051763483,
+      "lng": 106.71239054247914,
+      "label": "Milesight WS101_1",
+      "devices": [
+        {
+          "server_serial": "8e0f6ed1",
+          "server_id": "8e0f6ed1",
+          "device_ip": "24e124535e019607",
+          "device_name": "Milesight WS101_1",
+          "device_type": "mqtt-sensor",
+          "mqtt_device_id": "dfa99104"
+        }
+      ],
+      "createdAt": "2026-05-26T08:03:12.068Z",
+      "updatedAt": "2026-05-26T08:03:12.068Z"
+    },
+    {
+      "id": "emap-1779782642564-y854f7",
+      "lat": 10.74344928855093,
+      "lng": 106.64871043667905,
+      "label": "Cam 192.168.1.208",
+      "devices": [
+        {
+          "server_serial": "SUNELL",
+          "server_id": "SUNELL-LOCAL",
+          "device_ip": "cam-1779777496725-jvnoi",
+          "device_name": "Cam 192.168.1.208",
+          "device_type": "sunell"
+        }
+      ],
+      "createdAt": "2026-05-26T08:04:02.564Z",
+      "updatedAt": "2026-05-26T08:04:02.564Z"
+    }
+  ],
+  "tileProviderId": "openstreetmap",
+  "updatedAt": "2026-05-26T08:14:48.525Z"
+}

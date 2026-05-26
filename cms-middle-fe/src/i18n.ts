@@ -7,6 +7,7 @@ const resources = {
       app: {
         sidebar: {
           alert_wall: "Cảnh Báo",
+          emap: "Bản đồ số",
           connections_monitor: "Giám Sát Sự Kiện",
           devices: "Quản Lý Kết Nối",
           help_docs: "Trợ Giúp & Tài Liệu"
@@ -59,6 +60,14 @@ const resources = {
           no_sunell_cameras: "Chưa có Camera Sunell nào",
           lora_devices: "LoRa Devices",
           no_lora_devices: "No LoRa Devices"
+        },
+        emap: {
+          drag_to_pin: "Kéo thả để gắn pin",
+          waiting_event: "Chưa có sự kiện",
+          move: "Di chuyển",
+          delete: "Xóa",
+          close: "Đóng",
+          move_hint: "Kéo pin tới vị trí mới"
         },
         monitor: {
           input_connections: "Nhận dữ liệu từ...",
@@ -579,6 +588,7 @@ const resources = {
       app: {
         sidebar: {
           alert_wall: "Alert Wall",
+          emap: "E-MAP",
           connections_monitor: "Events Monitor",
           devices: "Connections Management",
           help_docs: "Help & Docs"
@@ -631,6 +641,14 @@ const resources = {
           no_sunell_cameras: "No Sunell Cameras",
           lora_devices: "LoRa Devices",
           no_lora_devices: "No LoRa Devices"
+        },
+        emap: {
+          drag_to_pin: "Drag to pin",
+          waiting_event: "No event yet",
+          move: "Move",
+          delete: "Delete",
+          close: "Close",
+          move_hint: "Drag the pin to a new position"
         },
         monitor: {
           input_connections: "Input Connections",

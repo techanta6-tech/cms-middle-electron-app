@@ -138,6 +138,7 @@ type SystemSnapshot = {
   allLogs?: LogData[];
   prefilter?: any[];
   gridLayout?: { grids: any[]; gridCols: number };
+  eMapLayout?: { pins: any[]; tileProviderId?: string };
   knownEvents?: {
     svms?: SvmsKnownEvent[];
     milesight?: MilesightKnownEvent[];
@@ -188,6 +189,7 @@ export function useSocketManager() {
   const [cameraDevices, setCameraDevices] = useState<MqttDeviceConfig[]>([]);
   const [deviceCameraLinks, setDeviceCameraLinks] = useState<DeviceCameraLink[]>([]);
   const [gridLayout, setGridLayout] = useState<{ grids: any[]; gridCols: number }>({ grids: [], gridCols: 3 });
+  const [eMapLayout, setEMapLayout] = useState<{ pins: any[]; tileProviderId: string }>({ pins: [], tileProviderId: 'openstreetmap' });
 
   // SVMS per-device event feature config
   const [svmsDeviceFeatures, setSvmsDeviceFeatures] = useState<{ serverId: string; deviceIndex: string; features: Record<string, boolean> }[]>([]);
@@ -396,6 +398,15 @@ export function useSocketManager() {
       console.log('[SAVE_GRID_LAYOUT] Saved to BE');
     } catch (err) {
       console.error('[SAVE_GRID_LAYOUT] Failed:', err);
+    }
+  }, []);
+
+  const saveEMapLayout = useCallback(async (pins: any[], tileProviderId = 'openstreetmap') => {
+    try {
+      await apiClient.put('/api/v1/emap-layout', { pins, tileProviderId });
+      console.log('[SAVE_EMAP_LAYOUT] Saved to BE');
+    } catch (err) {
+      console.error('[SAVE_EMAP_LAYOUT] Failed:', err);
     }
   }, []);
 
@@ -839,8 +850,13 @@ export function useSocketManager() {
       console.log('[SOCKET] update-grid-layout:', data);
       setGridLayout({ grids: data.grids || [], gridCols: data.gridCols || 3 });
     };
+    const onUpdateEMapLayout = (data: { pins: any[]; tileProviderId?: string }) => {
+      console.log('[SOCKET] update-emap-layout:', data);
+      setEMapLayout({ pins: data.pins || [], tileProviderId: data.tileProviderId || 'openstreetmap' });
+    };
     socket.on('update-device-camera-links', onUpdateDeviceCameraLinks);
     socket.on('update-grid-layout', onUpdateGridLayout);
+    socket.on('update-emap-layout', onUpdateEMapLayout);
 
     const onUpdateSvmsDeviceFeatures = (data: { serverId: string; deviceIndex: string; features: Record<string, boolean> }[]) => {
       console.log('[SOCKET] update-svms-device-features:', data);
@@ -885,6 +901,7 @@ export function useSocketManager() {
       }
       if (Array.isArray(data.cameras)) setCameraDevices(data.cameras);
       if (data.gridLayout) setGridLayout({ grids: data.gridLayout.grids || [], gridCols: data.gridLayout.gridCols || 3 });
+      if (data.eMapLayout) setEMapLayout({ pins: data.eMapLayout.pins || [], tileProviderId: data.eMapLayout.tileProviderId || 'openstreetmap' });
       if (Array.isArray(data.knownEvents?.svms)) setSvmsKnownEvents(data.knownEvents.svms);
       if (Array.isArray(data.knownEvents?.milesight)) setMilesightKnownEvents(data.knownEvents.milesight);
       if (Array.isArray(data.knownEvents?.sunell)) setSunellKnownEvents(data.knownEvents.sunell);
@@ -991,6 +1008,7 @@ export function useSocketManager() {
       socket.off('debug-camera-snapshot', onDebugCameraSnapshot);
       socket.off('update-device-camera-links', onUpdateDeviceCameraLinks);
       socket.off('update-grid-layout', onUpdateGridLayout);
+      socket.off('update-emap-layout', onUpdateEMapLayout);
       socket.off('new-svms-log', onNewSvmsLog);
       socket.off('new-svms-servers', onNewSvmsServers);
       socket.off('new-svms-devices', onNewSvmsDevices);
@@ -1054,7 +1072,9 @@ export function useSocketManager() {
     handleLinkDeviceCamera,
     handleLinkMqttServerCamera,
     gridLayout,
+    eMapLayout,
     saveGridLayout,
+    saveEMapLayout,
     fetchGridLayout,
     svmsDeviceFeatures,
     svmsKnownEvents,

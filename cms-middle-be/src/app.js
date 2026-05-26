@@ -16,6 +16,7 @@ const mqttRoutes = require('./routes/mqtt_milesight/mqtt.routes');
 const camerasRoutes = require('./routes/cameras.routes');
 const deviceCameraLinkRoutes = require('./routes/device-camera-link.routes');
 const gridLayoutRoutes = require('./routes/grid-layout.routes');
+const eMapLayoutRoutes = require('./routes/emap-layout.routes');
 const { getClientSockets } = require('./socketState');
 
 const app = express();
@@ -161,6 +162,7 @@ app.use(mqttRoutes);
 app.use(camerasRoutes);
 app.use(deviceCameraLinkRoutes);
 app.use(gridLayoutRoutes);
+app.use(eMapLayoutRoutes);
 // ─── Debug: dump toàn bộ in-memory state ─────────────────────────────────────
 const socketState = require('./socketState');
 
@@ -182,6 +184,7 @@ app.get('/api/v1/debug/state', (req, res) => {
     cameraDevices: socketState.cameraDevices,
     deviceCameraLinks: socketState.deviceCameraLinks,
     gridLayout: socketState.gridLayout,
+    eMapLayout: socketState.eMapLayout,
   });
 });
 
