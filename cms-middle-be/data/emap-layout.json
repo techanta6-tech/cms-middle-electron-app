@@ -84,8 +84,25 @@
       ],
       "createdAt": "2026-05-26T08:04:02.564Z",
       "updatedAt": "2026-05-26T08:04:02.564Z"
+    },
+    {
+      "id": "emap-1779783882683-b3j8g7",
+      "lat": 10.763962724793933,
+      "lng": 106.65981402098073,
+      "label": "Cam 192.168.1.208",
+      "devices": [
+        {
+          "server_serial": "SUNELL",
+          "server_id": "SUNELL-LOCAL",
+          "device_ip": "cam-1779777496725-jvnoi",
+          "device_name": "Cam 192.168.1.208",
+          "device_type": "sunell"
+        }
+      ],
+      "createdAt": "2026-05-26T08:24:42.683Z",
+      "updatedAt": "2026-05-26T08:24:42.683Z"
     }
   ],
   "tileProviderId": "openstreetmap",
-  "updatedAt": "2026-05-26T08:14:48.525Z"
+  "updatedAt": "2026-05-26T08:24:42.691Z"
 }

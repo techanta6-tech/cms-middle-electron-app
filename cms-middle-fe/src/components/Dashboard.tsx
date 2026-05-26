@@ -765,8 +765,8 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Right Section — only visible on Alert Wall tab */}
-        {mainTab === 'alert' && !isAlertWallFullscreen && isNarrow && (
+        {/* Right Section — visible on Alert Wall and E-Map tabs */}
+        {(mainTab === 'alert' || mainTab === 'emap') && !isAlertWallFullscreen && isNarrow && (
           <button
             onClick={() => setRightPanelVisible(v => !v)}
             className="app-right-panel-toggle fixed bottom-4 right-4 z-50 flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary text-white shadow-lg text-[11px] font-bold tracking-wide transition-all hover:bg-primary/90 active:scale-95"
@@ -776,34 +776,7 @@ export function Dashboard() {
               : <><PanelRightOpen className="w-4 h-4" /></>}
           </button>
         )}
-        {mainTab === 'emap' && !isAlertWallFullscreen && isNarrow && (
-          <button
-            onClick={() => setRightPanelVisible(v => !v)}
-            className="app-right-panel-toggle fixed bottom-4 right-4 z-50 flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary text-white shadow-lg text-[11px] font-bold tracking-wide transition-all hover:bg-primary/90 active:scale-95"
-          >
-            {rightPanelVisible
-              ? <><PanelRightClose className="w-4 h-4" /></>
-              : <><PanelRightOpen className="w-4 h-4" /></>}
-          </button>
-        )}
-        {mainTab === 'emap' && !isAlertWallFullscreen && (
-          <aside
-            className={`emap-right-section bg-surface-container-lowest flex flex-col overflow-hidden shadow-2xl z-10 transition-transform duration-300 ${isNarrow
-              ? `fixed bottom-0 left-0 right-0 h-1/4 border-t border-outline-variant/20 ${rightPanelVisible ? 'translate-y-0' : 'translate-y-full'}`
-              : 'col-span-1 relative w-full'
-              }`}
-          >
-            <DeviceDraggablePanel
-              devices={devices}
-              mqttGroups={mqttGroups}
-              mqttDevicesByServer={mqttDevicesByServer}
-              cameraDevices={cameraDevices}
-              deviceCameraLinks={deviceCameraLinks}
-              title={t('app.emap.drag_to_pin')}
-            />
-          </aside>
-        )}
-        {mainTab === 'alert' && !isAlertWallFullscreen && (
+        {(mainTab === 'alert' || mainTab === 'emap') && !isAlertWallFullscreen && (
           <aside
             className={`alert-wall-right-section bg-surface-container-lowest flex flex-col overflow-hidden shadow-2xl z-10 transition-transform duration-300 ${isNarrow
               ? `fixed bottom-0 left-0 right-0 h-1/4 border-t border-outline-variant/20 ${rightPanelVisible ? 'translate-y-0' : 'translate-y-full'}`
@@ -878,6 +851,15 @@ export function Dashboard() {
                   )}
                 </div>
               </>
+            ) : mainTab === 'emap' ? (
+              <DeviceDraggablePanel
+                devices={devices}
+                mqttGroups={mqttGroups}
+                mqttDevicesByServer={mqttDevicesByServer}
+                cameraDevices={cameraDevices}
+                deviceCameraLinks={deviceCameraLinks}
+                title={t('app.emap.drag_to_pin')}
+              />
             ) : (
               <div className="device-draggable-container flex-1 overflow-y-auto custom-scrollbar p-3 bg-surface-container-low/10 flex flex-col gap-2 relative">
                 <div className="flex items-center justify-between sticky top-0 py-1 z-10 backdrop-blur-md mb-2 rounded-md px-1">
