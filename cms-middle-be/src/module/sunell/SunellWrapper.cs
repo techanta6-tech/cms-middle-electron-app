@@ -49,9 +49,9 @@ public class Startup
         [MarshalAs(UnmanagedType.FunctionPtr)] SDK_DETECT_CB detect_cb, IntPtr p_obj);
 
     // Chụp ảnh snapshot: sdk_open_snap(handle, channel, filepath)
-    [DllImport(DLL_NAME, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-    public static extern Int32 sdk_open_snap(UInt32 handle, Int32 channel,
-        [MarshalAs(UnmanagedType.LPStr)] string p_file);
+    // [DllImport(DLL_NAME, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+    // public static extern Int32 sdk_open_snap(UInt32 handle, Int32 channel,
+    //     [MarshalAs(UnmanagedType.LPStr)] string p_file);
 
     // Chụp ảnh từ media stream: sdk_md_capture(md_handle, filepath)
     [DllImport(DLL_NAME, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
@@ -182,7 +182,8 @@ public class Startup
                     }
 
                     // Lưu file ảnh để debug (tùy chọn)
-                    if (!string.IsNullOrEmpty(_snapshotDir) && !string.IsNullOrEmpty(snapshotBase64))
+                    // File save is deferred to Node after event prefilter passes.
+                    if (false && !string.IsNullOrEmpty(_snapshotDir) && !string.IsNullOrEmpty(snapshotBase64))
                     {
                         try
                         {
@@ -210,7 +211,8 @@ public class Startup
         }
 
         // === CÁCH 2 (FALLBACK): Chụp qua SDK nếu chưa extract được ảnh từ p_data ===
-        if (string.IsNullOrEmpty(snapshotBase64))
+        // Supplemental SDK capture is deferred to Node after event prefilter passes.
+        if (false && string.IsNullOrEmpty(snapshotBase64))
         {
             try
             {
@@ -280,28 +282,30 @@ public class Startup
             Int32 snapResult = -1;
 
             // === BƯỚC 1: Thử chụp qua live stream handle (ưu tiên) ===
-            if (_mdHandle > 0)
+            bool mdHandleValid = _mdHandle > 0 && _mdHandle != 0xFFFFFFFF;
+            if (mdHandleValid)
             {
                 snapResult = sdk_md_capture(_mdHandle, tempPath);
                 Console.WriteLine("[SNAP] sdk_md_capture result = " + snapResult + " | path = " + tempPath);
 
                 if (snapResult != 0)
                 {
-                    Console.WriteLine("[SNAP] sdk_md_capture FAILED (result=" + snapResult + ") — se thu sdk_open_snap");
+                    Console.WriteLine("[SNAP] sdk_md_capture FAILED (result=" + snapResult + ")");
                 }
             }
             else
             {
-                Console.WriteLine("[SNAP] _mdHandle = 0 — bo qua sdk_md_capture, dung sdk_open_snap");
+                Console.WriteLine("[SNAP] _mdHandle = " + _mdHandle + " (invalid/0xFFFFFFFF) — bo qua sdk_md_capture");
             }
 
             // === BƯỚC 2: Fallback dùng sdk_open_snap nếu md_capture thất bại ===
+            /*
             if (snapResult != 0)
             {
-                // Thử tối đa 2 lần với sdk_open_snap (có thể SDK cần chút thời gian ổn định)
+                // Chỉ dùng channel 0 (channel 1 gây AccessViolationException trên một số model Sunell)
                 for (int attempt = 1; attempt <= 2 && snapResult != 0; attempt++)
                 {
-                    if (attempt > 1) System.Threading.Thread.Sleep(300); // Chờ thêm trước retry
+                    if (attempt > 1) System.Threading.Thread.Sleep(300);
                     snapResult = sdk_open_snap(_deviceHandle, 0, tempPath);
                     Console.WriteLine("[SNAP] sdk_open_snap attempt #" + attempt + " result = " + snapResult + " | path = " + tempPath);
                 }
@@ -311,6 +315,7 @@ public class Startup
                     Console.WriteLine("[SNAP] sdk_open_snap FAILED sau 2 lan thu (result=" + snapResult + ") — SDK co the chua san sang");
                 }
             }
+            */
 
             // === BƯỚC 3: Polling loop chờ file được ghi (SDK ghi bất đồng bộ) ===
             // Thay thế Thread.Sleep(200) cố định bằng polling tối đa 2 giây
@@ -397,7 +402,8 @@ public class Startup
         string snapshotBase64 = "";
         string snapshotPath = "";
 
-        bool shouldCapture = true;
+        // Alarm snapshot capture is disabled here; Node decides after event prefilter.
+        bool shouldCapture = false;
         try
         {
             string flagVal = ExtractJsonInt(json, "alarm_flag");
@@ -490,6 +496,49 @@ public class Startup
                 return new Dictionary<string, object> { { "success", false }, { "error", "Invalid handle" } };
             }
 
+            if (data.ContainsKey("action") && (string)data["action"] == "captureSnapshotSdk")
+            {
+                if (data.ContainsKey("snapshotDir"))
+                {
+                    _snapshotDir = (string)data["snapshotDir"];
+                    if (!Directory.Exists(_snapshotDir)) {
+                        Directory.CreateDirectory(_snapshotDir);
+                    }
+                }
+
+                string snapshotBase64 = "";
+                string snapshotPath = "";
+                string prefix = data.ContainsKey("prefix") ? (string)data["prefix"] : "snap_manual_sdk";
+                bool forceFresh = data.ContainsKey("forceFresh") && Convert.ToBoolean(data["forceFresh"]);
+
+                try
+                {
+                    if (forceFresh)
+                    {
+                        _cachedSnapshotBase64 = "";
+                        _cachedSnapshotPath = "";
+                        _lastCaptureTime = DateTime.MinValue;
+                    }
+                    CaptureSnapshotWithCache(out snapshotBase64, out snapshotPath, prefix);
+                }
+                catch (Exception ex)
+                {
+                    return new Dictionary<string, object> {
+                        { "success", false },
+                        { "error", "SDK snapshot error: " + ex.Message }
+                    };
+                }
+
+                return new Dictionary<string, object> {
+                    { "success", !string.IsNullOrEmpty(snapshotBase64) },
+                    { "snapshotBase64", snapshotBase64 },
+                    { "snapshotPath", snapshotPath },
+                    { "handle", _deviceHandle },
+                    { "mdHandle", _mdHandle },
+                    { "error", string.IsNullOrEmpty(snapshotBase64) ? "SDK snapshot returned empty image" : "" }
+                };
+            }
+
             if (data.ContainsKey("onEvent")) {
                 globalNodeCallback = (Func<object, Task<object>>)data["onEvent"];
             }
@@ -547,14 +596,15 @@ public class Startup
                 // Delay 500ms để tránh xung đột khi alarm listener vừa khởi động xong
                 System.Threading.Thread.Sleep(500);
                 UInt32 mdHandle = sdk_md_live_start(handle, 1, 0, _liveCb, IntPtr.Zero);
-                if (mdHandle > 0)
+                if (mdHandle > 0 && mdHandle != 0xFFFFFFFF)
                 {
                     _mdHandle = mdHandle;
                     Console.WriteLine("[SDK] sdk_md_live_start OK, md_handle = " + mdHandle);
                 }
                 else
                 {
-                    Console.WriteLine("[SDK] sdk_md_live_start FAILED (md_handle = 0) — alarm snapshot se dung sdk_open_snap fallback");
+                    _mdHandle = 0; // Reset ve 0 de CaptureSnapshotWithCache dung sdk_open_snap fallback
+                    Console.WriteLine("[SDK] sdk_md_live_start FAILED (md_handle = " + mdHandle + ") — alarm snapshot se dung sdk_open_snap fallback");
                 }
 
                 response["online"] = true;

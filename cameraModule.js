@@ -104,6 +104,7 @@ class CameraDevice {
         this.cameraPass = config.cameraPass || '';
         this.logger = config.logger || null;
         this.onAlarm = config.onAlarm || null;
+        this.supplementalSnapshotEnabled = !!config.supplementalSnapshotEnabled;
 
         this.initialized = false;
         this.cameraConnected = false;
@@ -344,10 +345,18 @@ class CameraDevice {
                     let parsedData = payload.rawJson;
                     try {
                         let p = JSON.parse(payload.rawJson);
+                        const isLprEvent = Array.isArray(p.TargetDetectList)
+                            && p.TargetDetectList.some(target => target && target.Type === 3);
                         if (payload.snapshotBase64) {
                             p.snapshotBase64 = payload.snapshotBase64;
                             parsedData = JSON.stringify(p);
                             if (this.onAlarm) this.onAlarm(parsedData);
+                        } else if (isLprEvent) {
+                            this.log('IN', '[SDK] LPR event has no callback image; service will request supplemental SDK snapshot after prefilter.');
+                            if (this.onAlarm) this.onAlarm(JSON.stringify(p));
+                        } else if (!this.supplementalSnapshotEnabled) {
+                            this.log('IN', '[SDK] FACE_DETECT_STREAM has no callback image; supplemental snapshot is disabled.');
+                            if (this.onAlarm) this.onAlarm(JSON.stringify(p));
                         } else {
                             this.log('IN', '[FALLBACK] Chụp ảnh RTSP do SDK không trả về snapshotBase64 (FACE_DETECT)');
                             this.captureSnapshotBase64().then(b64 => {
@@ -405,6 +414,7 @@ class CameraDevice {
                 source: code,
                 references: ['System.Data.dll']
             });
+            this.edgeMethod = connectFn;
 
             const sdkPayload = {
                 sdkPath: this.sdkPath,
@@ -437,6 +447,52 @@ class CameraDevice {
                     }
                     resolve(result);
                 }
+            });
+        });
+    }
+
+    captureSnapshotSdkBase64(options = {}) {
+        if (!this.edgeMethod) {
+            return Promise.resolve({
+                success: false,
+                error: 'SDK method is not initialized. Connect the Sunell camera first.'
+            });
+        }
+
+        if (!this.cameraConnected || !this.cameraHandle) {
+            return Promise.resolve({
+                success: false,
+                error: 'Sunell camera is not connected.'
+            });
+        }
+
+        return new Promise((resolve) => {
+            const payload = {
+                action: 'captureSnapshotSdk',
+                snapshotDir: options.snapshotDir || this.snapshotDir,
+                prefix: options.prefix || `snap_manual_sdk_${this.id}`,
+                forceFresh: !!options.forceFresh
+            };
+
+            this.log('IN', '[SDK SNAPSHOT] Requesting snapshot without RTSP...', { handle: this.cameraHandle });
+            this.edgeMethod(payload, (error, result) => {
+                if (error) {
+                    this.log('IN', '[SDK SNAPSHOT] Error', error.message || String(error));
+                    resolve({ success: false, error: error.message || String(error) });
+                    return;
+                }
+
+                if (result && result.snapshotBase64 && !String(result.snapshotBase64).startsWith('data:image')) {
+                    result.snapshotBase64 = `data:image/jpeg;base64,${result.snapshotBase64}`;
+                }
+
+                this.log('IN', '[SDK SNAPSHOT] Result', {
+                    success: !!(result && result.success),
+                    hasSnapshot: !!(result && result.snapshotBase64),
+                    snapshotPath: result && result.snapshotPath,
+                    error: result && result.error
+                });
+                resolve(result || { success: false, error: 'Empty SDK snapshot result' });
             });
         });
     }

@@ -17,6 +17,7 @@ const camerasRoutes = require('./routes/cameras.routes');
 const deviceCameraLinkRoutes = require('./routes/device-camera-link.routes');
 const gridLayoutRoutes = require('./routes/grid-layout.routes');
 const eMapLayoutRoutes = require('./routes/emap-layout.routes');
+const trafficRoutes = require('./routes/traffic.routes');
 const { getClientSockets } = require('./socketState');
 
 const app = express();
@@ -163,6 +164,7 @@ app.use(camerasRoutes);
 app.use(deviceCameraLinkRoutes);
 app.use(gridLayoutRoutes);
 app.use(eMapLayoutRoutes);
+app.use(trafficRoutes);
 // ─── Debug: dump toàn bộ in-memory state ─────────────────────────────────────
 const socketState = require('./socketState');
 

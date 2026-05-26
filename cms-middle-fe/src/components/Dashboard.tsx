@@ -462,7 +462,7 @@ export function Dashboard() {
   const [selectedServers, setSelectedServers] = useState<Set<string>>(new Set());
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
   const [rightTab, setRightTab] = useState<'logs' | 'devices'>('logs');
-  const [mainTab, setMainTab] = useState<'alert' | 'emap' | 'connections' | 'devices'>('alert');
+  const [mainTab, setMainTab] = useState<'alert' | 'emap' | 'connections' | 'devices'>('emap');
   const [visibleAlerts, setVisibleAlerts] = useState<number>(30);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -661,6 +661,13 @@ export function Dashboard() {
             {!isAlertWallFullscreen && (
               <div className={`appTabsBar flex items-center border-b border-outline-variant/10 shrink-0 ${isNarrow ? '' : 'px-6 gap-4'}`}>
                 <button
+                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'emap' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('emap')}
+                >
+                  <MapPinned className={`w-5 h-5 ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.emap')}</h2>
+                </button>
+                <button
                   className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'alert' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('alert')}
                 >
@@ -673,13 +680,6 @@ export function Dashboard() {
                 >
                   <Cpu className={`w-5 h-5 ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.devices')}</h2>
-                </button>
-                <button
-                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'emap' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
-                  onClick={() => setMainTab('emap')}
-                >
-                  <MapPinned className={`w-5 h-5 ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`} />
-                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.emap')}</h2>
                 </button>
                 <button
                   className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'connections' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}

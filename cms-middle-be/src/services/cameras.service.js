@@ -4,6 +4,7 @@ const { cameraDevices, getClientSockets } = require('../socketState');
 const { appendLog } = require('./system-state.service');
 const sunellEventRegistry = require('./sunellEventRegistry.service');
 const persistedDevices = require('./persisted-devices.service');
+const trafficService = require('./traffic.service');
 
 // Trong môi trường pkg, __dirname nằm trong virtual snapshot (read-only).
 // Phải dùng đường dẫn thực tế ngoài snapshot để có thể ghi file.
@@ -12,6 +13,13 @@ const sampleLogsDir = path.join(_writableBase, '/log_samples/sunell_logs_samples
 if (!fs.existsSync(sampleLogsDir)) {
   fs.mkdirSync(sampleLogsDir, { recursive: true });
 }
+const sunellSnapshotDir = path.join(_writableBase, 'sunellSnapshot');
+if (!fs.existsSync(sunellSnapshotDir)) {
+  fs.mkdirSync(sunellSnapshotDir, { recursive: true });
+}
+const sunellSnapshotErrorLogPath = path.join(sunellSnapshotDir, 'snapshot-errors.log');
+const SUNELL_SUPPLEMENTAL_SNAPSHOT_ENABLED = true;
+const SUNELL_RTSP_FALLBACK_SNAPSHOT_ENABLED = false;
 const loggedEventTypes = new Set();
 let CameraDevice;
 let getAlarmName;
@@ -38,7 +46,96 @@ try {
     constructor() { this.initialized = true; }
     connectCamera() { return Promise.resolve({ online: false, error: 'cameraModule not available' }); }
     captureSnapshotBase64() { return Promise.resolve(null); }
+    captureSnapshotSdkBase64() { return Promise.resolve({ success: false, error: 'cameraModule not available' }); }
   };
+}
+
+function logSunellSnapshotError(device, err, payload = {}) {
+  const message = err && err.message ? err.message : String(err || 'Unknown SDK snapshot error');
+  const snapshotResult = payload.sunellSnapshotResult || {};
+  const line = JSON.stringify({
+    time: new Date().toISOString(),
+    cameraId: device && device.id,
+    cameraName: device && device.name,
+    cameraIp: device && device.cameraIp,
+    status: 'error',
+    error: message,
+    eventName: payload.eventName || (payload.data && payload.data.eventName) || null,
+    rawMainType: payload.data && payload.data.main_type,
+    rawSubType: payload.data && payload.data.sub_type,
+    handle: snapshotResult.handle,
+    mdHandle: snapshotResult.mdHandle,
+    snapshotPath: snapshotResult.snapshotPath,
+  });
+
+  try {
+    fs.appendFileSync(sunellSnapshotErrorLogPath, `${line}\n`, 'utf8');
+  } catch (writeErr) {
+    console.error('[Sunell-Snapshot] Failed to write snapshot error log:', writeErr);
+  }
+
+  const sockets = getClientSockets();
+  if (sockets) {
+    sockets.emit('debug-camera-snapshot', {
+      time: new Date().toISOString(),
+      message: `[Sunell-Snapshot] LPR SDK snapshot failed for '${device && device.id}': ${message}`
+    });
+  }
+}
+
+function logSunellSnapshotSuccess(device, payload = {}) {
+  const snapshotResult = payload.sunellSnapshotResult || {};
+  const line = JSON.stringify({
+    time: new Date().toISOString(),
+    cameraId: device && device.id,
+    cameraName: device && device.name,
+    cameraIp: device && device.cameraIp,
+    status: 'success',
+    eventName: payload.eventName || (payload.data && payload.data.eventName) || null,
+    rawMainType: payload.data && payload.data.main_type,
+    rawSubType: payload.data && payload.data.sub_type,
+    handle: snapshotResult.handle,
+    mdHandle: snapshotResult.mdHandle,
+    snapshotPath: payload.snapshotPath || payload.sunellSnapshotPath || snapshotResult.snapshotPath,
+    snapshotSource: payload.snapshotSource,
+  });
+
+  try {
+    fs.appendFileSync(sunellSnapshotErrorLogPath, `${line}\n`, 'utf8');
+  } catch (writeErr) {
+    console.error('[Sunell-Snapshot] Failed to write snapshot success log:', writeErr);
+  }
+}
+
+function saveSunellSnapshotAfterPrefilter(device, payload, logType) {
+  if (!payload || !payload.snapshotBase64 || payload.snapshotPath || payload.sunellSnapshotPath) {
+    return null;
+  }
+
+  try {
+    const snapshotDir = device.snapshotDir || path.join(_writableBase, 'snapshots');
+    if (!fs.existsSync(snapshotDir)) {
+      fs.mkdirSync(snapshotDir, { recursive: true });
+    }
+
+    const raw = String(payload.snapshotBase64);
+    const dataUrlMatch = raw.match(/^data:image\/([^;]+);base64,(.+)$/);
+    const ext = dataUrlMatch ? (dataUrlMatch[1] === 'jpeg' ? 'jpg' : dataUrlMatch[1]) : 'jpg';
+    const base64 = dataUrlMatch ? dataUrlMatch[2] : raw;
+    const safeLogType = String(logType || 'event').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeDeviceId = String(device.id || 'camera').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `sunell_${safeLogType}_${safeDeviceId}_${Date.now()}.${ext}`;
+    const outputPath = path.join(snapshotDir, filename);
+
+    fs.writeFileSync(outputPath, Buffer.from(base64, 'base64'));
+    payload.snapshotPath = outputPath;
+    console.log(`[Sunell-Snapshot] Saved after prefilter: ${outputPath}`);
+    return outputPath;
+  } catch (err) {
+    console.error(`[Sunell-Snapshot] Failed to save after prefilter for '${device && device.id}':`, err);
+    logSunellSnapshotError(device, err, payload);
+    return null;
+  }
 }
 
 async function addCameraDevice(deviceConfig, options = {}) {
@@ -240,7 +337,45 @@ async function addCameraDevice(deviceConfig, options = {}) {
 
         // --- FALLBACK SNAPSHOT ---
         // Nếu sự kiện lọt qua được bộ lọc mà chưa có ảnh từ SDK, ta tiến hành chụp RTSP
-        if (!payload.snapshotBase64) {
+        if (SUNELL_SUPPLEMENTAL_SNAPSHOT_ENABLED && isLpr) {
+          try {
+            console.log(`[Camera-${id}] [SUNELL SDK SNAPSHOT] Bat dau chup anh bien so qua SDK, khong dung RTSP`);
+            const result = await device.instance.captureSnapshotSdkBase64({
+              snapshotDir: sunellSnapshotDir,
+              prefix: `lpr_${device.id}_${Date.now()}`,
+              forceFresh: true
+            });
+            payload.sunellSnapshotResult = {
+              success: !!(result && result.success),
+              handle: result && result.handle,
+              mdHandle: result && result.mdHandle,
+              snapshotPath: result && result.snapshotPath,
+              error: result && result.error,
+            };
+
+            if (result && result.success && result.snapshotBase64) {
+              if (payload.snapshotBase64) {
+                payload.originalSnapshotBase64 = payload.snapshotBase64;
+                payload.originalSnapshotPath = payload.snapshotPath || payload.sunellSnapshotPath || null;
+              }
+              payload.snapshotBase64 = result.snapshotBase64;
+              payload.snapshotPath = result.snapshotPath || null;
+              payload.sunellSnapshotPath = result.snapshotPath || null;
+              payload.snapshotSource = 'sunell-sdk-supplemental';
+              logSunellSnapshotSuccess(device, payload);
+              console.log(`[Camera-${id}] [SUNELL SDK SNAPSHOT] OK, file=${result.snapshotPath || '(unknown)'}, size=${result.snapshotBase64.length}`);
+            } else {
+              const errorMessage = (result && result.error) || 'SDK snapshot returned empty image';
+              payload.sunellSnapshotError = errorMessage;
+              console.error(`[Camera-${id}] [SUNELL SDK SNAPSHOT] FAIL: ${errorMessage}`);
+              logSunellSnapshotError(device, new Error(errorMessage), payload);
+            }
+          } catch (err) {
+            payload.sunellSnapshotError = err.message || String(err);
+            console.error(`[Camera-${id}] [SUNELL SDK SNAPSHOT] FAIL: ${payload.sunellSnapshotError}`);
+            logSunellSnapshotError(device, err, payload);
+          }
+        } else if (SUNELL_RTSP_FALLBACK_SNAPSHOT_ENABLED && !payload.snapshotBase64) {
           try {
             console.log(`[Camera-${id}] [FALLBACK] Bắt đầu chụp ảnh RTSP cho sự kiện [${description}]`);
             const b64 = await device.instance.captureSnapshotBase64();
@@ -258,6 +393,21 @@ async function addCameraDevice(deviceConfig, options = {}) {
 
         // YÊU CẦU: Ghi log sự kiện lần đầu tiên ra file txt
         // Nếu có eventName thì lưu ra file riêng cho từng loại eventName (như IVA có nhiều loại)
+        saveSunellSnapshotAfterPrefilter(device, payload, logType);
+
+        // ─── Traffic module: ghi nhận biển số xe (LPR) ───
+        if (isLpr) {
+          try {
+            const trafficResult = trafficService.appendTrafficRecord(payload, device);
+            if (trafficResult) {
+              const plates = Array.isArray(trafficResult) ? trafficResult : [trafficResult];
+              console.log(`[Camera-${id}] [Traffic] Ghi nhan ${plates.length} bien so: ${plates.map(p => p.plate_num).join(', ')}`);
+            }
+          } catch (trafficErr) {
+            console.error(`[Camera-${id}] [Traffic] Loi ghi nhan bien so:`, trafficErr.message);
+          }
+        }
+
         let eventKey = logType;
         let eventNameSafe = '';
         const rawEventName = payload.eventName || (payload.data && payload.data.eventName) || '';
@@ -300,6 +450,7 @@ async function addCameraDevice(deviceConfig, options = {}) {
           log_type: logType,
           log_description: description,
           snapshot: payload.snapshotBase64 || undefined,
+          snapshot_path: payload.snapshotPath || payload.sunellSnapshotPath || undefined,
           log_source: 'sunell-camera',
           device_info: {
             name: device.name || 'Sunell Camera',
@@ -335,7 +486,8 @@ async function addCameraDevice(deviceConfig, options = {}) {
             log_type: logType,
             description: description,
             raw_data: payload,
-            image_data: payload.snapshotBase64
+            image_data: payload.snapshotBase64,
+            image_path: payload.snapshotPath || payload.sunellSnapshotPath || undefined
           });
         }
       } catch (e) {
@@ -574,11 +726,158 @@ async function getSnapshotForCamera(cameraId) {
   }
 }
 
+async function getSdkSnapshotForCamera(cameraId) {
+  const clientSockets = getClientSockets();
+  const _debugFE = (msg) => {
+    console.log(msg);
+    if (clientSockets) clientSockets.emit('debug-camera-snapshot', { time: new Date().toISOString(), message: msg });
+  };
+
+  const device = cameraDevices.find(d => d.id === cameraId);
+  if (!device) {
+    _debugFE(`[Camera-SDK-Snapshot] Camera '${cameraId}' not found. Available: ${cameraDevices.map(d => d.id).join(', ') || 'none'}`);
+    return { success: false, statusCode: 404, error: 'Camera not found' };
+  }
+
+  if (device.type !== 'sunell') {
+    _debugFE(`[Camera-SDK-Snapshot] Camera '${cameraId}' is '${device.type}', SDK snapshot is only available for Sunell cameras`);
+    return { success: false, statusCode: 400, error: 'SDK snapshot is only available for Sunell cameras' };
+  }
+
+  if (device.status !== 'connected') {
+    _debugFE(`[Camera-SDK-Snapshot] Camera '${cameraId}' is not connected (status: ${device.status})`);
+    return { success: false, statusCode: 409, error: `Camera is not connected (status: ${device.status})` };
+  }
+
+  if (!device.instance || typeof device.instance.captureSnapshotSdkBase64 !== 'function') {
+    _debugFE(`[Camera-SDK-Snapshot] Camera '${cameraId}' has no SDK snapshot method`);
+    return { success: false, statusCode: 500, error: 'SDK snapshot method is not available' };
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // PHƯƠNG PHÁP 1: Chụp qua SDK gốc C# (sdk_md_capture / sdk_open_snap)
+  // ──────────────────────────────────────────────────────────────────
+  _debugFE(`[Camera-SDK-Snapshot] [1/3] Trying SDK native capture from camera '${device.id}'...`);
+  try {
+    const result = await device.instance.captureSnapshotSdkBase64({ forceFresh: true });
+    const base64 = result && result.snapshotBase64;
+    _debugFE(`[Camera-SDK-Snapshot] [1/3] SDK result: ${base64 ? `OK (${base64.length} chars)` : 'null/empty'} | handle=${result && result.handle} | mdHandle=${result && result.mdHandle}`);
+
+    if (result && result.success && base64) {
+      return {
+        success: true,
+        method: 'sdk_native',
+        camera: _sanitizeDevice(device),
+        snapshotBase64: base64,
+        snapshotPath: result.snapshotPath || null,
+        handle: result.handle,
+        mdHandle: result.mdHandle
+      };
+    }
+    _debugFE(`[Camera-SDK-Snapshot] [1/3] SDK native capture returned empty — trying HTTP fallback...`);
+  } catch (err) {
+    _debugFE(`[Camera-SDK-Snapshot] [1/3] SDK native capture error: ${err.message} — trying HTTP fallback...`);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // PHƯƠNG PHÁP 2: HTTP CGI/ISAPI snapshot (không cần SDK, chỉ cần mạng)
+  //   Thử nhiều endpoint phổ biến của camera Sunell:
+  //     - /ISAPI/Streaming/channels/101/picture (ISAPI chuẩn Hikvision-compatible)
+  //     - /cgi-bin/snapshot.cgi (CGI chuẩn)
+  //     - /cgi-bin/snapshot.cgi?channel=1
+  // ──────────────────────────────────────────────────────────────────
+  const camIp = device.cameraIp;
+  const camUser = device.cameraUser || 'admin';
+  const camPass = device.cameraPass || 'admin1234';
+  const httpPort = 80; // Sunell HTTP port mặc định
+
+  const HTTP_SNAPSHOT_URLS = [
+    `http://${camIp}:${httpPort}/ISAPI/Streaming/channels/101/picture`,
+    `http://${camIp}:${httpPort}/cgi-bin/snapshot.cgi`,
+    `http://${camIp}:${httpPort}/cgi-bin/snapshot.cgi?channel=1`,
+    `http://${camIp}:${httpPort}/snap.jpg`,
+    `http://${camIp}:${httpPort}/snapshot.jpg`,
+  ];
+
+  _debugFE(`[Camera-SDK-Snapshot] [2/3] Trying HTTP CGI/ISAPI snapshot from ${camIp} (${HTTP_SNAPSHOT_URLS.length} endpoints)...`);
+
+  const axios = require('axios');
+  for (const url of HTTP_SNAPSHOT_URLS) {
+    try {
+      _debugFE(`[Camera-SDK-Snapshot] [2/3] Trying: ${url}`);
+      const response = await axios.get(url, {
+        responseType: 'arraybuffer',
+        timeout: 5000,
+        auth: { username: camUser, password: camPass },
+        // Sunell thường dùng digest auth, axios hỗ trợ basic auth
+        // Nếu basic auth bị reject, camera sẽ trả về 401
+        validateStatus: (status) => status < 500,
+        maxRedirects: 3,
+      });
+
+      if (response.status === 200 && response.data && response.data.length > 100) {
+        const imgBuffer = Buffer.from(response.data);
+        // Kiểm tra JPEG header (FF D8 FF)
+        const isJpeg = imgBuffer.length >= 3 && imgBuffer[0] === 0xFF && imgBuffer[1] === 0xD8 && imgBuffer[2] === 0xFF;
+        // Kiểm tra PNG header (89 50 4E 47)
+        const isPng = imgBuffer.length >= 4 && imgBuffer[0] === 0x89 && imgBuffer[1] === 0x50 && imgBuffer[2] === 0x4E && imgBuffer[3] === 0x47;
+
+        if (isJpeg || isPng) {
+          const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
+          const base64 = `data:${mimeType};base64,${imgBuffer.toString('base64')}`;
+          _debugFE(`[Camera-SDK-Snapshot] [2/3] ✅ HTTP snapshot OK from ${url} | ${imgBuffer.length} bytes | ${mimeType}`);
+
+          // Lưu file để debug
+          try {
+            const filename = `snap_http_${device.id}_${Date.now()}.${isJpeg ? 'jpg' : 'png'}`;
+            const savePath = path.join(sunellSnapshotDir, filename);
+            fs.writeFileSync(savePath, imgBuffer);
+            return {
+              success: true,
+              method: 'http_cgi',
+              camera: _sanitizeDevice(device),
+              snapshotBase64: base64,
+              snapshotPath: savePath,
+              sourceUrl: url
+            };
+          } catch (_) {
+            return {
+              success: true,
+              method: 'http_cgi',
+              camera: _sanitizeDevice(device),
+              snapshotBase64: base64,
+              snapshotPath: null,
+              sourceUrl: url
+            };
+          }
+        } else {
+          const headerHex = imgBuffer.slice(0, 16).toString('hex');
+          _debugFE(`[Camera-SDK-Snapshot] [2/3] ${url} returned ${response.status} but not a valid image (header: ${headerHex})`);
+        }
+      } else {
+        _debugFE(`[Camera-SDK-Snapshot] [2/3] ${url} returned status=${response.status} size=${response.data ? response.data.length : 0}`);
+      }
+    } catch (httpErr) {
+      const errMsg = httpErr.code || httpErr.message || String(httpErr);
+      _debugFE(`[Camera-SDK-Snapshot] [2/3] ${url} failed: ${errMsg}`);
+    }
+  }
+
+  // Tất cả phương pháp đều thất bại
+  return {
+    success: false,
+    statusCode: 502,
+    error: 'All snapshot methods failed (SDK native, HTTP CGI/ISAPI)',
+    methods_tried: ['sdk_native', 'http_cgi']
+  };
+}
+
 module.exports = {
   addCameraDevice,
   removeCameraDevice,
   updateCameraDevice,
   getCamerasList,
   getSnapshotForCamera,
+  getSdkSnapshotForCamera,
   updateCameraFeatures
 };

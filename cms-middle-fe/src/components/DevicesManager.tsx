@@ -1075,6 +1075,9 @@ function MqttDeviceDetail({ dev, group, allCameras, deviceCameraLinks, onLinkDev
 function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfig; sunellKnownEvents: any[]; onEdit?: () => void }) {
   const { t, i18n } = useTranslation();
   const [showEventList, setShowEventList] = useState(true);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [snapshotResult, setSnapshotResult] = useState<{ base64?: string; path?: string; error?: string; method?: string } | null>(null);
+
   const features = (cam as any).features || {};
 
   const handleToggle = (code: string, value: boolean) => {
@@ -1082,6 +1085,32 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
       id: cam.id,
       features: { [code]: value }
     });
+  };
+
+  const handleActiveSnapshot = async () => {
+    setSnapshotLoading(true);
+    setSnapshotResult(null);
+    try {
+      const response = await apiClient.post(`/api/v1/cameras/${cam.id}/snapshot/sdk`);
+      if (response.data && response.data.success) {
+        setSnapshotResult({
+          base64: response.data.snapshotBase64,
+          path: response.data.snapshotPath,
+          method: response.data.method
+        });
+      } else {
+        setSnapshotResult({
+          error: response.data.error || 'Unknown error'
+        });
+      }
+    } catch (err: any) {
+      console.error('Active snapshot error:', err);
+      setSnapshotResult({
+        error: err.response?.data?.error || err.message || 'Network error'
+      });
+    } finally {
+      setSnapshotLoading(false);
+    }
   };
 
   const isSunell = cam.type === 'sunell';
@@ -1128,6 +1157,69 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
       <InfoRow label={t('app.monitor.username')} value={cam.cameraUser} />
       <InfoRow label={t('app.monitor.rtsp_url')} value={cam.rtspUrl || '(none)'} mono />
       <InfoRow label={t('app.monitor.handle')} value={cam.handle ?? '(none)'} />
+
+      {isSunell && (
+        <div className="flex flex-col gap-2 mt-4 bg-surface-container/20 border border-outline-variant/10 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-widest text-secondary">
+              📸 Snapshot Testing
+            </span>
+            <button
+              onClick={handleActiveSnapshot}
+              disabled={snapshotLoading || cam.status !== 'connected'}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-secondary border border-secondary/20 hover:border-secondary/50 bg-secondary/5 hover:bg-secondary/10 rounded-md transition-all cursor-pointer ${
+                (snapshotLoading || cam.status !== 'connected') ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              {snapshotLoading ? (
+                <span className="w-3.5 h-3.5 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Camera className="w-3.5 h-3.5" />
+              )}
+              {snapshotLoading ? 'Đang chụp...' : 'Chủ động Snapshot'}
+            </button>
+          </div>
+          
+          {cam.status !== 'connected' && (
+            <p className="text-[9px] text-red-500/70 italic mt-1">
+              * Vui lòng kết nối camera Sunell trước khi thực hiện snapshot
+            </p>
+          )}
+
+          {snapshotResult && (
+            <div className="mt-3 p-3 bg-surface-container-high rounded-md border border-outline-variant/15 flex flex-col gap-2">
+              {snapshotResult.error ? (
+                <div className="text-red-500 text-[11px] font-medium leading-relaxed">
+                  ❌ Chụp thất bại: {snapshotResult.error}
+                </div>
+              ) : (
+                <>
+                  <div className="text-secondary text-[11px] font-medium leading-relaxed">
+                    ✅ Chụp thành công!
+                    <span className="ml-1.5 text-[9px] font-mono text-on-surface-variant/60 bg-surface-container px-1.5 py-0.5 rounded">
+                      {snapshotResult.method === 'sdk_native' ? 'SDK Native' : snapshotResult.method === 'http_cgi' ? 'HTTP CGI/ISAPI' : snapshotResult.method || 'SDK'}
+                    </span>
+                  </div>
+                  {snapshotResult.path && (
+                    <div className="text-[9px] font-mono text-on-surface-variant break-all">
+                      Path: {snapshotResult.path}
+                    </div>
+                  )}
+                  {snapshotResult.base64 && (
+                    <div className="relative mt-2 border border-outline-variant/10 rounded-md overflow-hidden bg-black flex items-center justify-center max-h-[220px]">
+                      <img
+                        src={snapshotResult.base64}
+                        alt="Sunell Snapshot Preview"
+                        className="object-contain max-h-[220px] w-full"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {isSunell && (
         <div className="mt-5 pt-4 border-t border-outline-variant/10">

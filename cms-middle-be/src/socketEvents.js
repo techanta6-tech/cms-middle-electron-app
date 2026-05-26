@@ -5,6 +5,7 @@ const { emitSystemSnapshot } = require('./services/system-state.service');
 const svmsEventRegistry = require('./services/svmsEventRegistry.service');
 const milesightEventRegistry = require('./services/milesightEventRegistry.service');
 const sunellEventRegistry = require('./services/sunellEventRegistry.service');
+const trafficService = require('./services/traffic.service');
 
 /**
  * Sets up Socket.IO event listeners for the client server.
@@ -25,6 +26,8 @@ const setupSocketEvents = () => {
       socket.emit('update-svms-known-events', svmsEventRegistry.getEvents());
       socket.emit('update-milesight-known-events', milesightEventRegistry.getEvents());
       socket.emit('update-sunell-known-events', sunellEventRegistry.getEvents());
+      // ─── Traffic records sync ───
+      socket.emit('traffic-sync', trafficService.getTrafficRecordsForSync());
     });
 
     // Khởi tạo sentCount cho socket này
@@ -36,7 +39,6 @@ const setupSocketEvents = () => {
 
     // ─── Sync New System Data với FE client vừa connect ──────────────────────────────────
     emitSystemSnapshot(socket);
-
 
     socket.on('message', (data) => {
       console.log(`[MESSAGE] Received message from client ${socket.id} — broadcasting`);

@@ -1,9 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, TileLayer, Popup, useMap } from 'react-leaflet';
-import L, { type Map as LeafletMap } from 'leaflet';
+import L from 'leaflet';
 
+type LeafletMap = any;
 const LeafletMarker = Marker as any;
 const LeafletPopup = Popup as any;
+const LeafletTileLayer = TileLayer as any;
+const LeafletMapContainer = MapContainer as any;
 import { Move, Trash2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { LogData } from '../types';
@@ -139,7 +142,7 @@ const EMapPinMarker = memo(function EMapPinMarker({
   moving: boolean;
   interactionsDisabled: boolean;
   onOpenContextMenu: (point: { x: number; y: number }, pinId: string) => void;
-  onMoveEnd: (pinId: string, marker: L.Marker) => void;
+  onMoveEnd: (pinId: string, marker: any) => void;
   closeAllPopups: () => void;
 }) {
   const { t } = useTranslation();
@@ -163,27 +166,27 @@ const EMapPinMarker = memo(function EMapPinMarker({
       icon={makePinIcon(alerting)}
       draggable={moving}
       eventHandlers={{
-        mouseover: (event) => {
+        mouseover: (event: any) => {
           if (interactionsDisabled) return;
-          (event.target as L.Marker).openPopup();
+          (event.target as any).openPopup();
         },
-        mouseout: (event) => {
-          (event.target as L.Marker).closePopup();
+        mouseout: (event: any) => {
+          (event.target as any).closePopup();
         },
-        click: (event) => {
+        click: (event: any) => {
           (event.originalEvent as MouseEvent | undefined)?.preventDefault();
           closeAllPopups();
         },
-        popupopen: (event) => {
+        popupopen: (event: any) => {
           if (interactionsDisabled) {
-            (event.target as L.Marker).closePopup();
+            (event.target as any).closePopup();
           }
         },
-        contextmenu: (event) => {
+        contextmenu: (event: any) => {
           closeAllPopups();
           onOpenContextMenu({ x: event.containerPoint.x, y: event.containerPoint.y }, pin.id);
         },
-        dragend: (event) => onMoveEnd(pin.id, event.target as L.Marker),
+        dragend: (event: any) => onMoveEnd(pin.id, event.target as any),
       }}
     >
       <LeafletPopup closeButton={false} autoPan={false}>
@@ -317,7 +320,7 @@ export function EMap({
     }
   };
 
-  const handleMoveEnd = useCallback((pinId: string, marker: L.Marker) => {
+  const handleMoveEnd = useCallback((pinId: string, marker: any) => {
     const latLng = marker.getLatLng();
     setMovingPinId(null);
     savePins(pins.map(pin => pin.id === pinId
@@ -373,9 +376,9 @@ export function EMap({
         .leaflet-popup-content { margin: 0; }
       `}</style>
 
-      <MapContainer center={HCM_CENTER} zoom={12} minZoom={3} className="h-full w-full z-0">
+      <LeafletMapContainer center={HCM_CENTER} zoom={12} minZoom={3} className="h-full w-full z-0">
         <MapRef onReady={(map) => { mapRef.current = map; }} />
-        <TileLayer attribution={tileProvider.attribution} url={tileProvider.url} />
+        <LeafletTileLayer attribution={tileProvider.attribution} url={tileProvider.url} />
         {visiblePins.map(pin => (
           <EMapPinMarker
             key={`${pin.id}-${movingPinId === pin.id ? 'moving' : 'fixed'}`}
@@ -388,7 +391,7 @@ export function EMap({
             closeAllPopups={closeAllPopups}
           />
         ))}
-      </MapContainer>
+      </LeafletMapContainer>
 
       {contextMenu && (
         <div

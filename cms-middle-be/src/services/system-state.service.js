@@ -158,6 +158,7 @@ function getSystemSnapshot() {
       svmsDeviceFeatures: [...svmsDeviceFeatures],
       deviceCameraLinks: [...deviceCameraLinks],
     },
+    trafficRecords: require('./traffic.service').getTrafficRecordsForSync(),
   };
 }
 

@@ -1,6 +1,7 @@
 // ─── SHARED SOCKET STATE ──────────────────────────────────────────────────────
 const { Server } = require('socket.io');
 const { allLogs, ALL_LOGS_MAX, svmsServers, svmsDevices, mqttDeviceList, prefilter } = require('./newSystemDataState');
+const { trafficRecords, TRAFFIC_RECORDS_MAX } = require('./trafficState');
 const emapLayoutService = require('./services/emap-layout.service');
 
 /**
@@ -114,4 +115,7 @@ module.exports = {
   svmsDevices,
   mqttDeviceList,
   prefilter,
+  // ─── Traffic module ───
+  trafficRecords,
+  TRAFFIC_RECORDS_MAX,
 };

@@ -32,20 +32,71 @@ const svmsEventRegistry = require('./src/services/svmsEventRegistry.service');
 const milesightEventRegistry = require('./src/services/milesightEventRegistry.service');
 const sunellEventRegistry = require('./src/services/sunellEventRegistry.service');
 const { bootstrapPersistedDevices, getFilePath: getPersistedDevicesPath } = require('./src/services/persisted-devices.service');
+const trafficService = require('./src/services/traffic.service');
+
+const fs = require('fs');
 
 svmsEventRegistry.loadRegistry();
 milesightEventRegistry.loadRegistry();
 sunellEventRegistry.loadRegistry();
+trafficService.loadTrafficRecords();
 
 const httpServer = createServer(app);
 
 socketState.init(httpServer);
 setupSocketEvents();
 
+// ─── allLogs persistence: lưu ra file mỗi 1 phút ─────────────────────────
+const _writableBase = process.env.USER_DATA_PATH || process.cwd();
+const _allLogsDir = path.join(_writableBase, 'data');
+const _allLogsFilePath = path.join(_allLogsDir, 'allLogs.json');
+
+if (!fs.existsSync(_allLogsDir)) {
+  fs.mkdirSync(_allLogsDir, { recursive: true });
+}
+
+// Khôi phục allLogs từ file khi khởi động (nếu có)
+try {
+  if (fs.existsSync(_allLogsFilePath)) {
+    const raw = fs.readFileSync(_allLogsFilePath, 'utf8');
+    const restored = JSON.parse(raw);
+    if (Array.isArray(restored) && restored.length > 0) {
+      const { allLogs, ALL_LOGS_MAX } = socketState;
+      // Nạp lại dữ liệu cũ, giới hạn theo ALL_LOGS_MAX
+      const toRestore = restored.slice(-ALL_LOGS_MAX);
+      allLogs.push(...toRestore);
+      console.log(`[allLogs] Khoi phuc ${toRestore.length} logs tu ${_allLogsFilePath}`);
+    }
+  }
+} catch (err) {
+  console.error('[allLogs] Loi khi khoi phuc allLogs:', err.message);
+}
+
+// Lưu allLogs ra file mỗi 1 phút
+let _lastSavedLogCount = 0;
+setInterval(() => {
+  try {
+    const { allLogs } = socketState;
+    // Chỉ ghi file khi có thay đổi (tránh ghi liên tục không cần thiết)
+    if (allLogs.length === _lastSavedLogCount) return;
+
+    fs.writeFileSync(_allLogsFilePath, JSON.stringify(allLogs), 'utf8');
+    _lastSavedLogCount = allLogs.length;
+    console.log(`[allLogs] Da luu ${allLogs.length} logs ra ${_allLogsFilePath}`);
+  } catch (err) {
+    console.error('[allLogs] Loi khi luu allLogs:', err.message);
+  }
+
+  // Lưu traffic records
+  trafficService.saveTrafficRecords();
+}, 60 * 1000); // 1 phút
+
 httpServer.listen(port, '0.0.0.0', () => {
   console.log(`\nMIDDLE SERVER RUNNING AT: http://0.0.0.0:${port}`);
   console.log(`CLIENT SOCKET SERVER READY (PORT ${port})`);
   console.log(`PERSISTED DEVICE REGISTRY: ${getPersistedDevicesPath()}`);
+  console.log(`ALL LOGS PERSIST FILE: ${_allLogsFilePath}`);
+  console.log(`TRAFFIC PERSIST FILE: ${trafficService.getFilePath()}`);
 
   startMonitoring();
 
