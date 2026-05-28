@@ -452,50 +452,14 @@ class CameraDevice {
     }
 
     captureSnapshotSdkBase64(options = {}) {
-        if (!this.edgeMethod) {
-            return Promise.resolve({
-                success: false,
-                error: 'SDK method is not initialized. Connect the Sunell camera first.'
-            });
-        }
-
-        if (!this.cameraConnected || !this.cameraHandle) {
-            return Promise.resolve({
-                success: false,
-                error: 'Sunell camera is not connected.'
-            });
-        }
-
-        return new Promise((resolve) => {
-            const payload = {
-                action: 'captureSnapshotSdk',
-                snapshotDir: options.snapshotDir || this.snapshotDir,
-                prefix: options.prefix || `snap_manual_sdk_${this.id}`,
-                forceFresh: !!options.forceFresh
-            };
-
-            this.log('IN', '[SDK SNAPSHOT] Requesting snapshot without RTSP...', { handle: this.cameraHandle });
-            this.edgeMethod(payload, (error, result) => {
-                if (error) {
-                    this.log('IN', '[SDK SNAPSHOT] Error', error.message || String(error));
-                    resolve({ success: false, error: error.message || String(error) });
-                    return;
-                }
-
-                if (result && result.snapshotBase64 && !String(result.snapshotBase64).startsWith('data:image')) {
-                    result.snapshotBase64 = `data:image/jpeg;base64,${result.snapshotBase64}`;
-                }
-
-                this.log('IN', '[SDK SNAPSHOT] Result', {
-                    success: !!(result && result.success),
-                    hasSnapshot: !!(result && result.snapshotBase64),
-                    snapshotPath: result && result.snapshotPath,
-                    error: result && result.error
-                });
-                resolve(result || { success: false, error: 'Empty SDK snapshot result' });
-            });
+        // Tắt chức năng chụp qua SDK theo yêu cầu (đánh dấu lỗi), chuyển qua RTSP
+        return Promise.resolve({
+            success: false,
+            error: 'Chức năng chụp ảnh qua SDK đang bị lỗi, vui lòng sử dụng RTSP streaming.'
         });
     }
+
+
 
     async disconnectCamera() {
         if (!this.cameraConnected || !this.cameraHandle) {

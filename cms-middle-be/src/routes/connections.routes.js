@@ -11,7 +11,19 @@ const authMiddleware = require('../middleware/auth.middleware');
 
 const router = express.Router();
 
-router.use(authMiddleware);
+router.use((req, res, next) => {
+  const protectedPrefixes = [
+    '/api/v1/disconnect-client',
+    '/api/v1/create-connection',
+    '/api/v1/reconnect-connection',
+    '/api/v1/remove-connection',
+    '/api/v1/connections',
+  ];
+  if (!protectedPrefixes.some(prefix => req.path.startsWith(prefix))) {
+    return next('router');
+  }
+  return authMiddleware(req, res, next);
+});
 
 router.post('/api/v1/disconnect-client', async (req, res) => {
   const { socketId } = req.body;

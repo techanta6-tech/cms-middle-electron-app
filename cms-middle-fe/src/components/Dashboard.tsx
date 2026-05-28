@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSocketManager } from '../hooks/useSocketManager';
 import { ConnectionsMonitor } from './ConnectionsMonitor';
 import { LogPopup } from './LogPopup';
-import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut, ChevronDown, MapPinned } from 'lucide-react';
+import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut, ChevronDown, MapPinned, Car } from 'lucide-react';
 import { ConfigSystem } from './ConfigSystem';
 import apiClient from '../api/apiClient';
 import { LogEntry } from './LogEntry';
@@ -13,6 +13,7 @@ import { DevicesManager } from './DevicesManager';
 import { authApi } from '../api/authApi';
 import { EMap } from './EMap';
 import { DeviceDraggablePanel } from './DeviceDraggablePanel';
+import { TrafficManager } from './TrafficManager';
 
 function LogFilter({
   servers,
@@ -427,6 +428,12 @@ export function Dashboard() {
     handleAddMqttDevice,
     handleRemoveMqttGroup,
     handleRemoveMqttDevice,
+    trafficHistory,
+    trafficCatalog,
+    blacklistPlates,
+    setBlacklistPlates,
+    blacklistMechanism,
+    setBlacklistMechanism,
   } = useSocketManager();
 
   // Grid state synced from BE
@@ -462,7 +469,7 @@ export function Dashboard() {
   const [selectedServers, setSelectedServers] = useState<Set<string>>(new Set());
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
   const [rightTab, setRightTab] = useState<'logs' | 'devices'>('logs');
-  const [mainTab, setMainTab] = useState<'alert' | 'emap' | 'connections' | 'devices'>('emap');
+  const [mainTab, setMainTab] = useState<'alert' | 'emap' | 'connections' | 'devices' | 'traffic'>('emap');
   const [visibleAlerts, setVisibleAlerts] = useState<number>(30);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -675,6 +682,13 @@ export function Dashboard() {
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.alert_wall')}</h2>
                 </button>
                 <button
+                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'traffic' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('traffic')}
+                >
+                  <Car className={`w-5 h-5 ${mainTab === 'traffic' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'traffic' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.traffic', { defaultValue: 'Quản lý giao thông' })}</h2>
+                </button>
+                <button
                   className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('devices')}
                 >
@@ -760,6 +774,18 @@ export function Dashboard() {
                 svmsKnownEvents={svmsKnownEvents}
                 milesightKnownEvents={milesightKnownEvents}
                 sunellKnownEvents={sunellKnownEvents}
+              />
+            )}
+            {mainTab === 'traffic' && (
+              <TrafficManager
+                trafficHistory={trafficHistory}
+                trafficCatalog={trafficCatalog}
+                blacklistPlates={blacklistPlates}
+                setBlacklistPlates={setBlacklistPlates}
+                blacklistMechanism={blacklistMechanism}
+                setBlacklistMechanism={setBlacklistMechanism}
+                eMapLayout={eMapLayout}
+                eMapKnownDevices={eMapKnownDevices}
               />
             )}
           </div>
@@ -882,12 +908,12 @@ export function Dashboard() {
                         const mqttDevs = mqttDevicesByServer[ms.id] || [];
                         return mqttDevs.map(dev => ({
                           server_serial: ms.id,
-                                server_id: ms.id,
-                                device_ip: dev.devEui,
-                                device_name: dev.deviceName,
-                                device_type: 'mqtt-sensor',
-                                mqtt_device_id: (dev as any).id
-                              }));
+                          server_id: ms.id,
+                          device_ip: dev.devEui,
+                          device_name: dev.deviceName,
+                          device_type: 'mqtt-sensor',
+                          mqtt_device_id: (dev as any).id
+                        }));
                       });
 
                       const sunellDevices = cameraDevices.filter(cam => cam.type === 'sunell').map(cam => ({
@@ -1188,164 +1214,164 @@ export function Dashboard() {
       {/* ── Footer Bar ──────────────────────────────────────────────────── */}
       {!isAlertWallFullscreen && (
         <footer className="app-footer shrink-0 h-6 bg-surface-container border-t border-outline-variant/10 flex items-center px-3 gap-4 text-[9px] font-mono select-none z-20">
-        {/* Logout Button */}
-        <button
-          onClick={() => authApi.logout()}
-          className="flex items-center gap-1.5 text-on-surface-variant/60 hover:text-red-500 transition-colors cursor-pointer mr-2"
-          title="Logout"
-        >
-          <LogOut className="w-3.5 h-3.5" />
-        </button>
-
-        {/* System binding host */}
-        <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-secondary' : 'bg-red-500 animate-pulse'}`} />
-          <span className="text-on-surface-variant/60 uppercase tracking-widest font-bold text-[8px]">Host</span>
-          <span className="text-on-surface font-bold">{systemConfig.be.ip}:{systemConfig.be.port}</span>
+          {/* Logout Button */}
           <button
-            onClick={() => setIsConfigSystemOpen(true)}
-            className={`p-0.5 rounded transition-colors cursor-pointer ${isConnected ? 'text-secondary hover:bg-secondary/10' : 'text-red-500 hover:bg-red-500/10'}`}
-            title="System Config"
+            onClick={() => authApi.logout()}
+            className="flex items-center gap-1.5 text-on-surface-variant/60 hover:text-red-500 transition-colors cursor-pointer mr-2"
+            title="Logout"
           >
-            <Settings className="w-3 h-3" />
+            <LogOut className="w-3.5 h-3.5" />
           </button>
-        </div>
 
-        <div className="w-px h-3 bg-outline-variant/15" />
-
-        {/* Save logs toggle */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-on-surface-variant/60 uppercase tracking-widest font-bold text-[8px]">{t('app.footer.save_logs')}</span>
-          <div
-            onClick={toggleLogSaving}
-            className={`relative w-6 h-3.5 rounded-full cursor-pointer transition-colors duration-200 ${isLogSaving ? 'bg-secondary' : 'bg-outline-variant/30'}`}
-          >
-            <div className={`absolute top-0.5 left-0.5 w-2.5 h-2.5 bg-white rounded-full shadow-sm transition-transform duration-200 ${isLogSaving ? 'translate-x-2.5' : 'translate-x-0'}`} />
+          {/* System binding host */}
+          <div className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-secondary' : 'bg-red-500 animate-pulse'}`} />
+            <span className="text-on-surface-variant/60 uppercase tracking-widest font-bold text-[8px]">Host</span>
+            <span className="text-on-surface font-bold">{systemConfig.be.ip}:{systemConfig.be.port}</span>
+            <button
+              onClick={() => setIsConfigSystemOpen(true)}
+              className={`p-0.5 rounded transition-colors cursor-pointer ${isConnected ? 'text-secondary hover:bg-secondary/10' : 'text-red-500 hover:bg-red-500/10'}`}
+              title="System Config"
+            >
+              <Settings className="w-3 h-3" />
+            </button>
           </div>
-          <span className={`font-bold text-[8px] uppercase tracking-widest ${isLogSaving ? 'text-secondary' : 'text-on-surface-variant/40'}`}>{isLogSaving ? t('app.footer.on') : t('app.footer.off')}</span>
-        </div>
 
-        <div className="w-px h-3 bg-outline-variant/15" />
+          <div className="w-px h-3 bg-outline-variant/15" />
 
-        {/* View System Data */}
-        <div className="ViewSystemData flex items-center gap-1.5">
-          <button
-            onClick={async () => {
-              console.log("=== FRONTEND STATE (NEW ARCH) ===");
-              console.log("1. Canonical Logs (FE view source):", logs);
-              console.log("2. Snapshot Logs (LogData):", newSvmsLogs);
-              console.log("3. SVMS Servers (map):", servers);
-              console.log("4. SVMS Devices (map):", devices);
-              console.log("5. SVMS Servers (snapshot raw):", newSvmsServers);
-              console.log("6. SVMS Devices (snapshot raw):", newSvmsDevices);
-              console.log("7. MQTT Servers (canonical):", mqttServers);
-              console.log("8. MQTT Servers (snapshot):", mqttMilesightServers);
-              console.log("9. MQTT Devices (snapshot):", mqttMilesightDevices);
-              console.log("10. Camera Devices:", cameraDevices);
+          {/* Save logs toggle */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-on-surface-variant/60 uppercase tracking-widest font-bold text-[8px]">{t('app.footer.save_logs')}</span>
+            <div
+              onClick={toggleLogSaving}
+              className={`relative w-6 h-3.5 rounded-full cursor-pointer transition-colors duration-200 ${isLogSaving ? 'bg-secondary' : 'bg-outline-variant/30'}`}
+            >
+              <div className={`absolute top-0.5 left-0.5 w-2.5 h-2.5 bg-white rounded-full shadow-sm transition-transform duration-200 ${isLogSaving ? 'translate-x-2.5' : 'translate-x-0'}`} />
+            </div>
+            <span className={`font-bold text-[8px] uppercase tracking-widest ${isLogSaving ? 'text-secondary' : 'text-on-surface-variant/40'}`}>{isLogSaving ? t('app.footer.on') : t('app.footer.off')}</span>
+          </div>
 
-              console.log("12. Connections RECEIVE:", receiveServers);
-              console.log("13. Event Types (FE filter):", eventTypes);
-              console.log("14. Total Log Count:", totalLogCount);
-              console.log("15. Socket Connected:", isConnected);
-              console.log("16. System Config:", systemConfig);
+          <div className="w-px h-3 bg-outline-variant/15" />
 
-              let backendState = null;
-              try {
-                const res = await apiClient.get('/api/v1/debug/state');
-                backendState = res.data;
-                console.log("17. Backend In-Memory State:", backendState);
-              } catch (err) {
-                console.warn('[DEBUG] Unable to fetch BE state:', err);
-              }
+          {/* View System Data */}
+          <div className="ViewSystemData flex items-center gap-1.5">
+            <button
+              onClick={async () => {
+                console.log("=== FRONTEND STATE (NEW ARCH) ===");
+                console.log("1. Canonical Logs (FE view source):", logs);
+                console.log("2. Snapshot Logs (LogData):", newSvmsLogs);
+                console.log("3. SVMS Servers (map):", servers);
+                console.log("4. SVMS Devices (map):", devices);
+                console.log("5. SVMS Servers (snapshot raw):", newSvmsServers);
+                console.log("6. SVMS Devices (snapshot raw):", newSvmsDevices);
+                console.log("7. MQTT Servers (canonical):", mqttServers);
+                console.log("8. MQTT Servers (snapshot):", mqttMilesightServers);
+                console.log("9. MQTT Devices (snapshot):", mqttMilesightDevices);
+                console.log("10. Camera Devices:", cameraDevices);
 
-              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              const debugData = {
-                _export_time: new Date().toISOString(),
-                _summary: {
-                  totalAllLogs: logs.length,
-                  totalSnapshotLogs: newSvmsLogs.length,
-                  totalMqttLogsFromAllLogs: mqttLogs.length,
-                  totalMqttServersCanonical: mqttServers.length,
-                  totalMqttDevicesSnapshot: mqttMilesightDevices.length,
-                  totalCameraDevices: cameraDevices.length,
-                  totalSvmsServersMap: Object.keys(servers).length,
-                  totalSvmsDevicesMap: Object.keys(devices).length,
+                console.log("12. Connections RECEIVE:", receiveServers);
+                console.log("13. Event Types (FE filter):", eventTypes);
+                console.log("14. Total Log Count:", totalLogCount);
+                console.log("15. Socket Connected:", isConnected);
+                console.log("16. System Config:", systemConfig);
 
-                  totalReceiveConnections: receiveServers.length,
-                  socketConnected: isConnected,
-                  totalLogCount,
-                  snapshot_svmsServers: newSvmsServers.length,
-                  snapshot_svmsDevices: newSvmsDevices.length,
-                  snapshot_mqttServers: mqttMilesightServers.length,
-                },
-                frontend: {
-                  allLogs: logs,
-                  snapshotLogs: newSvmsLogs,
-                  mqttServersCanonical: mqttServers,
-                  mqttServersSnapshot: mqttMilesightServers,
-                  mqttDevicesSnapshot: mqttMilesightDevices,
-                  mqttLogsFromAllLogs: mqttLogs,
-                  cameraDevices,
-                  svmsServersMap: servers,
-                  svmsDevicesMap: devices,
-                  svmsServersSnapshot: newSvmsServers,
-                  svmsDevicesSnapshot: newSvmsDevices,
+                let backendState = null;
+                try {
+                  const res = await apiClient.get('/api/v1/debug/state');
+                  backendState = res.data;
+                  console.log("17. Backend In-Memory State:", backendState);
+                } catch (err) {
+                  console.warn('[DEBUG] Unable to fetch BE state:', err);
+                }
 
-                  receiveConnections: receiveServers,
-                  systemConfig,
-                  eventTypes,
-                },
-                backend: backendState,
-              };
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const debugData = {
+                  _export_time: new Date().toISOString(),
+                  _summary: {
+                    totalAllLogs: logs.length,
+                    totalSnapshotLogs: newSvmsLogs.length,
+                    totalMqttLogsFromAllLogs: mqttLogs.length,
+                    totalMqttServersCanonical: mqttServers.length,
+                    totalMqttDevicesSnapshot: mqttMilesightDevices.length,
+                    totalCameraDevices: cameraDevices.length,
+                    totalSvmsServersMap: Object.keys(servers).length,
+                    totalSvmsDevicesMap: Object.keys(devices).length,
 
-              const jsonStr = JSON.stringify(debugData, null, 2);
-              const blob = new Blob([jsonStr], { type: 'text/plain;charset=utf-8' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `cms-debug-data_${timestamp}.txt`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
+                    totalReceiveConnections: receiveServers.length,
+                    socketConnected: isConnected,
+                    totalLogCount,
+                    snapshot_svmsServers: newSvmsServers.length,
+                    snapshot_svmsDevices: newSvmsDevices.length,
+                    snapshot_mqttServers: mqttMilesightServers.length,
+                  },
+                  frontend: {
+                    allLogs: logs,
+                    snapshotLogs: newSvmsLogs,
+                    mqttServersCanonical: mqttServers,
+                    mqttServersSnapshot: mqttMilesightServers,
+                    mqttDevicesSnapshot: mqttMilesightDevices,
+                    mqttLogsFromAllLogs: mqttLogs,
+                    cameraDevices,
+                    svmsServersMap: servers,
+                    svmsDevicesMap: devices,
+                    svmsServersSnapshot: newSvmsServers,
+                    svmsDevicesSnapshot: newSvmsDevices,
 
-              alert(`Da xuat file: cms-debug-data_${timestamp}.txt\n\nTotal Logs: ${logs.length}\nMQTT Servers: ${mqttServers.length}\nMQTT Devices: ${mqttMilesightDevices.length}\nCamera Devices: ${cameraDevices.length}\nBackend state: ${backendState ? 'OK' : 'UNAVAILABLE'}`);
-            }} className="px-2 py-0.5 bg-primary text-on-primary text-[8px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity"
-          >
-            {t('app.footer.view_system_data')}
-          </button>
-        </div>
+                    receiveConnections: receiveServers,
+                    systemConfig,
+                    eventTypes,
+                  },
+                  backend: backendState,
+                };
 
-        <div className="flex-1" />
+                const jsonStr = JSON.stringify(debugData, null, 2);
+                const blob = new Blob([jsonStr], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `cms-debug-data_${timestamp}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
 
-        {/* Language dropdown (UI placeholder) */}
-        <div className="relative">
-          <button
-            onClick={() => setLangOpen(v => !v)}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer text-on-surface-variant/70 hover:text-on-surface"
-          >
-            <Languages className="w-3 h-3" />
-            <span className="text-[8px] font-bold uppercase tracking-widest">{i18n.language.toUpperCase()}</span>
-          </button>
-          {langOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setLangOpen(false)} />
-              <div className="absolute bottom-full right-0 mb-1 z-50 bg-surface-container-high border border-outline-variant/20 rounded shadow-lg min-w-[150px] animate-in fade-in slide-in-from-bottom-2 duration-150">
-                {['en', 'vi'].map(lang => (
-                  <button
-                    key={lang}
-                    onClick={() => { i18n.changeLanguage(lang); setLangOpen(false); }}
-                    className={`w-full text-left px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-colors cursor-pointer ${i18n.language === lang ? 'text-primary bg-primary/10' : 'text-on-surface-variant hover:bg-surface-container'
-                      }`}
-                  >
-                    {lang === 'en' ? '🇺🇸 English' : '🇻🇳 Tiếng Việt'}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </footer>
+                alert(`Da xuat file: cms-debug-data_${timestamp}.txt\n\nTotal Logs: ${logs.length}\nMQTT Servers: ${mqttServers.length}\nMQTT Devices: ${mqttMilesightDevices.length}\nCamera Devices: ${cameraDevices.length}\nBackend state: ${backendState ? 'OK' : 'UNAVAILABLE'}`);
+              }} className="px-2 py-0.5 bg-primary text-on-primary text-[8px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity"
+            >
+              {t('app.footer.view_system_data')}
+            </button>
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Language dropdown (UI placeholder) */}
+          <div className="relative">
+            <button
+              onClick={() => setLangOpen(v => !v)}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer text-on-surface-variant/70 hover:text-on-surface"
+            >
+              <Languages className="w-3 h-3" />
+              <span className="text-[8px] font-bold uppercase tracking-widest">{i18n.language.toUpperCase()}</span>
+            </button>
+            {langOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setLangOpen(false)} />
+                <div className="absolute bottom-full right-0 mb-1 z-50 bg-surface-container-high border border-outline-variant/20 rounded shadow-lg min-w-[150px] animate-in fade-in slide-in-from-bottom-2 duration-150">
+                  {['en', 'vi'].map(lang => (
+                    <button
+                      key={lang}
+                      onClick={() => { i18n.changeLanguage(lang); setLangOpen(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-colors cursor-pointer ${i18n.language === lang ? 'text-primary bg-primary/10' : 'text-on-surface-variant hover:bg-surface-container'
+                        }`}
+                    >
+                      {lang === 'en' ? '🇺🇸 English' : '🇻🇳 Tiếng Việt'}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </footer>
       )}
 
       {/* Config System Modal */}

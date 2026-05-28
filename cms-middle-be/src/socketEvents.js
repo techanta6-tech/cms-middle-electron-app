@@ -28,6 +28,36 @@ const setupSocketEvents = () => {
       socket.emit('update-sunell-known-events', sunellEventRegistry.getEvents());
       // ─── Traffic records sync ───
       socket.emit('traffic-sync', trafficService.getTrafficRecordsForSync());
+      socket.emit('traffic-blacklist-sync', require('./trafficState').blacklistPlates);
+      socket.emit('traffic-mechanism-sync', require('./trafficState').getBlacklistMechanism());
+    });
+
+    socket.on('traffic-blacklist-update', (updatedBlacklist) => {
+      if (Array.isArray(updatedBlacklist)) {
+        const { blacklistPlates } = require('./trafficState');
+        blacklistPlates.length = 0;
+        blacklistPlates.push(...updatedBlacklist.map(p => p.toUpperCase()));
+        
+        // Save to disk immediately
+        trafficService.saveTrafficRecords();
+        
+        // Broadcast the update to all connected clients
+        clientSockets.emit('traffic-blacklist-sync', blacklistPlates);
+        console.log('[Traffic] Blacklist updated by client, broadcasting. Size:', blacklistPlates.length);
+      }
+    });
+
+    socket.on('traffic-mechanism-update', (mechanism) => {
+      const val = Number(mechanism) === 1 ? 1 : 2;
+      const { setBlacklistMechanism, getBlacklistMechanism } = require('./trafficState');
+      setBlacklistMechanism(val);
+      
+      // Save to disk immediately
+      trafficService.saveTrafficRecords();
+      
+      // Broadcast the update to all connected clients
+      clientSockets.emit('traffic-mechanism-sync', getBlacklistMechanism());
+      console.log('[Traffic] Blacklist mechanism updated by client, broadcasting. Value:', getBlacklistMechanism());
     });
 
     // Khởi tạo sentCount cho socket này

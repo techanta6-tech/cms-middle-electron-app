@@ -118,6 +118,7 @@ function getSystemSnapshot() {
     cameraPort: camera.cameraPort,
     cameraUser: camera.cameraUser,
     rtspUrl: camera.rtspUrl || null,
+    snapshotUrl: camera.snapshotUrl || null,
     status: camera.status,
     handle: camera.handle || null,
     capabilities: {

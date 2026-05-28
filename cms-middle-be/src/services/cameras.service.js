@@ -5,6 +5,11 @@ const { appendLog } = require('./system-state.service');
 const sunellEventRegistry = require('./sunellEventRegistry.service');
 const persistedDevices = require('./persisted-devices.service');
 const trafficService = require('./traffic.service');
+const {
+  createRtspConnection,
+  stopRtspConnection,
+  getRtspConnection,
+} = require('../module/rtspSnapshotStream');
 
 // Trong môi trường pkg, __dirname nằm trong virtual snapshot (read-only).
 // Phải dùng đường dẫn thực tế ngoài snapshot để có thể ghi file.
@@ -20,6 +25,10 @@ if (!fs.existsSync(sunellSnapshotDir)) {
 const sunellSnapshotErrorLogPath = path.join(sunellSnapshotDir, 'snapshot-errors.log');
 const SUNELL_SUPPLEMENTAL_SNAPSHOT_ENABLED = true;
 const SUNELL_RTSP_FALLBACK_SNAPSHOT_ENABLED = false;
+const CAMERA_STREAM_RESTART_DELAY_MS = 10000;
+const OVERVIEW_SNAPSHOT_TIMEOUT_MS = 5000;
+const SNAPSHOT_URL_TIMEOUT_MS = 5000;
+const LPR_SNAPSHOT_DELAY_MS = 0;
 const loggedEventTypes = new Set();
 let CameraDevice;
 let getAlarmName;
@@ -138,9 +147,210 @@ function saveSunellSnapshotAfterPrefilter(device, payload, logType) {
   }
 }
 
+function normalizeRtspUrlForCamera(device) {
+  let url = device && device.rtspUrl;
+  if (!url && device && device.cameraIp) {
+    const user = encodeURIComponent(device.cameraUser || 'admin');
+    const pass = encodeURIComponent(device.cameraPass || 'admin1234');
+    url = `rtsp://${user}:${pass}@${device.cameraIp}:554/snl/live/1/1`;
+  }
+
+  if (!url) return null;
+
+  try {
+    const parsedUrl = new URL(url);
+    const configuredPort = parseInt(parsedUrl.port, 10);
+    if ([30001, 30000].includes(configuredPort)) {
+      parsedUrl.port = '554';
+      return parsedUrl.toString();
+    }
+  } catch (_) {
+    // Keep original URL if URL parsing fails; FFmpeg will report the detailed error.
+  }
+
+  return url;
+}
+
+function buildDefaultSnapshotUrl(device) {
+  if (!device || !device.cameraIp) return null;
+  const user = encodeURIComponent(device.cameraUser || 'admin');
+  const pass = encodeURIComponent(device.cameraPass || 'admin1234');
+  return `http://${user}:${pass}@${device.cameraIp}/cgi-bin/image.cgi?cameraID=1&quality=5`;
+}
+
+function normalizeSnapshotUrlForCamera(device) {
+  return (device && device.snapshotUrl) || buildDefaultSnapshotUrl(device);
+}
+
+function maskSnapshotUrl(snapshotUrl) {
+  return String(snapshotUrl || '').replace(/:\/\/([^:/@]+):([^@]+)@/, '://$1:***@');
+}
+
+function getImageContentInfo(buffer, contentType = '') {
+  const isJpeg = buffer.length >= 3 && buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
+  const isPng = buffer.length >= 4 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47;
+  if (isPng || /image\/png/i.test(contentType)) return { mimeType: 'image/png', ext: 'png' };
+  if (isJpeg || /image\/jpe?g/i.test(contentType)) return { mimeType: 'image/jpeg', ext: 'jpg' };
+  return null;
+}
+
+async function captureSnapshotUrlForCamera(device, options = {}) {
+  const snapshotUrl = normalizeSnapshotUrlForCamera(device);
+  if (!snapshotUrl) {
+    return { success: false, statusCode: 400, error: 'Snapshot URL is not configured' };
+  }
+
+  try {
+    const axios = require('axios');
+    const response = await axios.get(snapshotUrl, {
+      responseType: 'arraybuffer',
+      timeout: Number(options.timeoutMs || SNAPSHOT_URL_TIMEOUT_MS),
+      validateStatus: (status) => status < 500,
+      maxRedirects: 3,
+    });
+
+    const buffer = Buffer.from(response.data || []);
+    const imageInfo = getImageContentInfo(buffer, response.headers && response.headers['content-type']);
+    if (response.status !== 200 || buffer.length <= 100 || !imageInfo) {
+      return {
+        success: false,
+        statusCode: response.status || 502,
+        error: `Snapshot URL returned status=${response.status} size=${buffer.length}`,
+      };
+    }
+
+    let snapshotPath = null;
+    if (options.save !== false) {
+      const snapshotDir = device.snapshotDir || path.join(_writableBase, 'snapshots');
+      if (!fs.existsSync(snapshotDir)) {
+        fs.mkdirSync(snapshotDir, { recursive: true });
+      }
+      const safeDeviceId = String(device.id || 'camera').replace(/[^a-zA-Z0-9_-]/g, '_');
+      snapshotPath = path.join(snapshotDir, `snapshot_url_${safeDeviceId}_${Date.now()}.${imageInfo.ext}`);
+      fs.writeFileSync(snapshotPath, buffer);
+    }
+
+    const result = {
+      success: true,
+      method: 'snapshot_url',
+      camera: _sanitizeDevice(device),
+      contentType: imageInfo.mimeType,
+      snapshotPath,
+      sourceUrl: maskSnapshotUrl(snapshotUrl),
+      size: buffer.length,
+    };
+
+    if (options.includeBuffer) result.buffer = buffer;
+    if (options.includeBase64 !== false) {
+      result.snapshotBase64 = `data:${imageInfo.mimeType};base64,${buffer.toString('base64')}`;
+    }
+
+    return result;
+  } catch (err) {
+    return {
+      success: false,
+      statusCode: 502,
+      error: err.message || String(err),
+      sourceUrl: maskSnapshotUrl(snapshotUrl),
+    };
+  }
+}
+
+function startCameraRtspStream(device) {
+  const rtspUrl = normalizeRtspUrlForCamera(device);
+  if (!rtspUrl) {
+    console.warn(`[Camera-Stream] Skip stream for '${device && device.id}': RTSP URL is not configured`);
+    return { success: false, error: 'RTSP URL is not configured' };
+  }
+
+  try {
+    if (getRtspConnection(device.id)) {
+      stopRtspConnection(device.id);
+    }
+
+    const stream = createRtspConnection({
+      id: device.id,
+      rtspUrl,
+      snapshotDir: device.snapshotDir || path.join(_writableBase, 'snapshots'),
+      frameIntervalMs: 1000,
+      restartDelayMs: CAMERA_STREAM_RESTART_DELAY_MS,
+      autoRestart: true,
+    });
+    device.rtspStreamStatus = stream.status;
+    device.rtspStreamLatestFramePath = stream.latestFramePath;
+    console.log(`[Camera-Stream] Started RTSP stream for '${device.id}', restart=${CAMERA_STREAM_RESTART_DELAY_MS}ms`);
+    return { success: true, stream };
+  } catch (err) {
+    const message = err.message || String(err);
+    device.rtspStreamStatus = 'error';
+    device.rtspStreamError = message;
+    console.error(`[Camera-Stream] Failed to start stream for '${device.id}': ${message}`);
+    return { success: false, error: message };
+  }
+}
+
+function stopCameraRtspStream(deviceId) {
+  const result = stopRtspConnection(deviceId);
+  if (result.success) {
+    console.log(`[Camera-Stream] Stopped RTSP stream for '${deviceId}'`);
+  }
+  return result;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function saveOverviewSnapshotBase64(device, base64Data) {
+  if (!base64Data) return null;
+
+  const snapshotDir = device.snapshotDir || path.join(_writableBase, 'snapshots');
+  if (!fs.existsSync(snapshotDir)) {
+    fs.mkdirSync(snapshotDir, { recursive: true });
+  }
+
+  const raw = String(base64Data);
+  const dataUrlMatch = raw.match(/^data:image\/([^;]+);base64,(.+)$/);
+  const ext = dataUrlMatch ? (dataUrlMatch[1] === 'jpeg' ? 'jpg' : dataUrlMatch[1]) : 'jpg';
+  const payload = dataUrlMatch ? dataUrlMatch[2] : raw;
+  const safeDeviceId = String(device.id || 'camera').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const outputPath = path.join(snapshotDir, `overview_${safeDeviceId}_${Date.now()}.${ext}`);
+  fs.writeFileSync(outputPath, Buffer.from(payload, 'base64'));
+  return outputPath;
+}
+
+async function attachOverviewSnapshotForLpr(device, payload) {
+  if (!device || !payload) return payload;
+
+  try {
+    const result = await captureSnapshotUrlForCamera(device, {
+      save: true,
+      timeoutMs: OVERVIEW_SNAPSHOT_TIMEOUT_MS,
+      includeBase64: true,
+    });
+
+    if (result && result.success && result.snapshotBase64) {
+      payload.overviewSnapshotBase64 = result.snapshotBase64;
+      payload.overviewSnapshotPath = result.snapshotPath || null;
+      payload.overviewSnapshotSource = 'snapshot-url';
+      console.log(`[Camera-${device.id}] [OVERVIEW SNAPSHOT] Snapshot URL OK, file=${result.snapshotPath || '(none)'}`);
+      return payload;
+    }
+
+    payload.overviewSnapshotError = result && result.error ? result.error : 'Snapshot URL failed';
+    console.warn(`[Camera-${device.id}] [OVERVIEW SNAPSHOT] Snapshot URL failed: ${payload.overviewSnapshotError}`);
+  } catch (err) {
+    payload.overviewSnapshotError = err.message || String(err);
+    console.warn(`[Camera-${device.id}] [OVERVIEW SNAPSHOT] Snapshot URL error: ${payload.overviewSnapshotError}`);
+  }
+
+  return payload;
+}
+
 async function addCameraDevice(deviceConfig, options = {}) {
   const { persist = true, id: providedId } = options;
   const { name, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl } = deviceConfig;
+  const snapshotUrl = deviceConfig.snapshotUrl || buildDefaultSnapshotUrl(deviceConfig);
 
   const id = providedId || deviceConfig.id || `cam-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const baseWritableDir = process.env.USER_DATA_PATH || process.cwd();
@@ -159,6 +369,7 @@ async function addCameraDevice(deviceConfig, options = {}) {
     cameraUser: cameraUser || 'admin',
     cameraPass: cameraPass || 'admin1234',
     rtspUrl,
+    snapshotUrl,
     snapshotDir,
     sdkPath,
     status: 'connecting',
@@ -174,6 +385,7 @@ async function addCameraDevice(deviceConfig, options = {}) {
   device.instance = new CameraDevice({
     id,
     rtspUrl,
+    snapshotUrl,
     snapshotDir,
     sdkPath,
     cameraIp,
@@ -199,6 +411,7 @@ async function addCameraDevice(deviceConfig, options = {}) {
           ? rawJsonStr
           : JSON.stringify(rawJsonStr, null, 2);
         const payload = typeof rawJsonStr === 'string' ? JSON.parse(rawJsonStr) : rawJsonStr;
+        const alarmReceivedAtMs = Date.now();
 
         // Neu device chua co features mac dinh thi coi nhu dc bat
         const features = device.features || {};
@@ -335,65 +548,43 @@ async function addCameraDevice(deviceConfig, options = {}) {
           return;
         }
 
-        // --- FALLBACK SNAPSHOT ---
-        // Nếu sự kiện lọt qua được bộ lọc mà chưa có ảnh từ SDK, ta tiến hành chụp RTSP
-        if (SUNELL_SUPPLEMENTAL_SNAPSHOT_ENABLED && isLpr) {
-          try {
-            console.log(`[Camera-${id}] [SUNELL SDK SNAPSHOT] Bat dau chup anh bien so qua SDK, khong dung RTSP`);
-            const result = await device.instance.captureSnapshotSdkBase64({
-              snapshotDir: sunellSnapshotDir,
-              prefix: `lpr_${device.id}_${Date.now()}`,
-              forceFresh: true
-            });
-            payload.sunellSnapshotResult = {
-              success: !!(result && result.success),
-              handle: result && result.handle,
-              mdHandle: result && result.mdHandle,
-              snapshotPath: result && result.snapshotPath,
-              error: result && result.error,
-            };
+        // YÊU CẦU: Áp dụng lấy ảnh toàn cảnh (fullshot) từ luồng RTSP streaming ngầm CHỈ cho lpr_event
+        if (isLpr) {
+          saveSunellSnapshotAfterPrefilter(device, payload, logType);
+          payload.plateImageBase64 = payload.snapshotBase64 || null;
+          payload.plateImagePath = payload.snapshotPath || payload.sunellSnapshotPath || null;
+        }
 
-            if (result && result.success && result.snapshotBase64) {
-              if (payload.snapshotBase64) {
-                payload.originalSnapshotBase64 = payload.snapshotBase64;
-                payload.originalSnapshotPath = payload.snapshotPath || payload.sunellSnapshotPath || null;
-              }
-              payload.snapshotBase64 = result.snapshotBase64;
-              payload.snapshotPath = result.snapshotPath || null;
-              payload.sunellSnapshotPath = result.snapshotPath || null;
-              payload.snapshotSource = 'sunell-sdk-supplemental';
-              logSunellSnapshotSuccess(device, payload);
-              console.log(`[Camera-${id}] [SUNELL SDK SNAPSHOT] OK, file=${result.snapshotPath || '(unknown)'}, size=${result.snapshotBase64.length}`);
-            } else {
-              const errorMessage = (result && result.error) || 'SDK snapshot returned empty image';
-              payload.sunellSnapshotError = errorMessage;
-              console.error(`[Camera-${id}] [SUNELL SDK SNAPSHOT] FAIL: ${errorMessage}`);
-              logSunellSnapshotError(device, new Error(errorMessage), payload);
-            }
-          } catch (err) {
-            payload.sunellSnapshotError = err.message || String(err);
-            console.error(`[Camera-${id}] [SUNELL SDK SNAPSHOT] FAIL: ${payload.sunellSnapshotError}`);
-            logSunellSnapshotError(device, err, payload);
-          }
-        } else if (SUNELL_RTSP_FALLBACK_SNAPSHOT_ENABLED && !payload.snapshotBase64) {
+        if (isLpr) {
+          payload.lprSnapshotLatencyMs = null;
           try {
-            console.log(`[Camera-${id}] [FALLBACK] Bắt đầu chụp ảnh RTSP cho sự kiện [${description}]`);
-            const b64 = await device.instance.captureSnapshotBase64();
-            if (b64) {
-              payload.snapshotBase64 = b64;
-              console.log(`[Camera-${id}] [FALLBACK] ✅ RTSP snapshot OK, size=${b64.length}`);
+            await sleep(LPR_SNAPSHOT_DELAY_MS);
+            const snapshotResult = await captureSnapshotUrlForCamera(device, {
+              save: true,
+              timeoutMs: OVERVIEW_SNAPSHOT_TIMEOUT_MS,
+              includeBase64: true,
+            });
+
+            if (snapshotResult && snapshotResult.success && snapshotResult.snapshotBase64) {
+              payload.fullStreamSnapshotBase64 = snapshotResult.snapshotBase64;
+              payload.fullStreamSnapshotPath = snapshotResult.snapshotPath || null;
+
+              payload.snapshotBase64 = snapshotResult.snapshotBase64;
+              payload.snapshotPath = snapshotResult.snapshotPath || null;
+              payload.snapshotSource = 'snapshot-url';
+              payload.lprSnapshotLatencyMs = Date.now() - alarmReceivedAtMs;
+              console.log(`[Camera-${id}] [LPR SNAPSHOT] Snapshot URL captured and applied to log snapshot, size=${snapshotResult.snapshotBase64.length}`);
             } else {
-              console.log(`[Camera-${id}] [FALLBACK] ❌ RTSP snapshot trả về null`);
+              console.warn(`[Camera-${id}] [FULL SHOT] Snapshot URL failed: ${snapshotResult ? snapshotResult.error : 'Unknown'}`);
             }
           } catch (err) {
-            console.error(`[Camera-${id}] [FALLBACK] ❌ RTSP snapshot lỗi: ${err.message}`);
+            console.error(`[Camera-${id}] [FULL SHOT] Snapshot URL error: ${err.message}`);
           }
         }
 
-
-        // YÊU CẦU: Ghi log sự kiện lần đầu tiên ra file txt
-        // Nếu có eventName thì lưu ra file riêng cho từng loại eventName (như IVA có nhiều loại)
-        saveSunellSnapshotAfterPrefilter(device, payload, logType);
+        if (!isLpr) {
+          saveSunellSnapshotAfterPrefilter(device, payload, logType);
+        }
 
         // ─── Traffic module: ghi nhận biển số xe (LPR) ───
         if (isLpr) {
@@ -450,7 +641,11 @@ async function addCameraDevice(deviceConfig, options = {}) {
           log_type: logType,
           log_description: description,
           snapshot: payload.snapshotBase64 || undefined,
+          fullshotimage: payload.fullStreamSnapshotBase64 || payload.snapshotBase64 || undefined,
           snapshot_path: payload.snapshotPath || payload.sunellSnapshotPath || undefined,
+          overviewSnapshotBase64: payload.overviewSnapshotBase64 || undefined,
+          overviewSnapshotPath: payload.overviewSnapshotPath || undefined,
+          overviewSnapshotSource: payload.overviewSnapshotSource || undefined,
           log_source: 'sunell-camera',
           device_info: {
             name: device.name || 'Sunell Camera',
@@ -473,7 +668,9 @@ async function addCameraDevice(deviceConfig, options = {}) {
             _log_type: logType,
             _has_snapshot: !!payload.snapshotBase64,
             _snapshot_length: payload.snapshotBase64 ? payload.snapshotBase64.length : 0,
-            _snapshot_preview: payload.snapshotBase64 ? payload.snapshotBase64.substring(0, 100) + '...' : '(empty)'
+            _snapshot_preview: payload.snapshotBase64 ? payload.snapshotBase64.substring(0, 100) + '...' : '(empty)',
+            _has_overview_snapshot: !!payload.overviewSnapshotBase64,
+            _overview_snapshot_length: payload.overviewSnapshotBase64 ? payload.overviewSnapshotBase64.length : 0,
           });
 
           // Bắn log qua socket với mục raw_data chứa toàn bộ event
@@ -487,7 +684,11 @@ async function addCameraDevice(deviceConfig, options = {}) {
             description: description,
             raw_data: payload,
             image_data: payload.snapshotBase64,
-            image_path: payload.snapshotPath || payload.sunellSnapshotPath || undefined
+            fullshotimage: payload.fullStreamSnapshotBase64 || payload.snapshotBase64 || undefined,
+            image_path: payload.snapshotPath || payload.sunellSnapshotPath || undefined,
+            overview_image_data: payload.overviewSnapshotBase64,
+            overview_image_path: payload.overviewSnapshotPath || undefined,
+            overview_image_source: payload.overviewSnapshotSource || undefined,
           });
         }
       } catch (e) {
@@ -520,11 +721,18 @@ async function addCameraDevice(deviceConfig, options = {}) {
     }
   }
 
+  let streamResult = null;
+  if (device.status === 'connected') {
+    streamResult = startCameraRtspStream(device);
+  } else {
+    stopCameraRtspStream(device.id);
+  }
+
   _emitCamerasUpdate();
   if (persist && device.status === 'connected') {
     persistedDevices.persistCamera(device);
   }
-  return { success: true, device: _sanitizeDevice(device), sdkResult };
+  return { success: true, device: _sanitizeDevice(device), sdkResult, streamResult };
 }
 
 async function removeCameraDevice(deviceId, options = {}) {
@@ -533,6 +741,7 @@ async function removeCameraDevice(deviceId, options = {}) {
   if (idx === -1) return { success: false, error: 'Device not found' };
 
   const device = cameraDevices[idx];
+  stopCameraRtspStream(deviceId);
   if (device.type === 'sunell' && device.instance) {
     try {
       await device.instance.disconnectCamera();
@@ -555,16 +764,27 @@ async function updateCameraDevice(deviceId, updates) {
   if (!device) return { success: false, error: 'Device not found' };
 
   let requiresReconnect = false;
+  let requiresStreamRefresh = false;
 
   if (updates.name !== undefined) device.name = updates.name;
   if (updates.rtspUrl !== undefined) {
     device.rtspUrl = updates.rtspUrl;
     if (device.instance) device.instance.rtspUrl = updates.rtspUrl;
+    requiresStreamRefresh = true;
+  }
+  if (updates.snapshotUrl !== undefined) {
+    device.snapshotUrl = updates.snapshotUrl || buildDefaultSnapshotUrl(device);
+    if (device.instance) device.instance.snapshotUrl = device.snapshotUrl;
   }
   if (updates.cameraIp !== undefined && updates.cameraIp !== device.cameraIp) {
     device.cameraIp = updates.cameraIp;
     if (device.instance) device.instance.cameraIp = updates.cameraIp;
     requiresReconnect = true;
+    requiresStreamRefresh = true;
+    if (updates.snapshotUrl === undefined) {
+      device.snapshotUrl = buildDefaultSnapshotUrl(device);
+      if (device.instance) device.instance.snapshotUrl = device.snapshotUrl;
+    }
   }
   if (updates.cameraPort !== undefined && updates.cameraPort !== device.cameraPort) {
     device.cameraPort = updates.cameraPort;
@@ -575,15 +795,26 @@ async function updateCameraDevice(deviceId, updates) {
     device.cameraUser = updates.cameraUser;
     if (device.instance) device.instance.cameraUser = updates.cameraUser;
     requiresReconnect = true;
+    requiresStreamRefresh = true;
+    if (updates.snapshotUrl === undefined) {
+      device.snapshotUrl = buildDefaultSnapshotUrl(device);
+      if (device.instance) device.instance.snapshotUrl = device.snapshotUrl;
+    }
   }
   if (updates.cameraPass !== undefined && updates.cameraPass !== device.cameraPass) {
     device.cameraPass = updates.cameraPass;
     if (device.instance) device.instance.cameraPass = updates.cameraPass;
     requiresReconnect = true;
+    requiresStreamRefresh = true;
+    if (updates.snapshotUrl === undefined) {
+      device.snapshotUrl = buildDefaultSnapshotUrl(device);
+      if (device.instance) device.instance.snapshotUrl = device.snapshotUrl;
+    }
   }
   if (updates.type !== undefined && updates.type !== device.type) {
     device.type = updates.type;
     requiresReconnect = true;
+    requiresStreamRefresh = true;
   }
 
   let sdkResult = undefined;
@@ -620,6 +851,13 @@ async function updateCameraDevice(deviceId, updates) {
   }
 
   console.log(`[Camera-Device] Updated device '${deviceId}':`, JSON.stringify(updates));
+  if (requiresStreamRefresh) {
+    if (device.status === 'connected') {
+      startCameraRtspStream(device);
+    } else {
+      stopCameraRtspStream(device.id);
+    }
+  }
   if (device.status === 'connected') {
     persistedDevices.persistCamera(device);
   }
@@ -650,6 +888,7 @@ function updateCameraFeatures(deviceId, features) {
 }
 
 function _sanitizeDevice(d) {
+  const rtspStream = getRtspConnection(d.id);
   return {
     id: d.id,
     name: d.name,
@@ -658,8 +897,15 @@ function _sanitizeDevice(d) {
     cameraPort: d.cameraPort,
     cameraUser: d.cameraUser,
     rtspUrl: d.rtspUrl || null,
+    snapshotUrl: d.snapshotUrl || null,
     status: d.status,
     handle: d.handle,
+    rtspStream: rtspStream ? {
+      status: rtspStream.status,
+      latestFramePath: rtspStream.latestFramePath,
+      lastError: rtspStream.lastError,
+      latestFrame: rtspStream.latestFrame,
+    } : null,
     features: d.features || {},
   };
 }
@@ -872,6 +1118,34 @@ async function getSdkSnapshotForCamera(cameraId) {
   };
 }
 
+async function getSnapshotUrlForCamera(cameraId) {
+  const clientSockets = getClientSockets();
+  const _debugFE = (msg) => {
+    console.log(msg);
+    if (clientSockets) clientSockets.emit('debug-camera-snapshot', { time: new Date().toISOString(), message: msg });
+  };
+
+  const device = cameraDevices.find(d => d.id === cameraId);
+  if (!device) {
+    _debugFE(`[Camera-Snapshot-URL] Camera '${cameraId}' not found. Available: ${cameraDevices.map(d => d.id).join(', ') || 'none'}`);
+    return { success: false, statusCode: 404, error: 'Camera not found' };
+  }
+
+  _debugFE(`[Camera-Snapshot-URL] Capturing from ${maskSnapshotUrl(normalizeSnapshotUrlForCamera(device))}`);
+  const result = await captureSnapshotUrlForCamera(device, {
+    save: true,
+    includeBase64: true,
+    timeoutMs: SNAPSHOT_URL_TIMEOUT_MS,
+  });
+
+  if (!result.success) {
+    _debugFE(`[Camera-Snapshot-URL] Failed: ${result.error}`);
+  } else {
+    _debugFE(`[Camera-Snapshot-URL] OK: ${result.size} bytes`);
+  }
+  return result;
+}
+
 module.exports = {
   addCameraDevice,
   removeCameraDevice,
@@ -879,5 +1153,6 @@ module.exports = {
   getCamerasList,
   getSnapshotForCamera,
   getSdkSnapshotForCamera,
+  getSnapshotUrlForCamera,
   updateCameraFeatures
 };

@@ -3,7 +3,16 @@
 
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 const trafficService = require('../services/traffic.service');
+
+const getSnapshotContentType = (filePath) => {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  return 'image/jpeg';
+};
 
 /**
  * GET /api/v1/traffic/records
@@ -56,6 +65,43 @@ router.get('/api/v1/traffic/search/:plate', (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     console.error('[Traffic API] Error searching:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/v1/traffic/snapshot
+ * Proxy serving a snapshot image from the backend disk.
+ */
+router.get('/api/v1/traffic/snapshot', (req, res) => {
+  try {
+    const { path: filePath } = req.query;
+    if (!filePath) {
+      return res.status(400).json({ success: false, error: 'Path is required' });
+    }
+    const normalized = path.resolve(path.normalize(filePath));
+    if (!fs.existsSync(normalized)) {
+      return res.status(404).json({ success: false, error: 'File not found' });
+    }
+    const stat = fs.statSync(normalized);
+    if (!stat.isFile()) {
+      return res.status(404).json({ success: false, error: 'Snapshot is not a file' });
+    }
+
+    res.setHeader('Content-Type', getSnapshotContentType(normalized));
+    res.setHeader('Content-Length', stat.size);
+    const stream = fs.createReadStream(normalized);
+    stream.on('error', (err) => {
+      console.error('[Traffic API] Error reading snapshot:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, error: err.message });
+      } else {
+        res.destroy(err);
+      }
+    });
+    stream.pipe(res);
+  } catch (err) {
+    console.error('[Traffic API] Error sending snapshot:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

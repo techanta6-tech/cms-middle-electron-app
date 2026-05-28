@@ -96,8 +96,11 @@ export interface LogData {
   log_type: string;
   log_description: string;
   snapshot?: string;
+  overviewSnapshotBase64?: string;
+  overviewSnapshotPath?: string;
+  overviewSnapshotSource?: string;
   log_snapshot_image_path?: string;
-  log_source: 'svms' | 'milesight-radar' | 'milesight-button' | 'sunell-camera' | 'other';
+  log_source: 'svms' | 'milesight-radar' | 'milesight-button' | 'sunell-camera' | 'i3ai' | 'other';
   device_info: {
     name: string;
     id: string;
@@ -109,7 +112,7 @@ export interface LogData {
 /** Một mục trong danh sách filter Event Types */
 export interface EventTypeItem {
   event_type: string;
-  log_source: 'svms' | 'mqtt' | 'sunell-camera' | 'other' | null;
+  log_source: 'svms' | 'mqtt' | 'sunell-camera' | 'i3ai' | 'other' | null;
 }
 
 export interface SVMS_LogPayload {
@@ -149,7 +152,7 @@ export interface AddExternalServerProps {
 export interface ServerData {
   server_id: string;
   server_name: string;
-  type: 'svms' | 'milesight-radar' | 'direct' | 'forwarded' | 'mqtt';
+  type: 'svms' | 'milesight-radar' | 'direct' | 'forwarded' | 'mqtt' | 'i3ai';
   custom_server_name: string;
   svms_server_info?: SVMSServerData;
   milesight_server_info?: MqttServerConfig;
@@ -321,9 +324,20 @@ export interface ManualAddedCamera {
   cameraPort: number;
   cameraUser: string;
   rtspUrl: string | null;
+  snapshotUrl?: string | null;
   status: 'connecting' | 'connected' | 'error' | 'disconnected' | 'ready';
   handle: number | null;
   features?: CameraFeatures;
+  rtspStream?: {
+    status?: 'idle' | 'starting' | 'running' | 'stopped' | 'error' | string;
+    latestFramePath?: string | null;
+    lastError?: string | null;
+    latestFrame?: {
+      size: number;
+      updatedAtMs: number;
+      updatedAt: string;
+    } | null;
+  } | null;
 }
 
 /** Backward compat alias — gradually replace usages */

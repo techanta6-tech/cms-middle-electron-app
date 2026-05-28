@@ -301,6 +301,10 @@ export function useSocketManager() {
   const [mqttMilesightServers, setMqttMilesightServers] = useState<MqttServerConfig[]>([]);
   /** Danh sách MQTT Milesight device (tổng hợp từ log) */
   const [mqttMilesightDevices, setMqttMilesightDevices] = useState<MQTT_Milesight_DeviceInfo[]>([]);
+  const [trafficHistory, setTrafficHistory] = useState<any[]>([]);
+  const [trafficCatalog, setTrafficCatalog] = useState<Record<string, any>>({});
+  const [blacklistPlates, setBlacklistPlates] = useState<string[]>([]);
+  const [blacklistMechanism, setBlacklistMechanism] = useState<number>(2);
 
   useEffect(() => {
     const newBeURL = `http://${systemConfig.be.ip}:${systemConfig.be.port}`;
@@ -713,6 +717,9 @@ export function useSocketManager() {
         log_type: raw.log_type,
         description: raw.description,
         snapshot: raw.image_data,
+        overviewSnapshotBase64: raw.overview_image_data,
+        overviewSnapshotPath: raw.overview_image_path,
+        overviewSnapshotSource: raw.overview_image_source,
         server: { server_id: 'SUNELL-LOCAL', serial: 'SUNELL' },
         ip: '127.0.0.1',
         cameraIp: raw.camera_id,
@@ -959,6 +966,57 @@ export function useSocketManager() {
     const onUpdateMqttGroups = (data: MqttGroup[]) => setMqttGroups(data);
     const onUpdateMqttDevices = (data: MqttDevice[]) => setMqttDevices(data);
 
+    const onTrafficSync = (history: any[]) => {
+      console.log('[SOCKET] traffic-sync:', history?.length, 'records');
+      if (Array.isArray(history)) {
+        setTrafficHistory(history);
+        const catalog: Record<string, any> = {};
+        for (let i = history.length - 1; i >= 0; i--) {
+          const item = history[i];
+          if (item && item.plate_num) {
+            catalog[item.plate_num] = item;
+          }
+        }
+        setTrafficCatalog(catalog);
+      }
+    };
+
+    const onTrafficNewRecords = (records: any[]) => {
+      console.log('[SOCKET] traffic-new-records:', records?.length, 'new records');
+      if (Array.isArray(records)) {
+        setTrafficHistory(prev => {
+          const next = [...prev, ...records];
+          return next.slice(-10000);
+        });
+        setTrafficCatalog(prev => {
+          const next = { ...prev };
+          records.forEach(item => {
+            if (item && item.plate_num && !next[item.plate_num]) {
+              next[item.plate_num] = item;
+            }
+          });
+          return next;
+        });
+      }
+    };
+
+    const onTrafficBlacklistSync = (plates: string[]) => {
+      console.log('[SOCKET] traffic-blacklist-sync:', plates?.length, 'plates');
+      if (Array.isArray(plates)) {
+        setBlacklistPlates(plates);
+      }
+    };
+
+    const onTrafficMechanismSync = (mech: number) => {
+      console.log('[SOCKET] traffic-mechanism-sync:', mech);
+      setBlacklistMechanism(mech);
+    };
+
+    socket.on('traffic-sync', onTrafficSync);
+    socket.on('traffic-new-records', onTrafficNewRecords);
+    socket.on('traffic-blacklist-sync', onTrafficBlacklistSync);
+    socket.on('traffic-mechanism-sync', onTrafficMechanismSync);
+
     socket.on('new-svms-log', onNewSvmsLog);
     socket.on('new-svms-servers', onNewSvmsServers);
     socket.on('new-svms-devices', onNewSvmsDevices);
@@ -1009,6 +1067,10 @@ export function useSocketManager() {
       socket.off('update-device-camera-links', onUpdateDeviceCameraLinks);
       socket.off('update-grid-layout', onUpdateGridLayout);
       socket.off('update-emap-layout', onUpdateEMapLayout);
+      socket.off('traffic-sync', onTrafficSync);
+      socket.off('traffic-new-records', onTrafficNewRecords);
+      socket.off('traffic-blacklist-sync', onTrafficBlacklistSync);
+      socket.off('traffic-mechanism-sync', onTrafficMechanismSync);
       socket.off('new-svms-log', onNewSvmsLog);
       socket.off('new-svms-servers', onNewSvmsServers);
       socket.off('new-svms-devices', onNewSvmsDevices);
@@ -1036,6 +1098,23 @@ export function useSocketManager() {
     if (selectedEventTypes.length === 0) return logs;
     return logs.filter(log => selectedEventTypes.some(type => isTypeMatched(log.log_type, type)));
   }, [logs, selectedEventTypes]);
+
+  const handleSetBlacklistPlates = useCallback((updater: string[] | ((prev: string[]) => string[])) => {
+    setBlacklistPlates(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (socket && socket.connected) {
+        socket.emit('traffic-blacklist-update', next);
+      }
+      return next;
+    });
+  }, [socket]);
+
+  const handleSetBlacklistMechanism = useCallback((val: number) => {
+    setBlacklistMechanism(val);
+    if (socket && socket.connected) {
+      socket.emit('traffic-mechanism-update', val);
+    }
+  }, [socket]);
 
   return {
     socket,
@@ -1086,5 +1165,11 @@ export function useSocketManager() {
     svmsDevices,
     mqttMilesightServers,
     mqttMilesightDevices,
+    trafficHistory,
+    trafficCatalog,
+    blacklistPlates,
+    setBlacklistPlates: handleSetBlacklistPlates,
+    blacklistMechanism,
+    setBlacklistMechanism: handleSetBlacklistMechanism,
   };
 }

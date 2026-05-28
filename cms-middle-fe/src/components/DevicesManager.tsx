@@ -16,6 +16,7 @@ const NOOP = () => { };
 // ── Types ────────────────────────────────────────────────────────────────────
 type SelectedItemType =
   | { kind: 'svms-server'; data: ServerData; devices?: DeviceData }
+  | { kind: 'i3ai-server'; data: ServerData }
   | { kind: 'svms-device'; data: any; server: ServerData }
   | { kind: 'mqtt-group'; data: MqttGroup; mqttDevices: MqttDevice[] }
   | { kind: 'mqtt-device'; data: MqttDevice; group: MqttGroup }
@@ -64,7 +65,7 @@ export function DevicesManager({
   const { t } = useTranslation();
   const [selected, setSelected] = useState<SelectedItemType | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
-    svms: true, mqtt: true, cameras: true, sunell: true
+    svms: true, i3ai: true, mqtt: true, cameras: true, sunell: true
   });
   const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({});
   const [addingForm, setAddingForm] = useState<'svms' | 'mqtt' | 'mqtt_device' | 'camera' | 'sunell_camera' | null>(null);
@@ -89,9 +90,37 @@ export function DevicesManager({
     return map;
   }, [mqttDevices]);
 
-  const svmsServers = Object.values(servers).filter(s => s.type !== 'mqtt');
+  const svmsServers = Object.values(servers).filter(s => s.type !== 'mqtt' && s.type !== 'i3ai');
+  const i3AiServers = Object.values(servers).filter(s => s.type === 'i3ai');
   const otherCameras = cameraDevices.filter(cam => cam.type !== 'sunell');
   const sunellCameras = cameraDevices.filter(cam => cam.type === 'sunell');
+
+  const handleEditI3AiServer = async (srv: ServerData) => {
+    const alias = window.prompt('Nhập tên biệt danh i3AI server', srv.custom_server_name || srv.server_name || srv.server_ip || srv.id);
+    if (alias === null) return;
+    try {
+      const { data } = await apiClient.patch(`/api/v1/i3ai-servers/${encodeURIComponent(srv.id)}`, { alias });
+      if (data?.server) {
+        setSelected({ kind: 'i3ai-server', data: data.server });
+      }
+    } catch (err: any) {
+      console.error('Update i3AI server error:', err);
+      alert('Không thể cập nhật i3AI server: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleDeleteI3AiServer = async (serverId: string) => {
+    if (!confirm('Xóa i3AI server này?')) return;
+    try {
+      await apiClient.delete(`/api/v1/i3ai-servers/${encodeURIComponent(serverId)}`);
+      if (selected?.kind === 'i3ai-server' && selected.data.id === serverId) {
+        setSelected(null);
+      }
+    } catch (err: any) {
+      console.error('Delete i3AI server error:', err);
+      alert('Không thể xóa i3AI server: ' + (err.response?.data?.error || err.message));
+    }
+  };
 
   const handleDeleteCamera = async (camId: string) => {
     if (!confirm(t('app.devices.confirm_delete_camera') || 'Xóa camera này?')) return;
@@ -327,6 +356,29 @@ export function DevicesManager({
             </div>
           )}
 
+          {/* i3AI Servers */}
+          <GroupHeader icon={<Server className="w-3.5 h-3.5" />} label="i3AI Servers" color="text-fuchsia-400" count={i3AiServers.length}
+            expanded={!!expandedGroups.i3ai} onToggle={() => toggleGroup('i3ai')}
+          />
+          {expandedGroups.i3ai && (
+            <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-fuchsia-400/10 pl-2">
+              {i3AiServers.length === 0 && <EmptyHint text="Chưa có i3AI server" />}
+              {i3AiServers.map(srv => (
+                <TreeItem
+                  key={srv.id}
+                  label={srv.custom_server_name || srv.server_name || srv.server_ip || srv.id}
+                  sublabel={srv.server_ip || srv.sender_ip || srv.server_id}
+                  icon={<Server className="w-3 h-3 text-fuchsia-400/70" />}
+                  onClick={() => setSelected({ kind: 'i3ai-server', data: srv })}
+                  isSelected={selected?.kind === 'i3ai-server' && (selected.data as ServerData).id === srv.id}
+                  status={srv.connectionStatus}
+                  onEdit={() => handleEditI3AiServer(srv)}
+                  onDelete={() => handleDeleteI3AiServer(srv.id)}
+                />
+              ))}
+            </div>
+          )}
+
           {/* MQTT Groups */}
           <GroupHeader icon={<Radio className="w-3.5 h-3.5" />} label="GROUP" color="text-amber-400" count={mqttGroups.length}
             expanded={!!expandedGroups.mqtt} onToggle={() => toggleGroup('mqtt')}
@@ -442,6 +494,8 @@ export function DevicesManager({
                   handleOpenUpdateMqttGroupPanel(item.data);
                 } else if (item.kind === 'camera') {
                   setEditingCamera(item.data);
+                } else if (item.kind === 'i3ai-server') {
+                  handleEditI3AiServer(item.data);
                 }
               }}
             />
@@ -581,6 +635,7 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
 
   const titleMap = {
     'svms-server': t('app.devices.svms_server'),
+    'i3ai-server': 'i3AI Server',
     'svms-device': t('app.devices.svms_device'),
     'mqtt-group': 'MQTT Group',
     'mqtt-device': t('app.devices.mqtt_device'),
@@ -596,6 +651,7 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
     <div className="animate-in fade-in duration-300">
       {/* Content */}
       {item.kind === 'svms-server' && <SvmsServerDetail srv={item.data} devices={item.devices} />}
+      {item.kind === 'i3ai-server' && <I3AiServerDetail srv={item.data} onEdit={() => onEdit?.(item)} />}
       {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} svmsDeviceFeatures={svmsDeviceFeatures} svmsKnownEvents={svmsKnownEvents} />}
       {item.kind === 'mqtt-group' && <MqttGroupDetail group={item.data} devices={item.mqttDevices} allCameras={cameraDevices} onUpdateMqttGroup={onUpdateMqttGroup} onEdit={() => onEdit?.(item)} />}
       {item.kind === 'mqtt-device' && <MqttDeviceDetail dev={item.data} group={item.group} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} milesightKnownEvents={milesightKnownEvents} />}
@@ -653,6 +709,32 @@ function SvmsServerDetail({ srv, devices }: { srv: ServerData; devices?: DeviceD
       <InfoRow label={t('app.monitor.type')} value={srv.type || 'direct'} />
       <InfoRow label={t('app.monitor.device_count')} value={devices?.devices?.length ?? 0} />
       <InfoRow label={t('app.monitor.last_seen')} value={formatDate(srv.lastSeen)} />
+    </div>
+  );
+}
+
+function I3AiServerDetail({ srv, onEdit }: { srv: ServerData; onEdit?: () => void }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-lg font-black text-on-surface">{srv.custom_server_name || srv.server_name || srv.server_ip || srv.id}</h3>
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-fuchsia-400 border border-fuchsia-400/20 hover:border-fuchsia-400/50 bg-fuchsia-400/5 hover:bg-fuchsia-400/10 rounded-md transition-all cursor-pointer"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+            Sửa tên
+          </button>
+        )}
+      </div>
+      <div className=""><StatusBadge status={srv.connectionStatus} /></div>
+      <InfoRow label="Server type" value="i3AI" />
+      <InfoRow label="IP định danh" value={srv.server_ip || srv.sender_ip || srv.server_id} mono />
+      <InfoRow label="Tên biệt danh" value={srv.custom_server_name || '(chưa đặt)'} />
+      <InfoRow label="Server ID" value={srv.id} mono />
+      <InfoRow label="Last seen" value={formatDate(srv.lastSeen)} />
+      <InfoRow label="Last log" value={formatDate(srv.lastLogReceived)} />
     </div>
   );
 }
@@ -1091,12 +1173,13 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
     setSnapshotLoading(true);
     setSnapshotResult(null);
     try {
-      const response = await apiClient.post(`/api/v1/cameras/${cam.id}/snapshot/sdk`);
+      const url = `/api/v1/cameras/${cam.id}/snapshot/url`;
+      const response = await apiClient.post(url);
       if (response.data && response.data.success) {
         setSnapshotResult({
           base64: response.data.snapshotBase64,
           path: response.data.snapshotPath,
-          method: response.data.method
+          method: response.data.method || 'snapshot_url'
         });
       } else {
         setSnapshotResult({
@@ -1156,9 +1239,21 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
       <InfoRow label={t('app.monitor.type')} value={cam.type} />
       <InfoRow label={t('app.monitor.username')} value={cam.cameraUser} />
       <InfoRow label={t('app.monitor.rtsp_url')} value={cam.rtspUrl || '(none)'} mono />
+      <InfoRow label="Snapshot URL" value={(cam as any).snapshotUrl || '(none)'} mono />
+      {cam.rtspUrl && (
+        <>
+          <InfoRow 
+            label="RTSP Stream Status" 
+            value={(cam as any).rtspStreamStatus === 'running' ? '🟢 Đang chạy ngầm' : ((cam as any).rtspStreamStatus === 'error' ? '🔴 Lỗi' : (cam as any).rtspStreamStatus || '(none)')} 
+            mono 
+          />
+          {(cam as any).rtspStreamError && (
+            <InfoRow label="RTSP Stream Error" value={(cam as any).rtspStreamError} mono />
+          )}
+        </>
+      )}
       <InfoRow label={t('app.monitor.handle')} value={cam.handle ?? '(none)'} />
-
-      {isSunell && (
+      {(isSunell || (cam as any).snapshotUrl) && (
         <div className="flex flex-col gap-2 mt-4 bg-surface-container/20 border border-outline-variant/10 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-black uppercase tracking-widest text-secondary">
@@ -1182,7 +1277,7 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
           
           {cam.status !== 'connected' && (
             <p className="text-[9px] text-red-500/70 italic mt-1">
-              * Vui lòng kết nối camera Sunell trước khi thực hiện snapshot
+              * Vui lòng kết nối camera trước khi thực hiện snapshot
             </p>
           )}
 
@@ -1197,7 +1292,7 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
                   <div className="text-secondary text-[11px] font-medium leading-relaxed">
                     ✅ Chụp thành công!
                     <span className="ml-1.5 text-[9px] font-mono text-on-surface-variant/60 bg-surface-container px-1.5 py-0.5 rounded">
-                      {snapshotResult.method === 'sdk_native' ? 'SDK Native' : snapshotResult.method === 'http_cgi' ? 'HTTP CGI/ISAPI' : snapshotResult.method || 'SDK'}
+                      {snapshotResult.method === 'snapshot_url' ? 'Snapshot URL' : snapshotResult.method === 'sdk_native' ? 'SDK Native' : snapshotResult.method === 'http_cgi' ? 'HTTP CGI/ISAPI' : snapshotResult.method || 'SDK'}
                     </span>
                   </div>
                   {snapshotResult.path && (
@@ -1209,7 +1304,7 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
                     <div className="relative mt-2 border border-outline-variant/10 rounded-md overflow-hidden bg-black flex items-center justify-center max-h-[220px]">
                       <img
                         src={snapshotResult.base64}
-                        alt="Sunell Snapshot Preview"
+                        alt="Camera Snapshot Preview"
                         className="object-contain max-h-[220px] w-full"
                       />
                     </div>

@@ -18,7 +18,7 @@
 const allLogs = [];
 
 /** Số log tối đa được giữ trong allLogs (FIFO) */
-const ALL_LOGS_MAX = 5000;
+const ALL_LOGS_MAX = 1000;
 
 /**
  * Lưu raw req.body khi nhận server info từ SVMS (POST /api/v1/server).

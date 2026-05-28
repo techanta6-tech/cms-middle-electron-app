@@ -21,9 +21,24 @@
 const trafficRecords = [];
 
 /** Số bản ghi tối đa được giữ trong trafficRecords (FIFO) */
-const TRAFFIC_RECORDS_MAX = 10000;
+const TRAFFIC_RECORDS_MAX = 1000;
+
+/** Danh sách biển số xe thuộc Blacklist */
+const blacklistPlates = ['59P198278', '50N140063', '71C309683', '59PA16833'];
+
+/**
+ * Cơ chế xử lý khi biển số thuộc danh sách đen:
+ * 1: Tạo THÊM 1 log mới với log_type là lpr_blacklist (Giữ log thường + Tạo log blacklist mới)
+ * 2: THAY THẾ log_type hiện tại thành lpr_blacklist (Mặc định)
+ */
+let blacklistMechanism = 2;
 
 module.exports = {
   trafficRecords,
   TRAFFIC_RECORDS_MAX,
+  blacklistPlates,
+  getBlacklistMechanism: () => blacklistMechanism,
+  setBlacklistMechanism: (val) => {
+    blacklistMechanism = Number(val) === 1 ? 1 : 2;
+  },
 };

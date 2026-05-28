@@ -38,5 +38,15 @@
     "event_type": "iva_retrograde",
     "event_description": "sunell_iva_retrograde_description",
     "default_enabled": false
+  },
+  {
+    "event_type": "system_event_5_12",
+    "event_description": "sunell_system_event_5_12_description",
+    "default_enabled": false
+  },
+  {
+    "event_type": "iva_event_68",
+    "event_description": "sunell_iva_event_68_description",
+    "default_enabled": false
   }
 ]

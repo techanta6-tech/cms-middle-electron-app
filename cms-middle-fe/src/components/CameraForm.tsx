@@ -19,15 +19,16 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
   const [addDeviceForm, setAddDeviceForm] = useState({
     name: cameraToEdit?.name || '',
     type: cameraToEdit?.type || initialType,
-    cameraIp: cameraToEdit?.cameraIp || '192.168.1.252',
+    cameraIp: cameraToEdit?.cameraIp || '192.168.1.208',
     controlPort: cameraToEdit?.cameraPort ? String(cameraToEdit.cameraPort) : '30001',
     rtspPort: '554',
     cameraUser: 'admin',
     cameraPass: 'admin1234',
     rtspUrl: cameraToEdit?.rtspUrl || 'rtsp://admin:admin1234@192.168.1.208:554/snl/live/1/1',
+    snapshotUrl: cameraToEdit?.snapshotUrl || 'http://admin:admin1234@192.168.1.208/cgi-bin/image.cgi?cameraID=1&quality=5',
   });
 
-  const [isCustomRtsp, setIsCustomRtsp] = useState(false);
+  const [isCustomSnapshotUrl, setIsCustomSnapshotUrl] = useState(false);
 
   // Parse fields from cameraToEdit.rtspUrl if editing
   useEffect(() => {
@@ -45,9 +46,10 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
             rtspPort: port,
             cameraUser: user,
             cameraPass: pass,
-            rtspUrl: cameraToEdit.rtspUrl
+            rtspUrl: cameraToEdit.rtspUrl,
+            snapshotUrl: cameraToEdit.snapshotUrl || `http://${user}:${pass}@${cameraToEdit.cameraIp || ip}/cgi-bin/image.cgi?cameraID=1&quality=5`
           });
-          setIsCustomRtsp(cameraToEdit.rtspUrl !== defaultTemplate);
+          setIsCustomSnapshotUrl(!!cameraToEdit.snapshotUrl);
         } else {
           setAddDeviceForm({
             name: cameraToEdit.name || '',
@@ -57,13 +59,24 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
             rtspPort: '554',
             cameraUser: 'admin',
             cameraPass: 'admin1234',
-            rtspUrl: cameraToEdit.rtspUrl
+            rtspUrl: cameraToEdit.rtspUrl,
+            snapshotUrl: cameraToEdit.snapshotUrl || `http://admin:admin1234@${cameraToEdit.cameraIp}/cgi-bin/image.cgi?cameraID=1&quality=5`
           });
-          setIsCustomRtsp(true);
+          setIsCustomSnapshotUrl(!!cameraToEdit.snapshotUrl);
         }
       } catch (e) {
         console.warn('Error parsing camera RTSP url:', e);
       }
+    } else if (cameraToEdit) {
+      setAddDeviceForm(prev => ({
+        ...prev,
+        name: cameraToEdit.name || '',
+        type: cameraToEdit.type,
+        cameraIp: cameraToEdit.cameraIp,
+        controlPort: String(cameraToEdit.cameraPort || '30001'),
+        snapshotUrl: cameraToEdit.snapshotUrl || `http://admin:admin1234@${cameraToEdit.cameraIp}/cgi-bin/image.cgi?cameraID=1&quality=5`,
+      }));
+      setIsCustomSnapshotUrl(!!cameraToEdit.snapshotUrl);
     }
   }, [cameraToEdit]);
 
@@ -71,22 +84,20 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
   const updateForm = (updates: Partial<typeof addDeviceForm>) => {
     setAddDeviceForm(prev => {
       const next = { ...prev, ...updates };
-      // Sync RTSP URL if not in custom mode
-      if (!isCustomRtsp) {
-        next.rtspUrl = `rtsp://${next.cameraUser}:${next.cameraPass}@${next.cameraIp}:${next.rtspPort}/snl/live/1/1`;
+      next.rtspUrl = `rtsp://${next.cameraUser}:${next.cameraPass}@${next.cameraIp}:${next.rtspPort}/snl/live/1/1`;
+      if (!isCustomSnapshotUrl) {
+        next.snapshotUrl = `http://${next.cameraUser}:${next.cameraPass}@${next.cameraIp}/cgi-bin/image.cgi?cameraID=1&quality=5`;
       }
       return next;
     });
   };
 
-  // Special handler for custom RTSP toggle
-  const handleCustomRtspToggle = (checked: boolean) => {
-    setIsCustomRtsp(checked);
+  const handleCustomSnapshotUrlToggle = (checked: boolean) => {
+    setIsCustomSnapshotUrl(checked);
     if (!checked) {
-      // Re-sync URL immediately when switching back to auto
       setAddDeviceForm(prev => ({
         ...prev,
-        rtspUrl: `rtsp://${prev.cameraUser}:${prev.cameraPass}@${prev.cameraIp}:${prev.rtspPort}/snl/live/1/1`
+        snapshotUrl: `http://${prev.cameraUser}:${prev.cameraPass}@${prev.cameraIp}/cgi-bin/image.cgi?cameraID=1&quality=5`
       }));
     }
   };
@@ -108,7 +119,8 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
         cameraPort: parseInt(addDeviceForm.controlPort || '30001'),
         cameraUser: addDeviceForm.cameraUser,
         cameraPass: addDeviceForm.cameraPass,
-        rtspUrl: addDeviceForm.rtspUrl
+        rtspUrl: addDeviceForm.rtspUrl,
+        snapshotUrl: addDeviceForm.snapshotUrl
       };
 
       if (cameraToEdit) {
@@ -241,23 +253,23 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
 
               <div className="flex flex-col gap-1.5 col-span-2">
                 <div className="flex items-center justify-between ml-1">
-                  <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest">{t('app.camera_form.rtsp_optional')}</label>
+                  <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest">Snapshot URL</label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Custom RTSP</span>
+                    <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Custom Snapshot URL</span>
                     <input
                       type="checkbox"
                       className="accent-cyan-500 w-3 h-3 cursor-pointer"
-                      checked={isCustomRtsp}
-                      onChange={(e) => handleCustomRtspToggle(e.target.checked)}
+                      checked={isCustomSnapshotUrl}
+                      onChange={(e) => handleCustomSnapshotUrlToggle(e.target.checked)}
                     />
                   </label>
                 </div>
                 <input
-                  value={addDeviceForm.rtspUrl}
-                  onChange={e => isCustomRtsp && updateForm({ rtspUrl: e.target.value })}
-                  disabled={!isCustomRtsp}
-                  className={`w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20 ${!isCustomRtsp ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  placeholder="rtsp://..."
+                  value={addDeviceForm.snapshotUrl}
+                  onChange={e => isCustomSnapshotUrl && updateForm({ snapshotUrl: e.target.value })}
+                  disabled={!isCustomSnapshotUrl}
+                  className={`w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20 ${!isCustomSnapshotUrl ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  placeholder="http://admin:admin1234@192.168.1.208/cgi-bin/image.cgi?cameraID=1&quality=5"
                 />
               </div>
             </div>

@@ -23,6 +23,7 @@ function createEmptyState() {
     mqttGroups: [],
     mqttDevices: [],
     cameras: [],
+    i3AiServers: [],
     updatedAt: null,
   };
 }
@@ -42,6 +43,7 @@ function readState() {
       mqttGroups: Array.isArray(parsed.mqttGroups) ? parsed.mqttGroups : [],
       mqttDevices: Array.isArray(parsed.mqttDevices) ? parsed.mqttDevices : [],
       cameras: Array.isArray(parsed.cameras) ? parsed.cameras : [],
+      i3AiServers: Array.isArray(parsed.i3AiServers) ? parsed.i3AiServers : [],
     };
   } catch (err) {
     console.error(`[PERSISTED_DEVICES] Failed to read ${filePath}: ${err.message}`);
@@ -211,6 +213,7 @@ function persistCamera(cameraConfig) {
     cameraUser: cameraConfig.cameraUser || 'admin',
     cameraPass: cameraConfig.cameraPass || 'admin1234',
     rtspUrl: cameraConfig.rtspUrl || null,
+    snapshotUrl: cameraConfig.snapshotUrl || null,
     features: cameraConfig.features || {},
     recordedAt: new Date().toISOString(),
   };
@@ -222,6 +225,37 @@ function persistCamera(cameraConfig) {
 function removeCamera(id) {
   const state = readState();
   state.cameras = state.cameras.filter(item => item.id !== id);
+  writeState(state);
+}
+
+function persistI3AiServer(serverData) {
+  if (!serverData?.id) return;
+
+  const state = readState();
+  const entry = {
+    serverId: serverData.id,
+    data: {
+      id: serverData.id,
+      server_id: serverData.server_id,
+      serial: serverData.serial,
+      server_name: serverData.server_name,
+      custom_server_name: serverData.custom_server_name || '',
+      server_ip: serverData.server_ip,
+      sender_ip: serverData.sender_ip,
+      type: 'i3ai',
+      lastSeen: serverData.lastSeen,
+      lastLogReceived: serverData.lastLogReceived,
+    },
+    recordedAt: new Date().toISOString(),
+  };
+
+  upsertBy(state.i3AiServers, item => item.serverId === entry.serverId, entry);
+  writeState(state);
+}
+
+function removeI3AiServer(serverId) {
+  const state = readState();
+  state.i3AiServers = state.i3AiServers.filter(item => item.serverId !== serverId);
   writeState(state);
 }
 
@@ -239,9 +273,13 @@ async function bootstrapPersistedDevices() {
   } = require('../socketState');
   const { connectMqttDevice, parseDeviceInfoFromTopic } = require('./mqtt.service');
   const { addCameraDevice, removeCameraDevice } = require('./cameras.service');
+  const i3AiService = require('./i3ai.service');
   let restoredSvms = 0;
   let restoredMqtt = 0;
   let restoredCameras = 0;
+  let restoredI3Ai = 0;
+
+  restoredI3Ai = i3AiService.restoreI3AiServers(state.i3AiServers);
 
   for (const item of state.svmsServers) {
     const serverData = item.data || {};
@@ -372,7 +410,7 @@ async function bootstrapPersistedDevices() {
     clientSockets.emit('receive-devices-information', { allDevices: Object.fromEntries(devices) });
   }
 
-  console.log(`[PERSISTED_DEVICES] Bootstrap complete: SVMS=${restoredSvms}, MQTT=${restoredMqtt}, cameras=${restoredCameras}`);
+  console.log(`[PERSISTED_DEVICES] Bootstrap complete: SVMS=${restoredSvms}, MQTT=${restoredMqtt}, cameras=${restoredCameras}, i3AI=${restoredI3Ai}`);
 }
 
 module.exports = {
@@ -388,5 +426,7 @@ module.exports = {
   removeMqttDevice,
   persistCamera,
   removeCamera,
+  persistI3AiServer,
+  removeI3AiServer,
   bootstrapPersistedDevices,
 };

@@ -17,7 +17,17 @@ const authMiddleware = require('../../middleware/auth.middleware');
 const persistedDevices = require('../../services/persisted-devices.service');
 
 const router = express.Router();
-router.use(authMiddleware);
+router.use((req, res, next) => {
+  const protectedPrefixes = [
+    '/api/v1/mqtt-groups',
+    '/api/v1/mqtt-devices',
+    '/api/v1/mqtt-servers',
+  ];
+  if (!protectedPrefixes.some(prefix => req.path.startsWith(prefix))) {
+    return next('router');
+  }
+  return authMiddleware(req, res, next);
+});
 
 function emitMqttState() {
   const { getClientSockets } = require('../../socketState');

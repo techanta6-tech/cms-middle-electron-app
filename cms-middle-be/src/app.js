@@ -18,7 +18,10 @@ const deviceCameraLinkRoutes = require('./routes/device-camera-link.routes');
 const gridLayoutRoutes = require('./routes/grid-layout.routes');
 const eMapLayoutRoutes = require('./routes/emap-layout.routes');
 const trafficRoutes = require('./routes/traffic.routes');
+const i3AiRoutes = require('./routes/i3ai.routes');
+const { createRtspSnapshotRouter } = require('./module/rtspSnapshotStream');
 const { getClientSockets } = require('./socketState');
+const authMiddleware = require('./middleware/auth.middleware');
 
 const app = express();
 
@@ -165,6 +168,8 @@ app.use(deviceCameraLinkRoutes);
 app.use(gridLayoutRoutes);
 app.use(eMapLayoutRoutes);
 app.use(trafficRoutes);
+app.use(i3AiRoutes);
+app.use(createRtspSnapshotRouter({ authMiddleware }));
 // ─── Debug: dump toàn bộ in-memory state ─────────────────────────────────────
 const socketState = require('./socketState');
 

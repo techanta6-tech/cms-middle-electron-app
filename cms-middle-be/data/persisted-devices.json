@@ -84,11 +84,11 @@
   ],
   "mqttGroups": [
     {
-      "id": "8e0f6ed1",
-      "name": "Tang 1",
-      "cameraId": "cam-1779770858066-vwrun",
-      "createdAt": "2026-05-26T02:10:25.323Z",
-      "updatedAt": "2026-05-26T04:47:56.879Z"
+      "id": "default",
+      "name": "Default Group",
+      "cameraId": null,
+      "createdAt": "2026-05-28T02:19:32.641Z",
+      "updatedAt": "2026-05-28T02:19:32.641Z"
     }
   ],
   "mqttDevices": [],
@@ -106,7 +106,19 @@
       "recordedAt": "2026-05-26T04:47:40.061Z"
     },
     {
-      "id": "cam-1779777496725-jvnoi",
+      "id": "cam-1779848504469-5q7g5",
+      "name": "Cam tren lau",
+      "type": "other",
+      "cameraIp": "192.168.1.68",
+      "cameraPort": 30001,
+      "cameraUser": "admin",
+      "cameraPass": "admin1234",
+      "rtspUrl": "rtsp://admin:Ant@62026@192.168.1.68:554/profile1",
+      "features": {},
+      "recordedAt": "2026-05-27T02:21:45.819Z"
+    },
+    {
+      "id": "cam-1779942041625-ft1yo",
       "name": "Cam 192.168.1.208",
       "type": "sunell",
       "cameraIp": "192.168.1.208",
@@ -114,12 +126,18 @@
       "cameraUser": "admin",
       "cameraPass": "admin1234",
       "rtspUrl": "rtsp://admin:admin1234@192.168.1.208:554/snl/live/1/1",
+      "snapshotUrl": "http://admin:admin1234@192.168.1.208/cgi-bin/image.cgi?cameraID=1&quality=5",
       "features": {
-        "motion_event": false,
-        "lpr_event": true
+        "lpr_event": false,
+        "iva_event_68": true,
+        "system_event_5_12": true,
+        "iva_retrograde": true,
+        "iva_double_trip_wire": true,
+        "iva_event_52": true
       },
-      "recordedAt": "2026-05-26T09:47:46.847Z"
+      "recordedAt": "2026-05-28T04:22:06.265Z"
     }
   ],
-  "updatedAt": "2026-05-26T09:47:46.847Z"
+  "i3AiServers": [],
+  "updatedAt": "2026-05-28T04:22:06.265Z"
 }
