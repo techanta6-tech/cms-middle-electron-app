@@ -1,4 +1,4 @@
-import React, { useState, useEffect, memo, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../api/apiClient';
 import { Camera, X, Eye, EyeOff } from 'lucide-react';
@@ -29,6 +29,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
   });
 
   const [isCustomSnapshotUrl, setIsCustomSnapshotUrl] = useState(false);
+  const [isCustomRtspUrl, setIsCustomRtspUrl] = useState(false);
 
   // Parse fields from cameraToEdit.rtspUrl if editing
   useEffect(() => {
@@ -38,6 +39,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
         if (match) {
           const [, user, pass, ip, port] = match;
           const defaultTemplate = `rtsp://${user}:${pass}@${cameraToEdit.cameraIp}:${port}/snl/live/1/1`;
+          const isCustom = cameraToEdit.rtspUrl !== defaultTemplate;
           setAddDeviceForm({
             name: cameraToEdit.name || '',
             type: cameraToEdit.type,
@@ -50,6 +52,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
             snapshotUrl: cameraToEdit.snapshotUrl || `http://${user}:${pass}@${cameraToEdit.cameraIp || ip}/cgi-bin/image.cgi?cameraID=1&quality=5`
           });
           setIsCustomSnapshotUrl(!!cameraToEdit.snapshotUrl);
+          setIsCustomRtspUrl(isCustom);
         } else {
           setAddDeviceForm({
             name: cameraToEdit.name || '',
@@ -63,6 +66,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
             snapshotUrl: cameraToEdit.snapshotUrl || `http://admin:admin1234@${cameraToEdit.cameraIp}/cgi-bin/image.cgi?cameraID=1&quality=5`
           });
           setIsCustomSnapshotUrl(!!cameraToEdit.snapshotUrl);
+          setIsCustomRtspUrl(true);
         }
       } catch (e) {
         console.warn('Error parsing camera RTSP url:', e);
@@ -77,6 +81,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
         snapshotUrl: cameraToEdit.snapshotUrl || `http://admin:admin1234@${cameraToEdit.cameraIp}/cgi-bin/image.cgi?cameraID=1&quality=5`,
       }));
       setIsCustomSnapshotUrl(!!cameraToEdit.snapshotUrl);
+      setIsCustomRtspUrl(true);
     }
   }, [cameraToEdit]);
 
@@ -84,7 +89,9 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
   const updateForm = (updates: Partial<typeof addDeviceForm>) => {
     setAddDeviceForm(prev => {
       const next = { ...prev, ...updates };
-      next.rtspUrl = `rtsp://${next.cameraUser}:${next.cameraPass}@${next.cameraIp}:${next.rtspPort}/snl/live/1/1`;
+      if (!isCustomRtspUrl) {
+        next.rtspUrl = `rtsp://${next.cameraUser}:${next.cameraPass}@${next.cameraIp}:${next.rtspPort}/snl/live/1/1`;
+      }
       if (!isCustomSnapshotUrl) {
         next.snapshotUrl = `http://${next.cameraUser}:${next.cameraPass}@${next.cameraIp}/cgi-bin/image.cgi?cameraID=1&quality=5`;
       }
@@ -98,6 +105,16 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
       setAddDeviceForm(prev => ({
         ...prev,
         snapshotUrl: `http://${prev.cameraUser}:${prev.cameraPass}@${prev.cameraIp}/cgi-bin/image.cgi?cameraID=1&quality=5`
+      }));
+    }
+  };
+
+  const handleCustomRtspUrlToggle = (checked: boolean) => {
+    setIsCustomRtspUrl(checked);
+    if (!checked) {
+      setAddDeviceForm(prev => ({
+        ...prev,
+        rtspUrl: `rtsp://${prev.cameraUser}:${prev.cameraPass}@${prev.cameraIp}:${prev.rtspPort}/snl/live/1/1`
       }));
     }
   };
@@ -129,7 +146,7 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
         await apiClient.post('/api/v1/cameras', payload);
       }
       onSuccess();
-    } catch (err: any) {
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       console.error('Error saving camera:', err);
       alert(t('app.camera_form.error_save_failed') + ': ' + (err.response?.data?.error || err.message));
     } finally {
@@ -251,6 +268,30 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
                 </div>
               </div>
 
+              {/* RTSP URL Field */}
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <div className="flex items-center justify-between ml-1">
+                  <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest">RTSP URL</label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Custom RTSP URL</span>
+                    <input
+                      type="checkbox"
+                      className="accent-cyan-500 w-3 h-3 cursor-pointer"
+                      checked={isCustomRtspUrl}
+                      onChange={(e) => handleCustomRtspUrlToggle(e.target.checked)}
+                    />
+                  </label>
+                </div>
+                <input
+                  value={addDeviceForm.rtspUrl}
+                  onChange={e => isCustomRtspUrl && setAddDeviceForm(prev => ({ ...prev, rtspUrl: e.target.value }))}
+                  disabled={!isCustomRtspUrl}
+                  className={`w-full bg-black/40 border border-outline-variant/30 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all placeholder:text-on-surface-variant/20 ${!isCustomRtspUrl ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  placeholder="rtsp://admin:admin1234@192.168.1.208:554/snl/live/1/1"
+                />
+              </div>
+
+              {/* Snapshot URL Field */}
               <div className="flex flex-col gap-1.5 col-span-2">
                 <div className="flex items-center justify-between ml-1">
                   <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest">Snapshot URL</label>

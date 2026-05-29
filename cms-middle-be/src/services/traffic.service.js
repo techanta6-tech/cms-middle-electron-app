@@ -98,6 +98,43 @@ function saveTrafficRecords() {
 }
 
 /**
+ * Kiểm tra chống lặp (Deduplication)
+ * - So khớp biển số xe trong payload với 30 bản ghi gần nhất.
+ * - Trùng lặp nếu: cùng biển số, cùng camera_id và thời gian chênh lệch dưới 30s.
+ */
+function isDuplicateLpr(payload, deviceId) {
+  if (!payload || !payload.TargetDetectList || !Array.isArray(payload.TargetDetectList)) {
+    return false;
+  }
+  
+  const now = Date.now();
+  const platesToCheck = [];
+  for (const target of payload.TargetDetectList) {
+    if (target.Type === 3 && target.PlateInfo && target.PlateInfo.Plate_num) {
+      const plate = target.PlateInfo.Plate_num.trim().toUpperCase();
+      if (plate) platesToCheck.push(plate);
+    }
+  }
+
+  if (platesToCheck.length === 0) return false;
+
+  const recentRecords = trafficRecords.slice(-30);
+  
+  for (const plate of platesToCheck) {
+    for (let i = recentRecords.length - 1; i >= 0; i--) {
+      const record = recentRecords[i];
+      if (record.camera_id === deviceId && record.plate_num.toUpperCase() === plate) {
+        if (now - record.receive_time < 30000) {
+          return true;
+        }
+      }
+    }
+  }
+  
+  return false;
+}
+
+/**
  * Trích xuất thông tin biển số từ Sunell LPR payload và thêm vào mảng trafficRecords.
  * @param {object} payload - Raw payload từ Sunell detect callback.
  * @param {object} device  - Device object { id, name, ... }
@@ -308,5 +345,6 @@ module.exports = {
   getTrafficRecords,
   getTrafficStats,
   getTrafficRecordsForSync,
+  isDuplicateLpr,
   getFilePath: () => _trafficFilePath,
 };

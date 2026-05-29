@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSocketManager } from '../hooks/useSocketManager';
 import { ConnectionsMonitor } from './ConnectionsMonitor';
 import { LogPopup } from './LogPopup';
-import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut, ChevronDown, MapPinned, Car } from 'lucide-react';
+import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut, ChevronDown, MapPinned, Car, Tv } from 'lucide-react';
 import { ConfigSystem } from './ConfigSystem';
 import apiClient from '../api/apiClient';
 import { LogEntry } from './LogEntry';
@@ -14,6 +14,7 @@ import { authApi } from '../api/authApi';
 import { EMap } from './EMap';
 import { DeviceDraggablePanel } from './DeviceDraggablePanel';
 import { TrafficManager } from './TrafficManager';
+import { LiveWall } from './LiveWall';
 
 function LogFilter({
   servers,
@@ -469,7 +470,7 @@ export function Dashboard() {
   const [selectedServers, setSelectedServers] = useState<Set<string>>(new Set());
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
   const [rightTab, setRightTab] = useState<'logs' | 'devices'>('logs');
-  const [mainTab, setMainTab] = useState<'alert' | 'emap' | 'connections' | 'devices' | 'traffic'>('emap');
+  const [mainTab, setMainTab] = useState<'alert' | 'emap' | 'connections' | 'devices' | 'traffic' | 'livewall'>('emap');
   const [visibleAlerts, setVisibleAlerts] = useState<number>(30);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -661,12 +662,13 @@ export function Dashboard() {
 
   return (
     <div className="app-dashboard-root flex flex-col h-screen overflow-hidden bg-background text-on-surface font-sans selection:bg-primary/30 antialiased">
-      <main className={`app-dashboard-main flex-1 overflow-hidden ${isNarrow ? 'flex flex-col' : ((mainTab === 'alert' || mainTab === 'emap') && !isAlertWallFullscreen) ? 'grid grid-cols-4 gap-0' : 'flex'}`}>
+      <main className={`app-dashboard-main flex-1 overflow-hidden ${isNarrow ? 'flex flex-col' : ((mainTab === 'alert' || mainTab === 'emap' || mainTab === 'livewall') && !isAlertWallFullscreen) ? 'grid grid-cols-4 gap-0' : 'flex'}`}>
         {/* Main Section */}
-        <div className={`app-dashboard-left-section overflow-hidden bg-background border-outline-variant/20 ${isNarrow ? 'flex-1 border-b' : ((mainTab === 'alert' || mainTab === 'emap') && !isAlertWallFullscreen) ? 'col-span-3 grid grid-rows-[1fr] h-full border-r' : 'flex-1 h-full'}`}>
+        <div className={`app-dashboard-left-section overflow-hidden bg-background border-outline-variant/20 ${isNarrow ? 'flex-1 border-b' : ((mainTab === 'alert' || mainTab === 'emap' || mainTab === 'livewall') && !isAlertWallFullscreen) ? 'col-span-3 grid grid-rows-[1fr] h-full border-r' : 'flex-1 h-full'}`}>
           <div className="flex flex-col overflow-hidden h-full">
             {!isAlertWallFullscreen && (
               <div className={`appTabsBar flex items-center border-b border-outline-variant/10 shrink-0 ${isNarrow ? '' : 'px-6 gap-4'}`}>
+                {/* Nút chuyển sang màn hình Bản đồ số (EMap) */}
                 <button
                   className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'emap' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('emap')}
@@ -674,6 +676,7 @@ export function Dashboard() {
                   <MapPinned className={`w-5 h-5 ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.emap')}</h2>
                 </button>
+                {/* Nhóm nút Giám sát sự kiện và Live Wall*/}
                 <button
                   className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'alert' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('alert')}
@@ -681,6 +684,14 @@ export function Dashboard() {
                   <Monitor className={`w-5 h-5 ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.alert_wall')}</h2>
                 </button>
+                {/* <button
+                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'livewall' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('livewall')}
+                >
+                  <Tv className={`w-5 h-5 ${mainTab === 'livewall' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'livewall' ? 'text-primary' : 'text-on-surface'}`}>Live Wall</h2>
+                </button> */}
+                {/* Nút chuyển sang màn hình Quản lý giao thông (Traffic Manager) */}
                 <button
                   className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'traffic' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('traffic')}
@@ -688,6 +699,7 @@ export function Dashboard() {
                   <Car className={`w-5 h-5 ${mainTab === 'traffic' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'traffic' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.traffic', { defaultValue: 'Quản lý giao thông' })}</h2>
                 </button>
+                {/* Nút chuyển sang màn hình Quản lý Thiết bị (Devices Manager) */}
                 <button
                   className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('devices')}
@@ -695,13 +707,14 @@ export function Dashboard() {
                   <Cpu className={`w-5 h-5 ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.devices')}</h2>
                 </button>
-                <button
+                {/* Nút chuyển sang màn hình Theo dõi Kết nối (Connections Monitor) */}
+                {/* <button
                   className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'connections' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('connections')}
                 >
                   <Network className={`w-5 h-5 ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.connections_monitor')}</h2>
-                </button>
+                </button> */}
               </div>
             )}
             {/* <button onClick={() => console.log(servers)}>CLick</button> */}
@@ -715,6 +728,13 @@ export function Dashboard() {
                 setGridCols={setGridCols}
                 grids={grids}
                 setGrids={setGrids}
+                isFullscreen={isAlertWallFullscreen}
+                setIsFullscreen={setIsAlertWallFullscreen}
+              />
+            )}
+            {mainTab === 'livewall' && (
+              <LiveWall
+                cameraDevices={cameraDevices}
                 isFullscreen={isAlertWallFullscreen}
                 setIsFullscreen={setIsAlertWallFullscreen}
               />
@@ -791,8 +811,8 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Right Section — visible on Alert Wall and E-Map tabs */}
-        {(mainTab === 'alert' || mainTab === 'emap') && !isAlertWallFullscreen && isNarrow && (
+        {/* Right Section — visible on Alert Wall, E-Map and Live Wall tabs */}
+        {(mainTab === 'alert' || mainTab === 'emap' || mainTab === 'livewall') && !isAlertWallFullscreen && isNarrow && (
           <button
             onClick={() => setRightPanelVisible(v => !v)}
             className="app-right-panel-toggle fixed bottom-4 right-4 z-50 flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary text-white shadow-lg text-[11px] font-bold tracking-wide transition-all hover:bg-primary/90 active:scale-95"
@@ -802,29 +822,101 @@ export function Dashboard() {
               : <><PanelRightOpen className="w-4 h-4" /></>}
           </button>
         )}
-        {(mainTab === 'alert' || mainTab === 'emap') && !isAlertWallFullscreen && (
+        {(mainTab === 'alert' || mainTab === 'emap' || mainTab === 'livewall') && !isAlertWallFullscreen && (
           <aside
             className={`alert-wall-right-section bg-surface-container-lowest flex flex-col overflow-hidden shadow-2xl z-10 transition-transform duration-300 ${isNarrow
               ? `fixed bottom-0 left-0 right-0 h-1/4 border-t border-outline-variant/20 ${rightPanelVisible ? 'translate-y-0' : 'translate-y-full'}`
               : 'col-span-1 relative w-full'
               }`}
           >
-            <div className="flex items-center border-b border-outline-variant/10 shrink-0">
-              <button
-                onClick={() => setRightTab('logs')}
-                className={`h-full flex-3 py-3 text-[10px] tracking-widest font-bold uppercase transition-colors flex items-center justify-center gap-2 ${rightTab === 'logs' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-on-surface-variant hover:bg-surface-container-low/50 border-b-2 border-transparent'}`}
-              >
-                <Terminal className="w-3.5 h-3.5" />{t('app.alert_wall.logs')} ({displayLogCount})
-              </button>
-              <button
-                onClick={() => setRightTab('devices')}
-                className={`h-full flex-1 py-3 text-[10px] tracking-widest font-bold uppercase transition-colors flex items-center justify-center gap-2 ${rightTab === 'devices' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-on-surface-variant hover:bg-surface-container-low/50 border-b-2 border-transparent'}`}
-              >
-                <MonitorSmartphone className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            {mainTab !== 'livewall' && (
+              <div className="flex items-center border-b border-outline-variant/10 shrink-0">
+                <button
+                  onClick={() => setRightTab('logs')}
+                  className={`h-full flex-3 py-3 text-[10px] tracking-widest font-bold uppercase transition-colors flex items-center justify-center gap-2 ${rightTab === 'logs' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-on-surface-variant hover:bg-surface-container-low/50 border-b-2 border-transparent'}`}
+                >
+                  <Terminal className="w-3.5 h-3.5" />{t('app.alert_wall.logs')} ({displayLogCount})
+                </button>
+                <button
+                  onClick={() => setRightTab('devices')}
+                  className={`h-full flex-1 py-3 text-[10px] tracking-widest font-bold uppercase transition-colors flex items-center justify-center gap-2 ${rightTab === 'devices' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-on-surface-variant hover:bg-surface-container-low/50 border-b-2 border-transparent'}`}
+                >
+                  <MonitorSmartphone className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
-            {rightTab === 'logs' ? (
+            {mainTab === 'livewall' ? (
+              <div className="LiveWallSidebar device-draggable-container flex-1 overflow-y-auto custom-scrollbar p-3 bg-surface-container-low/10 flex flex-col gap-2 relative">
+                <div className="flex items-center justify-between sticky top-0 py-1 z-10 backdrop-blur-md mb-2 rounded-md px-1">
+                  <span className="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-70 font-bold">{t('app.alert_wall.drag_to_assign', 'Kéo camera vào grid')}</span>
+                </div>
+
+                {/* Sunell Cameras */}
+                <div className="flex items-center gap-2 mb-1 px-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-secondary/80">Sunell Cameras</span>
+                  <div className="flex-1 h-px bg-secondary/10" />
+                </div>
+                {cameraDevices.filter((cam: any) => cam.type === 'sunell').map((cam: any) => (
+                  <div
+                    key={cam.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/json', JSON.stringify({
+                        id: cam.id,
+                        device_ip: cam.id,
+                        device_name: cam.name || cam.cameraIp,
+                        device_type: 'sunell'
+                      }));
+                    }}
+                    className="p-3 bg-surface-container hover:bg-surface-container-high border border-outline-variant/10 rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-secondary transition-colors truncate">{cam.name || cam.cameraIp}</span>
+                        <span className="text-[9px] text-on-surface-variant/70 font-mono truncate">{cam.cameraIp}</span>
+                      </div>
+                      <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium shrink-0">sunell</span>
+                    </div>
+                  </div>
+                ))}
+                {cameraDevices.filter((cam: any) => cam.type === 'sunell').length === 0 && (
+                  <div className="p-3 text-[10px] opacity-40 text-center italic">Không có camera Sunell</div>
+                )}
+
+                {/* Other Cameras */}
+                <div className="flex items-center gap-2 mt-4 mb-1 px-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">Other Cameras</span>
+                  <div className="flex-1 h-px bg-primary/10" />
+                </div>
+                {cameraDevices.filter((cam: any) => cam.type !== 'sunell').map((cam: any) => (
+                  <div
+                    key={cam.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/json', JSON.stringify({
+                        id: cam.id,
+                        device_ip: cam.id,
+                        device_name: cam.name || cam.cameraIp,
+                        device_type: 'camera'
+                      }));
+                    }}
+                    className="p-3 bg-surface-container hover:bg-surface-container-high border border-outline-variant/10 rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-primary transition-colors truncate">{cam.name || cam.cameraIp}</span>
+                        <span className="text-[9px] text-on-surface-variant/70 font-mono truncate">{cam.cameraIp}</span>
+                      </div>
+                      <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium shrink-0">{cam.type || 'vms'}</span>
+                    </div>
+                  </div>
+                ))}
+                {cameraDevices.filter((cam: any) => cam.type !== 'sunell').length === 0 && (
+                  <div className="p-3 text-[10px] opacity-40 text-center italic">Không có camera khác</div>
+                )}
+              </div>
+            ) : rightTab === 'logs' ? (
               <>
                 <div className="relative p-3 flex items-center justify-between border-b border-outline-variant/10 shrink-0 bg-surface-container-lowest">
                   <span className="text-[10px] font-bold tracking-widest text-on-surface-variant uppercase">{t('app.filter.filter_logs')}</span>

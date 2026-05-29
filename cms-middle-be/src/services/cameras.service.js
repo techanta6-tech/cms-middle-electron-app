@@ -9,6 +9,7 @@ const {
   createRtspConnection,
   stopRtspConnection,
   getRtspConnection,
+  captureRtspSnapshot,
 } = require('../module/rtspSnapshotStream');
 
 // Trong môi trường pkg, __dirname nằm trong virtual snapshot (read-only).
@@ -548,6 +549,13 @@ async function addCameraDevice(deviceConfig, options = {}) {
           return;
         }
 
+        if (isLpr) {
+          if (trafficService.isDuplicateLpr(payload, device.id)) {
+            console.log(`[Camera-${id}] [Traffic] Bỏ qua LPR log trùng lặp (chống lặp 30s)`);
+            return;
+          }
+        }
+
         // YÊU CẦU: Áp dụng lấy ảnh toàn cảnh (fullshot) từ luồng RTSP streaming ngầm CHỈ cho lpr_event
         if (isLpr) {
           saveSunellSnapshotAfterPrefilter(device, payload, logType);
@@ -559,10 +567,12 @@ async function addCameraDevice(deviceConfig, options = {}) {
           payload.lprSnapshotLatencyMs = null;
           try {
             await sleep(LPR_SNAPSHOT_DELAY_MS);
-            const snapshotResult = await captureSnapshotUrlForCamera(device, {
-              save: true,
-              timeoutMs: OVERVIEW_SNAPSHOT_TIMEOUT_MS,
+            
+            // Dùng luồng stream RTSP thay vì gọi HTTP tới Camera
+            const snapshotResult = await captureRtspSnapshot(device.id, {
               includeBase64: true,
+              timeoutMs: OVERVIEW_SNAPSHOT_TIMEOUT_MS,
+              fresh: true,
             });
 
             if (snapshotResult && snapshotResult.success && snapshotResult.snapshotBase64) {
@@ -571,14 +581,14 @@ async function addCameraDevice(deviceConfig, options = {}) {
 
               payload.snapshotBase64 = snapshotResult.snapshotBase64;
               payload.snapshotPath = snapshotResult.snapshotPath || null;
-              payload.snapshotSource = 'snapshot-url';
+              payload.snapshotSource = 'rtsp-stream';
               payload.lprSnapshotLatencyMs = Date.now() - alarmReceivedAtMs;
-              console.log(`[Camera-${id}] [LPR SNAPSHOT] Snapshot URL captured and applied to log snapshot, size=${snapshotResult.snapshotBase64.length}`);
+              console.log(`[Camera-${id}] [LPR SNAPSHOT] RTSP Stream Frame captured and applied to log snapshot, size=${snapshotResult.snapshotBase64.length}`);
             } else {
-              console.warn(`[Camera-${id}] [FULL SHOT] Snapshot URL failed: ${snapshotResult ? snapshotResult.error : 'Unknown'}`);
+              console.warn(`[Camera-${id}] [FULL SHOT] RTSP Stream Snapshot failed: ${snapshotResult ? snapshotResult.error : 'Unknown'}`);
             }
           } catch (err) {
-            console.error(`[Camera-${id}] [FULL SHOT] Snapshot URL error: ${err.message}`);
+            console.error(`[Camera-${id}] [FULL SHOT] RTSP Stream Snapshot error: ${err.message}`);
           }
         }
 

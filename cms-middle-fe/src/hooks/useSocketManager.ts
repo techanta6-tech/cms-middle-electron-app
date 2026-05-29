@@ -971,7 +971,7 @@ export function useSocketManager() {
       if (Array.isArray(history)) {
         setTrafficHistory(history);
         const catalog: Record<string, any> = {};
-        for (let i = history.length - 1; i >= 0; i--) {
+        for (let i = 0; i < history.length; i++) {
           const item = history[i];
           if (item && item.plate_num) {
             catalog[item.plate_num] = item;
@@ -991,7 +991,7 @@ export function useSocketManager() {
         setTrafficCatalog(prev => {
           const next = { ...prev };
           records.forEach(item => {
-            if (item && item.plate_num && !next[item.plate_num]) {
+            if (item && item.plate_num) {
               next[item.plate_num] = item;
             }
           });
