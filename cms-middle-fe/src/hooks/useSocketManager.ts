@@ -8,21 +8,18 @@ export interface SvmsKnownEvent {
   event_type: string;
   event_description: string; // i18n key tham chiếu, ví dụ: 'ai_alarm_crosswire_all_description'
   default_enabled: boolean;
-  event_group?: string;
 }
 
 export interface MilesightKnownEvent {
   event_type: string;
   event_description: string;
   default_enabled: boolean;
-  event_group?: string;
 }
 
 export interface SunellKnownEvent {
   event_type: string;
   event_description: string;
   default_enabled: boolean;
-  event_group?: string;
 }
 
 const env = {
@@ -187,8 +184,17 @@ export function useSocketManager() {
   const [logs, setLogs] = useState<LogData[]>([]);
   const [totalLogCount, setTotalLogCount] = useState(0);
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
+  const [hasInitializedSelected, setHasInitializedSelected] = useState(false);
 
   const [eventTypes, setEventTypes] = useState<EventTypeItem[]>([]);
+
+  useEffect(() => {
+    if (eventTypes.length > 0 && !hasInitializedSelected) {
+      setSelectedEventTypes(eventTypes.map(item => item.event_type));
+      setHasInitializedSelected(true);
+    }
+  }, [eventTypes, hasInitializedSelected]);
+
   const [cameraDevices, setCameraDevices] = useState<MqttDeviceConfig[]>([]);
   const [deviceCameraLinks, setDeviceCameraLinks] = useState<DeviceCameraLink[]>([]);
   const [gridLayout, setGridLayout] = useState<{ grids: any[]; gridCols: number }>({ grids: [], gridCols: 3 });
@@ -211,19 +217,16 @@ export function useSocketManager() {
       ...svmsKnownEvents.map(e => ({
         event_type: e.event_type.replace(/\./g, '_'),
         log_source: 'svms' as const,
-        event_group: e.event_group,
       })),
       // Milesight (source = 'mqtt')
       ...milesightKnownEvents.map(e => ({
         event_type: e.event_type.replace(/\./g, '_'),
         log_source: 'mqtt' as const,
-        event_group: e.event_group,
       })),
       // Sunell
       ...sunellKnownEvents.map(e => ({
         event_type: e.event_type.replace(/\./g, '_'),
         log_source: 'sunell-camera' as const,
-        event_group: e.event_group,
       })),
     ];
     if (fromRegistry.length === 0) return;
@@ -1101,9 +1104,9 @@ export function useSocketManager() {
   // Tất cả log đều được lưu vào logs[]. filteredLogs chỉ là view computed để render.
   // Khi user bỏ filter (selectedEventType = null), filteredLogs = toàn bộ lịch sử.
   const filteredLogs = useMemo(() => {
-    if (selectedEventTypes.length === 0) return logs;
+    if (!hasInitializedSelected) return logs;
     return logs.filter(log => selectedEventTypes.some(type => isTypeMatched(log.log_type, type)));
-  }, [logs, selectedEventTypes]);
+  }, [logs, selectedEventTypes, hasInitializedSelected]);
 
   const handleSetBlacklistPlates = useCallback((updater: string[] | ((prev: string[]) => string[])) => {
     setBlacklistPlates(prev => {

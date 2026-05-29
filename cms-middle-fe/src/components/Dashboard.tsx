@@ -15,7 +15,9 @@ import { EMap } from './EMap';
 import { DeviceDraggablePanel } from './DeviceDraggablePanel';
 import { TrafficManager } from './TrafficManager';
 import { LiveWall } from './LiveWall';
+
 function LogFilter({
+  logs,
   servers,
   devices,
   mqttServers,
@@ -28,8 +30,11 @@ function LogFilter({
   onToggleServer,
   onToggleDevice,
   onToggleEventType,
-  setSelectedEventTypes,
+  onToggleAllEventTypes,
+  onToggleAllServers,
+  onToggleAllDevices,
 }: {
+  logs: LogData[];
   servers: Record<string, ServerData>;
   devices: Record<string, DeviceData>;
   mqttServers?: any[];
@@ -41,9 +46,10 @@ function LogFilter({
   selectedEventTypes: string[];
   onToggleServer: (id: string) => void;
   onToggleDevice: (ip: string) => void;
-  onToggleEventType: (type: string) => void;
-  onClearEventTypes: () => void;
-  setSelectedEventTypes?: React.Dispatch<React.SetStateAction<string[]>>;
+  onToggleEventType: (type: string | string[]) => void;
+  onToggleAllEventTypes: (checked: boolean) => void;
+  onToggleAllServers: (ids: string[]) => void;
+  onToggleAllDevices: (keys: string[]) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -51,6 +57,119 @@ function LogFilter({
   const [showServers, setShowServers] = useState(true);
   const [showDevices, setShowDevices] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
+
+  // Group eventTypes to create a unified checkbox list, combining members of the same event_group into a single checkbox item
+  const filterItems = useMemo(() => {
+    const groupMembers: Record<string, EventTypeItem[]> = {};
+    const ungroupedItems: EventTypeItem[] = [];
+
+    eventTypes.forEach(item => {
+      // Find matching log to get event_group
+      const foundLog = logs.find(log =>
+        log.log_type === item.event_type ||
+        log.log_type?.replace(/\./g, '_') === item.event_type
+      );
+      let group = foundLog?.event_group || null;
+
+      if (!group) {
+        // Fallback mapping
+        const fallbackGroups: Record<string, string[]> = {
+          motion: ['motion', 'motion_event', 'svms_motion']
+        };
+        const searchType = item.event_type.toLowerCase();
+        for (const [groupName, members] of Object.entries(fallbackGroups)) {
+          if (members.some(m => m.toLowerCase() === searchType || m.toLowerCase().replace(/\./g, '_') === searchType)) {
+            group = groupName;
+            break;
+          }
+        }
+      }
+
+      if (group) {
+        if (!groupMembers[group]) {
+          groupMembers[group] = [];
+        }
+        groupMembers[group].push(item);
+      } else {
+        ungroupedItems.push(item);
+      }
+    });
+
+    const items: Array<
+      | { type: 'group'; groupName: string; members: EventTypeItem[] }
+      | { type: 'individual'; item: EventTypeItem }
+    > = [];
+
+    // Add grouped items
+    Object.entries(groupMembers).forEach(([groupName, members]) => {
+      items.push({ type: 'group', groupName, members });
+    });
+
+    // Add ungrouped items
+    ungroupedItems.forEach(item => {
+      items.push({ type: 'individual', item });
+    });
+
+    return items;
+  }, [eventTypes, logs]);
+
+  const isAllChecked = eventTypes.length > 0 && eventTypes.every(item => selectedEventTypes.includes(item.event_type));
+
+  const renderIndividualEventTypeButton = (item: EventTypeItem) => {
+    const { event_type: lt, log_source } = item;
+    const checked = selectedEventTypes.includes(lt);
+
+    let displayFilterType: string;
+    if (log_source) {
+      switch (log_source) {
+        case 'svms': {
+          const normalizedType = lt.replace(/\./g, '_');
+          displayFilterType = t(`app.logtype.svms_${normalizedType}`);
+          // fallback nếu key không tồn tại
+          if (displayFilterType === `app.logtype.svms_${normalizedType}`) {
+            displayFilterType = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
+          }
+          break;
+        }
+        case 'mqtt': {
+          const normalizedType = lt.replace(/\./g, '_');
+          displayFilterType = t(`app.logtype.milesight_${normalizedType}`);
+          if (displayFilterType === `app.logtype.milesight_${normalizedType}`) {
+            displayFilterType = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
+          }
+          break;
+        }
+        case 'sunell-camera': {
+          const normalizedType = lt.replace(/\./g, '_');
+          displayFilterType = t(`app.logtype.sunell_${normalizedType}`);
+          if (displayFilterType === `app.logtype.sunell_${normalizedType}`) {
+            displayFilterType = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
+          }
+          break;
+        }
+        default:
+          displayFilterType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
+      }
+    } else {
+      // Runtime-discovered event: fallback to direct key
+      displayFilterType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
+    }
+
+    return (
+      <button
+        key={`individual-${lt}`}
+        onClick={() => onToggleEventType(lt)}
+        className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 last:pb-0.5"
+      >
+        <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
+          }`}>
+          {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+        </div>
+        <span className="text-[10px] font-semibold text-on-surface truncate">{displayFilterType}</span>
+      </button>
+    );
+  };
+
 
   // Đóng khi click ra ngoài
   useEffect(() => {
@@ -113,14 +232,12 @@ function LogFilter({
     });
 
     const mqttDevs = Object.entries(mqttDevicesByServer || {}).flatMap(([serverId, devs]) => {
-      const mqttSrv = (mqttServers || []).find(s => s.id === serverId);
-      const brokerHost = mqttSrv?.brokerHost || '';
       return devs.map(d => ({
         name: d.deviceName || d.deviceProfileName || d.devEui,
-        ip: brokerHost,
+        ip: d.devEui,
         type: 'radar',
         index: 0,
-        serverId: `mqtt-${serverId}`,
+        serverId: serverId,
         originalName: d.deviceName || 'MQTT Device'
       }));
     }).filter(d => {
@@ -148,6 +265,13 @@ function LogFilter({
 
   const activeCount = selectedServers.size + selectedDevices.size + selectedEventTypes.length;
 
+  const isAllServersChecked = serverList.length > 0 && serverList.every(srv => selectedServers.has(srv.id));
+
+  const isAllDevicesChecked = deviceList.length > 0 && deviceList.every(dev => {
+    const uniqueKey = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
+    return selectedDevices.has(uniqueKey);
+  });
+
   const handleServerClick = (id: string) => {
     onToggleServer(id);
     setTimeout(() => {
@@ -160,100 +284,9 @@ function LogFilter({
     }, 100);
   };
 
-  // Group events by event_group
-  const groupedEventTypes = useMemo(() => {
-    const groups: Record<string, EventTypeItem[]> = {};
-    const ungrouped: EventTypeItem[] = [];
-
-    eventTypes.forEach(item => {
-      if (item.event_group) {
-        if (!groups[item.event_group]) {
-          groups[item.event_group] = [];
-        }
-        groups[item.event_group].push(item);
-      } else {
-        ungrouped.push(item);
-      }
-    });
-
-    return { groups, ungrouped };
-  }, [eventTypes]);
-
-  const getGroupDisplayName = (groupKey: string): string => {
-    const radarKey = `app.devices.radar_categories.${groupKey}`;
-    const radarVal = t(radarKey);
-    if (radarVal !== radarKey) return radarVal;
-
-    const sunellKey = `app.devices.sunell_categories.${groupKey}`;
-    const sunellVal = t(sunellKey);
-    if (sunellVal !== sunellKey) return sunellVal;
-
-    return groupKey.charAt(0).toUpperCase() + groupKey.slice(1);
-  };
-
-  const getEventDisplayName = (item: EventTypeItem) => {
-    const { event_type: lt, log_source } = item;
-    if (log_source) {
-      switch (log_source) {
-        case 'svms': {
-          const normalizedType = lt.replace(/\./g, '_');
-          let display = t(`app.logtype.svms_${normalizedType}`);
-          if (display === `app.logtype.svms_${normalizedType}`) {
-            display = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
-          }
-          return display;
-        }
-        case 'mqtt': {
-          const normalizedType = lt.replace(/\./g, '_');
-          let display = t(`app.logtype.milesight_${normalizedType}`);
-          if (display === `app.logtype.milesight_${normalizedType}`) {
-            display = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
-          }
-          return display;
-        }
-        case 'sunell-camera': {
-          const normalizedType = lt.replace(/\./g, '_');
-          let display = t(`app.logtype.sunell_${normalizedType}`);
-          if (display === `app.logtype.sunell_${normalizedType}`) {
-            display = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
-          }
-          return display;
-        }
-        default:
-          return t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
-      }
-    }
-    return t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
-  };
-
-  const isGroupChecked = (groupItems: EventTypeItem[]) => {
-    return groupItems.every(item => selectedEventTypes.includes(item.event_type));
-  };
-
-  const handleGroupToggle = (groupItems: EventTypeItem[]) => {
-    if (!setSelectedEventTypes) return;
-    const allEventTypes = groupItems.map(item => item.event_type);
-    const allChecked = isGroupChecked(groupItems);
-
-    if (allChecked) {
-      setSelectedEventTypes(prev => prev.filter(type => !allEventTypes.includes(type)));
-    } else {
-      setSelectedEventTypes(prev => {
-        const next = [...prev];
-        allEventTypes.forEach(type => {
-          if (!next.includes(type)) {
-            next.push(type);
-          }
-        });
-        return next;
-      });
-    }
-  };
-
-  const isAllTicked = eventTypes.length > 0 && eventTypes.every(item => selectedEventTypes.includes(item.event_type));
-
   return (
-    <div ref={ref} className="LogFilter app-log-filter flex items-center p-1 cursor-pointer transition-all duration-200 group">
+    <div ref={ref} className="app-log-filter flex items-center p-1 cursor-pointer transition-all duration-200 group">
+      {/* <button className='absolute bottom-3 right-3' onClick={() => console.log(deviceList)}>TEST HERE CLICK ME</button> */}
       <button
         onClick={() => setOpen(v => !v)}
         className={`app-log-filter-btn flex items-center gap-1.5 px-2 py-1 rounded-md transition-all duration-200 group border ${activeCount > 0
@@ -287,6 +320,22 @@ function LogFilter({
                 <p className="text-[11px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_servers')}</p>
               ) : (
                 <div className="flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-200 cursor-pointer">
+                  <button
+                    onClick={() => {
+                      if (isAllServersChecked) {
+                        onToggleAllServers([]);
+                      } else {
+                        onToggleAllServers(serverList.map(srv => srv.id));
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1 pt-1 first:pt-0.5 shrink-0"
+                  >
+                    <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${isAllServersChecked ? 'bg-secondary border-secondary' : 'border-outline-variant'
+                      }`}>
+                      {isAllServersChecked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                    </div>
+                    <span className="text-[10px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
+                  </button>
                   {serverList.map(srv => {
                     const id = srv.id;
                     const checked = selectedServers.has(id);
@@ -329,6 +378,23 @@ function LogFilter({
                 <p className="text-[11px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_devices')}</p>
               ) : (
                 <div className="flex flex-col gap-1 max-h-36 overflow-y-auto custom-scrollbar pr-1 animate-in fade-in slide-in-from-top-1 duration-200 cursor-pointer">
+                  <button
+                    onClick={() => {
+                      if (isAllDevicesChecked) {
+                        onToggleAllDevices([]);
+                      } else {
+                        const allKeys = deviceList.map(dev => `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`);
+                        onToggleAllDevices(allKeys);
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1 pt-1 first:pt-0.5 shrink-0"
+                  >
+                    <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${isAllDevicesChecked ? 'bg-tertiary border-tertiary' : 'border-outline-variant'
+                      }`}>
+                      {isAllDevicesChecked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                    </div>
+                    <span className="text-[10px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
+                  </button>
                   {Object.entries(groupedDevices).map(([serverKey, devs]) => {
                     if (!devs || devs.length === 0) return null;
                     let groupLabel = serverKey;
@@ -393,96 +459,45 @@ function LogFilter({
               eventTypes.length === 0 ? (
                 <p className="text-[11px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_event_types')}</p>
               ) : (
-                <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200 cursor-pointer">
-                  {/* All Checkbox */}
+                <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200 cursor-pointer">
                   <button
-                    onClick={() => {
-                      if (isAllTicked) {
-                        setSelectedEventTypes?.([]);
-                      } else {
-                        setSelectedEventTypes?.(eventTypes.map(e => e.event_type));
-                      }
-                    }}
-                    className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1"
+                    onClick={() => onToggleAllEventTypes(!isAllChecked)}
+                    className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1 pt-1 first:pt-0.5 shrink-0"
                   >
-                    <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${isAllTicked ? 'bg-warning border-warning' : 'border-outline-variant'
+                    <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${isAllChecked ? 'bg-warning border-warning' : 'border-outline-variant'
                       }`}>
-                      {isAllTicked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                      {isAllChecked && <Check className="w-2 h-2 text-white stroke-[3]" />}
                     </div>
-                    <span className="text-[10px] font-bold text-on-surface truncate">{t('app.filter.all')}</span>
+                    <span className="text-[10px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
                   </button>
-
-                  {/* Grouped Events */}
-                  {Object.entries(groupedEventTypes.groups).map(([groupKey, items]) => {
-                    const groupChecked = isGroupChecked(items);
-                    const groupDisplayName = getGroupDisplayName(groupKey);
-
-                    return (
-                      <div key={groupKey} className="flex flex-col gap-[1px] border-b border-outline-variant/5 pb-1 mb-0.5">
-                        {/* Group Header Checkbox */}
-                        <button
-                          onClick={() => handleGroupToggle(items)}
-                          className="flex items-center gap-1.5 px-1 py-0.5 rounded-sm hover:bg-surface-container transition-colors w-full text-left"
-                        >
-                          <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${groupChecked ? 'bg-warning border-warning' : 'border-outline-variant'
-                            }`}>
-                            {groupChecked && <Check className="w-2 h-2 text-white stroke-[3]" />}
-                          </div>
-                          <span className="text-[9px] font-black uppercase tracking-widest text-warning truncate">
-                            {groupDisplayName}
-                          </span>
-                        </button>
-
-                        {/* Group Child Checklist */}
-                        <div className="flex flex-col gap-0.5 pl-3 border-l border-outline-variant/10 ml-2.5 mt-0.5">
-                          {items.map(item => {
-                            const lt = item.event_type;
-                            const checked = selectedEventTypes.includes(lt);
-                            const displayName = getEventDisplayName(item);
-
-                            return (
-                              <button
-                                key={lt}
-                                onClick={() => onToggleEventType(lt)}
-                                className="flex items-center gap-1.5 px-1 py-0.5 rounded-sm hover:bg-surface-container transition-colors w-full text-left"
-                              >
-                                <div className={`w-2.5 h-2.5 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
-                                  }`}>
-                                  {checked && <Check className="w-1.5 h-1.5 text-white stroke-[3]" />}
-                                </div>
-                                <span className="text-[10px] text-on-surface truncate">{displayName}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Ungrouped Events */}
-                  {groupedEventTypes.ungrouped.length > 0 && (
-                    <div className="flex flex-col gap-[1px]">
-                      {groupedEventTypes.ungrouped.map(item => {
-                        const lt = item.event_type;
-                        const checked = selectedEventTypes.includes(lt);
-                        const displayName = getEventDisplayName(item);
+                  <div className="flex flex-col gap-1 pt-1">
+                    {filterItems.map(filterItem => {
+                      if (filterItem.type === 'group') {
+                        const { groupName, members } = filterItem;
+                        const checked = members.every(m => selectedEventTypes.includes(m.event_type));
+                        const label = t(`app.logtype.${groupName}`, { defaultValue: groupName.toUpperCase() });
 
                         return (
                           <button
-                            key={lt}
-                            onClick={() => onToggleEventType(lt)}
-                            className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1"
+                            key={`group-${groupName}`}
+                            onClick={() => {
+                              const memberTypes = members.map(m => m.event_type);
+                              onToggleEventType(memberTypes);
+                            }}
+                            className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 last:pb-0.5"
                           >
                             <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
                               }`}>
                               {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
                             </div>
-                            <span className="text-[10px] font-semibold text-on-surface truncate">{displayName}</span>
+                            <span className="text-[10px] font-bold text-on-surface truncate uppercase">{label}</span>
                           </button>
                         );
-                      })}
-                    </div>
-                  )}
+                      } else {
+                        return renderIndividualEventTypeButton(filterItem.item);
+                      }
+                    })}
+                  </div>
                 </div>
               )
             )}
@@ -492,6 +507,9 @@ function LogFilter({
     </div>
   );
 }
+
+
+
 
 export function Dashboard() {
   const { t, i18n } = useTranslation();
@@ -582,30 +600,7 @@ export function Dashboard() {
   const [selectedLog, setSelectedLog] = useState<LogData | null>(null);
   const [selectedServers, setSelectedServers] = useState<Set<string>>(new Set());
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
-  const [rightTab, setRightTab] = useState<'logs' | 'devices'>('logs');
-  const [mainTab, setMainTab] = useState<'alert' | 'emap' | 'connections' | 'devices' | 'traffic' | 'livewall'>('emap');
-  const [visibleAlerts, setVisibleAlerts] = useState<number>(30);
-  const [rightPanelVisible, setRightPanelVisible] = useState(true);
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-  const isNarrow = windowWidth < 800;
-  const [isConfigSystemOpen, setIsConfigSystemOpen] = useState(false);
-  const [isLogSaving, setIsLogSaving] = useState(() => {
-    const saved = localStorage.getItem('SAVE_LOG_FILES');
-    return saved !== 'false';
-  });
-  const [langOpen, setLangOpen] = useState(false);
-  const [isAlertWallFullscreen, setIsAlertWallFullscreen] = useState(false);
 
-  const toggleLogSaving = async () => {
-    const newState = !isLogSaving;
-    setIsLogSaving(newState);
-    localStorage.setItem('SAVE_LOG_FILES', String(newState));
-    try {
-      await apiClient.post('/api/v1/config/log-saving', { enabled: newState });
-    } catch (e) {
-      console.error('Failed to toggle log saving', e);
-    }
-  };
   // MQTT devices come from BE snapshot; logs are only used for display/counting.
   const mqttDevicesByServer = useMemo(() => {
     const map: Record<string, { devEui: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[]> = {};
@@ -630,6 +625,118 @@ export function Dashboard() {
     });
     return map;
   }, [logs, mqttDevices]);
+
+  // Compute serverList and deviceList inside Dashboard to enable default-check-all on load
+  const serverList = useMemo(() => {
+    const svms = Object.values(servers)
+      .filter(srv => srv.type !== 'mqtt' && !srv.id?.toString().startsWith('mqtt-'))
+      .map(srv => ({
+        id: srv.id || srv.serial,
+        name: srv.server_name || srv.id || srv.serial,
+        ip: srv.svms_ipv4_ip || srv.server_ip,
+        type: 'SVMS',
+      }));
+    const mqtt = (mqttServers || []).map(m => ({
+      id: m.id,
+      name: m.brokerHost || m.id,
+      ip: `${m.brokerHost}:${m.brokerPort}`,
+      type: 'MQTT',
+    }));
+    return [...svms, ...mqtt];
+  }, [servers, mqttServers]);
+
+  const deviceList = useMemo(() => {
+    const seen = new Set<string>();
+    const svmsDevs = Object.values(devices).flatMap(serverData =>
+      (serverData.devices || []).map(d => ({
+        ...d,
+        ip: d.ip || d.device_ip || 'unknown-ip',
+        serverId: serverData.server.server_id,
+        originalName: undefined
+      }))
+    ).filter(d => {
+      const uniqueKey = `${d.serverId}_${d.ip}_${d.name}`;
+      if (seen.has(uniqueKey)) return false;
+      seen.add(uniqueKey);
+      return true;
+    });
+
+    const indepCams = (cameraDevices || []).map(cam => {
+      const d = {
+        name: cam.name || cam.cameraIp,
+        ip: cam.id,
+        type: cam.type || 'sunell',
+        index: 0,
+        serverId: 'SUNELL-LOCAL',
+        originalName: undefined
+      };
+      return d;
+    }).filter(d => {
+      const uniqueKey = `${d.serverId}_${d.ip}_${d.name}`;
+      if (seen.has(uniqueKey)) return false;
+      seen.add(uniqueKey);
+      return true;
+    });
+
+    const mqttDevs = Object.entries(mqttDevicesByServer || {}).flatMap(([serverId, devs]) => {
+      return devs.map(d => ({
+        name: d.deviceName || d.deviceProfileName || d.devEui,
+        ip: d.devEui,
+        type: 'radar',
+        index: 0,
+        serverId: serverId,
+        originalName: d.deviceName || 'MQTT Device'
+      }));
+    }).filter(d => {
+      const uniqueKey = `${d.serverId}_${d.ip}_${d.originalName}`;
+      if (seen.has(uniqueKey)) return false;
+      seen.add(uniqueKey);
+      return true;
+    });
+
+    return [...svmsDevs, ...indepCams, ...mqttDevs];
+  }, [devices, cameraDevices, mqttDevicesByServer, mqttServers]);
+
+  const [hasInitializedServers, setHasInitializedServers] = useState(false);
+  const [hasInitializedDevices, setHasInitializedDevices] = useState(false);
+
+  useEffect(() => {
+    if (serverList.length > 0 && !hasInitializedServers) {
+      setSelectedServers(new Set(serverList.map(srv => srv.id)));
+      setHasInitializedServers(true);
+    }
+  }, [serverList, hasInitializedServers]);
+
+  useEffect(() => {
+    if (deviceList.length > 0 && !hasInitializedDevices) {
+      setSelectedDevices(new Set(deviceList.map(dev => `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`)));
+      setHasInitializedDevices(true);
+    }
+  }, [deviceList, hasInitializedDevices]);
+  const [rightTab, setRightTab] = useState<'logs' | 'devices'>('logs');
+  const [mainTab, setMainTab] = useState<'alert' | 'emap' | 'connections' | 'devices' | 'traffic' | 'livewall'>('emap');
+  const [visibleAlerts, setVisibleAlerts] = useState<number>(30);
+  const [rightPanelVisible, setRightPanelVisible] = useState(true);
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const isNarrow = windowWidth < 800;
+  const [isConfigSystemOpen, setIsConfigSystemOpen] = useState(false);
+  const [isLogSaving, setIsLogSaving] = useState(() => {
+    const saved = localStorage.getItem('SAVE_LOG_FILES');
+    return saved !== 'false';
+  });
+  const [langOpen, setLangOpen] = useState(false);
+  const [isAlertWallFullscreen, setIsAlertWallFullscreen] = useState(false);
+
+  const toggleLogSaving = async () => {
+    const newState = !isLogSaving;
+    setIsLogSaving(newState);
+    localStorage.setItem('SAVE_LOG_FILES', String(newState));
+    try {
+      await apiClient.post('/api/v1/config/log-saving', { enabled: newState });
+    } catch (e) {
+      console.error('Failed to toggle log saving', e);
+    }
+  };
 
   const eMapKnownDevices = useMemo(() => {
     const svmsDevices = Object.values(devices).flatMap(server => {
@@ -714,8 +821,17 @@ export function Dashboard() {
   const displayLogs = useMemo(() => {
     if (selectedServers.size === 0 && selectedDevices.size === 0) return filteredLogs;
     return filteredLogs.filter(log => {
-      const logServerId = log.server_unique_id;
-      const devKey = `${log.server_unique_id}_${log.device_info.id}_${log.device_info.name}`;
+      // Chuẩn hóa serverId tùy theo log source để khớp với serverId dùng trong checkbox filter
+      let logServerId = log.server_unique_id;
+      if (log.log_source === 'sunell-camera') {
+        logServerId = 'SUNELL-LOCAL';
+      } else if (log.log_source === 'svms' && logServerId) {
+        const parts = logServerId.split('-');
+        logServerId = parts[parts.length - 1] || logServerId;
+      }
+
+      // Chuẩn hóa devKey tương ứng với serverId đã chuẩn hóa
+      const devKey = `${logServerId}_${log.device_info.id}_${log.device_info.name}`;
 
       let matchServer = selectedServers.size === 0 || selectedServers.has(logServerId);
       let matchDevice = selectedDevices.size === 0 || selectedDevices.has(devKey);
@@ -833,7 +949,7 @@ export function Dashboard() {
             {/* <button onClick={() => console.log(servers)}>CLick</button> */}
             {mainTab === 'alert' && (
               <AlertWall
-                logs={logs}
+                logs={displayLogs}
                 cameras={Object.values(devices).flatMap(server => server || [])}
                 deviceCameraLinks={deviceCameraLinks}
                 onSelectLog={setSelectedLog}
@@ -878,7 +994,7 @@ export function Dashboard() {
               <EMap
                 pins={eMapLayout.pins}
                 tileProviderId={eMapLayout.tileProviderId}
-                logs={logs}
+                logs={displayLogs}
                 knownDevices={eMapKnownDevices}
                 onSaveLayout={saveEMapLayout}
               />
@@ -1034,6 +1150,7 @@ export function Dashboard() {
                 <div className="relative p-3 flex items-center justify-between border-b border-outline-variant/10 shrink-0 bg-surface-container-lowest">
                   <span className="text-[10px] font-bold tracking-widest text-on-surface-variant uppercase">{t('app.filter.filter_logs')}</span>
                   <LogFilter
+                    logs={logs}
                     servers={servers}
                     devices={devices}
                     mqttServers={mqttServers}
@@ -1045,17 +1162,31 @@ export function Dashboard() {
                     selectedEventTypes={selectedEventTypes}
                     onToggleServer={toggleServer}
                     onToggleDevice={toggleDevice}
-                    onToggleEventType={(type) => {
+                    onToggleEventType={(typeOrTypes) => {
                       setSelectedEventTypes(prev => {
-                        if (prev.includes(type)) {
-                          return prev.filter(t => t !== type);
+                        const types = Array.isArray(typeOrTypes) ? typeOrTypes : [typeOrTypes];
+                        const allExist = types.every(t => prev.includes(t));
+                        if (allExist) {
+                          return prev.filter(t => !types.includes(t));
                         } else {
-                          return [...prev, type];
+                          const next = new Set([...prev, ...types]);
+                          return Array.from(next);
                         }
                       });
                     }}
-                    onClearEventTypes={() => setSelectedEventTypes([])}
-                    setSelectedEventTypes={setSelectedEventTypes}
+                    onToggleAllEventTypes={(checked) => {
+                      if (checked) {
+                        setSelectedEventTypes(eventTypes.map(item => item.event_type));
+                      } else {
+                        setSelectedEventTypes([]);
+                      }
+                    }}
+                    onToggleAllServers={(ids) => {
+                      setSelectedServers(new Set(ids));
+                    }}
+                    onToggleAllDevices={(keys) => {
+                      setSelectedDevices(new Set(keys));
+                    }}
                   />
                 </div>
 

@@ -3,8 +3,12 @@ const LOG_EMIT_INTERVAL_MS = 250;
 let pendingLogs = [];
 let flushTimer = null;
 
+const eventGroupService = require('./eventGroup.service');
+
 function appendLog(logEntry) {
   if (!logEntry) return;
+
+  eventGroupService.normalizeLog(logEntry);
 
   const { allLogs, ALL_LOGS_MAX } = require('../socketState');
   allLogs.push(logEntry);

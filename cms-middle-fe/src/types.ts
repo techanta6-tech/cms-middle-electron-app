@@ -107,13 +107,13 @@ export interface LogData {
   }
   server_unique_id: string;
   raw: SVMS_LogPayload | MQTT_Milesight_LogEntry | Sunell_LogPayload | any;
+  event_group?: string | null;
 }
 
 /** Một mục trong danh sách filter Event Types */
 export interface EventTypeItem {
   event_type: string;
   log_source: 'svms' | 'mqtt' | 'sunell-camera' | 'i3ai' | 'other' | null;
-  event_group?: string;
 }
 
 export interface SVMS_LogPayload {

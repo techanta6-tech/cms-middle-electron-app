@@ -33,6 +33,7 @@ const milesightEventRegistry = require('./src/services/milesightEventRegistry.se
 const sunellEventRegistry = require('./src/services/sunellEventRegistry.service');
 const { bootstrapPersistedDevices, getFilePath: getPersistedDevicesPath } = require('./src/services/persisted-devices.service');
 const trafficService = require('./src/services/traffic.service');
+const eventGroupService = require('./src/services/eventGroup.service');
 
 const fs = require('fs');
 
@@ -40,6 +41,7 @@ svmsEventRegistry.loadRegistry();
 milesightEventRegistry.loadRegistry();
 sunellEventRegistry.loadRegistry();
 trafficService.loadTrafficRecords();
+eventGroupService.loadEventGroups();
 
 const httpServer = createServer(app);
 
@@ -63,7 +65,7 @@ try {
     if (Array.isArray(restored) && restored.length > 0) {
       const { allLogs, ALL_LOGS_MAX } = socketState;
       // Nạp lại dữ liệu cũ, giới hạn theo ALL_LOGS_MAX
-      const toRestore = restored.slice(-ALL_LOGS_MAX);
+      const toRestore = restored.slice(-ALL_LOGS_MAX).map(log => eventGroupService.normalizeLog(log));
       allLogs.push(...toRestore);
       console.log(`[allLogs] Khoi phuc ${toRestore.length} logs tu ${_allLogsFilePath}`);
     }

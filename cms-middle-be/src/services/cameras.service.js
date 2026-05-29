@@ -513,34 +513,50 @@ async function addCameraDevice(deviceConfig, options = {}) {
         }
 
         // --- AUTO-DISCOVER & FILTERING ---
-        const isNewEvent = sunellEventRegistry.discoverEvent(logType);
-        if (isNewEvent) {
-          const clientSockets = getClientSockets();
-          if (clientSockets) {
-            clientSockets.emit('update-sunell-known-events', sunellEventRegistry.getEvents());
-          }
-        }
-
-        // Hỗ trợ backwards compatibility: nếu user đã set 'enableLPR', 'enableMotion' vv thì chuyển qua logType
-        const legacyMap = {
-          'lpr_event': features.enableLPR,
-          'face_event': features.enableFace,
-          'motion_event': features.enableMotion,
-        };
-        if (isIVA) legacyMap[logType] = features.enableIVA;
-        if (isSystem) legacyMap[logType] = features.enableSystem;
-
+        const knownTypesSet = sunellEventRegistry.getKnownTypesSet();
+        const isKnown = knownTypesSet.has(logType);
         let shouldProcess = false;
 
-        // Ưu tiên 1: features[logType] (nếu FE update theo dạng phẳng)
-        // Ưu tiên 2: features.enableLPR/enableMotion (nếu FE dùng dạng nhóm cũ)
-        // Ưu tiên 3: sunellEventRegistry.getDefaultEnabled
-        if (features[logType] !== undefined) {
-          shouldProcess = !!features[logType];
-        } else if (legacyMap[logType] !== undefined) {
-          shouldProcess = !!legacyMap[logType];
+        if (!isKnown) {
+          // Sự kiện ngoài danh sách: check cấu hình __other_events__ (mặc định là true)
+          const otherEnabled = features.__other_events__ !== undefined
+            ? !!features.__other_events__
+            : true;
+
+          if (!otherEnabled) {
+            console.log(`[Camera-${id}] Bỏ qua sự kiện lạ ngoài danh sách: ${logType} (__other_events__ đang tắt)`);
+            return;
+          }
+
+          // Nếu bật: nhận và tự động đăng ký vào danh sách
+          const isNewEvent = sunellEventRegistry.discoverEvent(logType);
+          if (isNewEvent) {
+            const clientSockets = getClientSockets();
+            if (clientSockets) {
+              clientSockets.emit('update-sunell-known-events', sunellEventRegistry.getEvents());
+            }
+          }
+          shouldProcess = true;
         } else {
-          shouldProcess = sunellEventRegistry.getDefaultEnabled(logType);
+          // Hỗ trợ backwards compatibility: nếu user đã set 'enableLPR', 'enableMotion' vv thì chuyển qua logType
+          const legacyMap = {
+            'lpr_event': features.enableLPR,
+            'face_event': features.enableFace,
+            'motion_event': features.enableMotion,
+          };
+          if (isIVA) legacyMap[logType] = features.enableIVA;
+          if (isSystem) legacyMap[logType] = features.enableSystem;
+
+          // Ưu tiên 1: features[logType] (nếu FE update theo dạng phẳng)
+          // Ưu tiên 2: features.enableLPR/enableMotion (nếu FE dùng dạng nhóm cũ)
+          // Ưu tiên 3: sunellEventRegistry.getDefaultEnabled
+          if (features[logType] !== undefined) {
+            shouldProcess = !!features[logType];
+          } else if (legacyMap[logType] !== undefined) {
+            shouldProcess = !!legacyMap[logType];
+          } else {
+            shouldProcess = sunellEventRegistry.getDefaultEnabled(logType);
+          }
         }
 
         // Nếu sự kiện không được bật thì bỏ qua

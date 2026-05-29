@@ -294,6 +294,9 @@ const resources = {
           confidence: "Độ tin cậy"
         },
         logtype: {
+          motion: 'Phát hiện chuyển động',
+
+
           crosswire: 'Hàng rào ảo',
           direction: 'Hướng di chuyển',
           a_motion_has_been_detected: 'SVMS phát hiện chuyển động',
@@ -876,6 +879,9 @@ const resources = {
           confidence: "Confidence"
         },
         logtype: {
+
+          motion: 'Motion detected',
+
           // SVMS (display names)
           crosswire: 'Crosswire',
           ai_alarm_crosswire_all: 'Crosswire',
@@ -994,7 +1000,6 @@ const resources = {
           motion_event: 'Motion Event',
 
           // Aliases / Legacy
-          motion: 'Motion',
           a_motion_has_been_detected: 'A motion has been detected',
           'phát_hiện_chuyển_động_(motion)': 'Motion Detection (Motion)',
           'phát_hiện_biển_số_(lpr)': 'License Plate Recognition (LPR)',

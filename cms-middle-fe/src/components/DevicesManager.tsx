@@ -1209,12 +1209,15 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
 
   const getEnabled = (code: string) => {
     if (features[code] !== undefined) return !!features[code];
+    if (code === '__other_events__') return true; // pseudo-event, luôn mặc định bật
     const registryEvt = sunellKnownEvents.find(e => e.event_type === code);
     return registryEvt?.default_enabled ?? false;
   };
 
-  const enabledCount = SUNELL_EVENTS.filter(e => getEnabled(e.code)).length;
-  const totalCount = SUNELL_EVENTS.length;
+  const OTHER_EVENTS_CODE = '__other_events__';
+  const otherEventsEnabled = getEnabled(OTHER_EVENTS_CODE);
+  const enabledCount = SUNELL_EVENTS.filter(e => getEnabled(e.code)).length + (otherEventsEnabled ? 1 : 0);
+  const totalCount = SUNELL_EVENTS.length + 1;
 
   return (
     <div className="CameraDetail flex flex-col gap-1">
@@ -1357,6 +1360,26 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Other Events toggle */}
+              <div className="mt-3 rounded-md border bg-surface-container/20 border-outline-variant/10 p-3 flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+                    ✦ {t('app.devices.radar_categories.other_events') || 'Sự kiện khác'}
+                  </span>
+                  <span className="text-[9px] text-on-surface-variant/40 leading-relaxed">
+                    {t('app.devices.radar_categories.other_events_hint') || 'Nhận tất cả event không nằm trong danh sách trên'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleToggle('__other_events__', !otherEventsEnabled)}
+                  className={`flex items-center w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
+                ${otherEventsEnabled ? 'bg-green-500 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
+                  title={otherEventsEnabled ? 'Đang nhận sự kiện khác — Click để tắt' : 'Không nhận sự kiện khác — Click để bật'}
+                >
+                  <span className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200" />
+                </button>
               </div>
 
               <p className="mt-3 text-[9px] text-on-surface-variant/40 leading-relaxed">
