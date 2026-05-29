@@ -899,7 +899,7 @@ export function Dashboard() {
               <div className={`appTabsBar flex items-center border-b border-outline-variant/10 shrink-0 ${isNarrow ? '' : 'px-6 gap-4'}`}>
                 {/* Nút chuyển sang màn hình Bản đồ số (EMap) */}
                 <button
-                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'emap' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'emap' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('emap')}
                 >
                   <MapPinned className={`w-5 h-5 ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`} />
@@ -907,14 +907,14 @@ export function Dashboard() {
                 </button>
                 {/* Nhóm nút Giám sát sự kiện và Live Wall*/}
                 <button
-                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'alert' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'alert' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('alert')}
                 >
                   <Monitor className={`w-5 h-5 ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.alert_wall')}</h2>
                 </button>
                 {/* <button
-                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'livewall' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'livewall' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('livewall')}
                 >
                   <Tv className={`w-5 h-5 ${mainTab === 'livewall' ? 'text-primary' : 'text-on-surface'}`} />
@@ -922,7 +922,7 @@ export function Dashboard() {
                 </button> */}
                 {/* Nút chuyển sang màn hình Quản lý giao thông (Traffic Manager) */}
                 <button
-                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'traffic' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'traffic' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('traffic')}
                 >
                   <Car className={`w-5 h-5 ${mainTab === 'traffic' ? 'text-primary' : 'text-on-surface'}`} />
@@ -930,7 +930,7 @@ export function Dashboard() {
                 </button>
                 {/* Nút chuyển sang màn hình Quản lý Thiết bị (Devices Manager) */}
                 <button
-                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('devices')}
                 >
                   <Cpu className={`w-5 h-5 ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`} />
@@ -938,7 +938,7 @@ export function Dashboard() {
                 </button>
                 {/* Nút chuyển sang màn hình Theo dõi Kết nối (Connections Monitor) */}
                 {/* <button
-                  className={`flex items-center gap-2 px-3 py-4 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'connections' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'connections' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('connections')}
                 >
                   <Network className={`w-5 h-5 ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`} />

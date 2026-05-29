@@ -461,7 +461,8 @@ async function addCameraDevice(deviceConfig, options = {}) {
         // Nếu không nhận diện được loại nào thì fallback theo keyword trong JSON
         if (!isLpr && !isFace && !isMotion && !isIVA && !isSystem) {
           const strBody = JSON.stringify(payload).toLowerCase();
-          if (strBody.includes('plate')) isLpr = true;
+          const targetListEmpty = payload.TargetDetectList && Array.isArray(payload.TargetDetectList) && payload.TargetDetectList.length === 0;
+          if (strBody.includes('plate') && !targetListEmpty) isLpr = true;
           else isMotion = true; // Fallback cuối cùng
         }
 

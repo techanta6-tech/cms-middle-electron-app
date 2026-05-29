@@ -411,7 +411,7 @@ export function TrafficManager({
   );
 
   return (
-    <div className="TrafficManager flex flex-col h-full bg-background overflow-hidden p-4 gap-4">
+    <div className="TrafficManager flex flex-col h-full bg-background overflow-hidden p-3 gap-4">
       {/* Dynamic Keyframes injected safely */}
       <style>{`
         .lpr-pin-flash-normal {
@@ -1024,7 +1024,7 @@ export function TrafficManager({
           {/* IMAGE PREVIEW AREA */}
           <div className="bg-surface-container-low  border border-outline-variant/20 rounded-2xl overflow-hidden flex flex-col shadow-xl flex-[2] min-h-0">
 
-            <div className="flex-1 flex flex-col p-2 overflow-hidden">
+            <div className="flex-1 flex flex-col p-0.5 overflow-hidden">
               {/* Left box: Image */}
               <div className="flex-1 bg-black rounded-xl overflow-hidden relative border border-outline-variant/10 flex items-center justify-center min-h-[200px]">
                 {imageLoading ? (
