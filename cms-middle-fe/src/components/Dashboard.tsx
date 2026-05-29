@@ -15,7 +15,6 @@ import { EMap } from './EMap';
 import { DeviceDraggablePanel } from './DeviceDraggablePanel';
 import { TrafficManager } from './TrafficManager';
 import { LiveWall } from './LiveWall';
-
 function LogFilter({
   servers,
   devices,
@@ -29,7 +28,7 @@ function LogFilter({
   onToggleServer,
   onToggleDevice,
   onToggleEventType,
-  onClearEventTypes,
+  setSelectedEventTypes,
 }: {
   servers: Record<string, ServerData>;
   devices: Record<string, DeviceData>;
@@ -44,6 +43,7 @@ function LogFilter({
   onToggleDevice: (ip: string) => void;
   onToggleEventType: (type: string) => void;
   onClearEventTypes: () => void;
+  setSelectedEventTypes?: React.Dispatch<React.SetStateAction<string[]>>;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -160,9 +160,100 @@ function LogFilter({
     }, 100);
   };
 
+  // Group events by event_group
+  const groupedEventTypes = useMemo(() => {
+    const groups: Record<string, EventTypeItem[]> = {};
+    const ungrouped: EventTypeItem[] = [];
+
+    eventTypes.forEach(item => {
+      if (item.event_group) {
+        if (!groups[item.event_group]) {
+          groups[item.event_group] = [];
+        }
+        groups[item.event_group].push(item);
+      } else {
+        ungrouped.push(item);
+      }
+    });
+
+    return { groups, ungrouped };
+  }, [eventTypes]);
+
+  const getGroupDisplayName = (groupKey: string): string => {
+    const radarKey = `app.devices.radar_categories.${groupKey}`;
+    const radarVal = t(radarKey);
+    if (radarVal !== radarKey) return radarVal;
+
+    const sunellKey = `app.devices.sunell_categories.${groupKey}`;
+    const sunellVal = t(sunellKey);
+    if (sunellVal !== sunellKey) return sunellVal;
+
+    return groupKey.charAt(0).toUpperCase() + groupKey.slice(1);
+  };
+
+  const getEventDisplayName = (item: EventTypeItem) => {
+    const { event_type: lt, log_source } = item;
+    if (log_source) {
+      switch (log_source) {
+        case 'svms': {
+          const normalizedType = lt.replace(/\./g, '_');
+          let display = t(`app.logtype.svms_${normalizedType}`);
+          if (display === `app.logtype.svms_${normalizedType}`) {
+            display = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
+          }
+          return display;
+        }
+        case 'mqtt': {
+          const normalizedType = lt.replace(/\./g, '_');
+          let display = t(`app.logtype.milesight_${normalizedType}`);
+          if (display === `app.logtype.milesight_${normalizedType}`) {
+            display = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
+          }
+          return display;
+        }
+        case 'sunell-camera': {
+          const normalizedType = lt.replace(/\./g, '_');
+          let display = t(`app.logtype.sunell_${normalizedType}`);
+          if (display === `app.logtype.sunell_${normalizedType}`) {
+            display = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
+          }
+          return display;
+        }
+        default:
+          return t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
+      }
+    }
+    return t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
+  };
+
+  const isGroupChecked = (groupItems: EventTypeItem[]) => {
+    return groupItems.every(item => selectedEventTypes.includes(item.event_type));
+  };
+
+  const handleGroupToggle = (groupItems: EventTypeItem[]) => {
+    if (!setSelectedEventTypes) return;
+    const allEventTypes = groupItems.map(item => item.event_type);
+    const allChecked = isGroupChecked(groupItems);
+
+    if (allChecked) {
+      setSelectedEventTypes(prev => prev.filter(type => !allEventTypes.includes(type)));
+    } else {
+      setSelectedEventTypes(prev => {
+        const next = [...prev];
+        allEventTypes.forEach(type => {
+          if (!next.includes(type)) {
+            next.push(type);
+          }
+        });
+        return next;
+      });
+    }
+  };
+
+  const isAllTicked = eventTypes.length > 0 && eventTypes.every(item => selectedEventTypes.includes(item.event_type));
+
   return (
-    <div ref={ref} className="app-log-filter flex items-center p-1 cursor-pointer transition-all duration-200 group">
-      {/* <button className='absolute bottom-3 right-3' onClick={() => console.log(deviceList)}>TEST HERE CLICK ME</button> */}
+    <div ref={ref} className="LogFilter app-log-filter flex items-center p-1 cursor-pointer transition-all duration-200 group">
       <button
         onClick={() => setOpen(v => !v)}
         className={`app-log-filter-btn flex items-center gap-1.5 px-2 py-1 rounded-md transition-all duration-200 group border ${activeCount > 0
@@ -302,71 +393,96 @@ function LogFilter({
               eventTypes.length === 0 ? (
                 <p className="text-[11px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_event_types')}</p>
               ) : (
-                <div className="flex flex-col gap-0.5 max-h-32 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200 cursor-pointer">
+                <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200 cursor-pointer">
+                  {/* All Checkbox */}
                   <button
-                    onClick={() => onClearEventTypes()}
-                    className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1 pt-1 first:pt-0.5"
-                  >
-                    <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${selectedEventTypes.length === 0 ? 'bg-warning border-warning' : 'border-outline-variant'
-                      }`}>
-                      {selectedEventTypes.length === 0 && <Check className="w-2 h-2 text-white stroke-[3]" />}
-                    </div>
-                    <span className="text-[10px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
-                  </button>
-                  {eventTypes.map(item => {
-                    const { event_type: lt, log_source } = item;
-                    const checked = selectedEventTypes.includes(lt);
-
-                    let displayFilterType: string;
-                    if (log_source) {
-                      switch (log_source) {
-                        case 'svms': {
-                          const normalizedType = lt.replace(/\./g, '_');
-                          displayFilterType = t(`app.logtype.svms_${normalizedType}`);
-                          // fallback nếu key không tồn tại
-                          if (displayFilterType === `app.logtype.svms_${normalizedType}`) {
-                            displayFilterType = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
-                          }
-                          break;
-                        }
-                        case 'mqtt': {
-                          const normalizedType = lt.replace(/\./g, '_');
-                          displayFilterType = t(`app.logtype.milesight_${normalizedType}`);
-                          if (displayFilterType === `app.logtype.milesight_${normalizedType}`) {
-                            displayFilterType = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
-                          }
-                          break;
-                        }
-                        case 'sunell-camera': {
-                          const normalizedType = lt.replace(/\./g, '_');
-                          displayFilterType = t(`app.logtype.sunell_${normalizedType}`);
-                          if (displayFilterType === `app.logtype.sunell_${normalizedType}`) {
-                            displayFilterType = t(`app.logtype.${normalizedType}`, { defaultValue: lt });
-                          }
-                          break;
-                        }
-                        default:
-                          displayFilterType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
+                    onClick={() => {
+                      if (isAllTicked) {
+                        setSelectedEventTypes?.([]);
+                      } else {
+                        setSelectedEventTypes?.(eventTypes.map(e => e.event_type));
                       }
-                    } else {
-                      // Runtime-discovered event: fallback to direct key
-                      displayFilterType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
-                    }
+                    }}
+                    className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1"
+                  >
+                    <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${isAllTicked ? 'bg-warning border-warning' : 'border-outline-variant'
+                      }`}>
+                      {isAllTicked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                    </div>
+                    <span className="text-[10px] font-bold text-on-surface truncate">{t('app.filter.all')}</span>
+                  </button>
+
+                  {/* Grouped Events */}
+                  {Object.entries(groupedEventTypes.groups).map(([groupKey, items]) => {
+                    const groupChecked = isGroupChecked(items);
+                    const groupDisplayName = getGroupDisplayName(groupKey);
 
                     return (
-                      <button
-                        key={lt}
-                        onClick={() => onToggleEventType(lt)}
-                        className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 last:pb-0.5"
-                      >
-                        <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
-                          }`}>
-                          {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                      <div key={groupKey} className="flex flex-col gap-[1px] border-b border-outline-variant/5 pb-1 mb-0.5">
+                        {/* Group Header Checkbox */}
+                        <button
+                          onClick={() => handleGroupToggle(items)}
+                          className="flex items-center gap-1.5 px-1 py-0.5 rounded-sm hover:bg-surface-container transition-colors w-full text-left"
+                        >
+                          <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${groupChecked ? 'bg-warning border-warning' : 'border-outline-variant'
+                            }`}>
+                            {groupChecked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                          </div>
+                          <span className="text-[9px] font-black uppercase tracking-widest text-warning truncate">
+                            {groupDisplayName}
+                          </span>
+                        </button>
+
+                        {/* Group Child Checklist */}
+                        <div className="flex flex-col gap-0.5 pl-3 border-l border-outline-variant/10 ml-2.5 mt-0.5">
+                          {items.map(item => {
+                            const lt = item.event_type;
+                            const checked = selectedEventTypes.includes(lt);
+                            const displayName = getEventDisplayName(item);
+
+                            return (
+                              <button
+                                key={lt}
+                                onClick={() => onToggleEventType(lt)}
+                                className="flex items-center gap-1.5 px-1 py-0.5 rounded-sm hover:bg-surface-container transition-colors w-full text-left"
+                              >
+                                <div className={`w-2.5 h-2.5 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
+                                  }`}>
+                                  {checked && <Check className="w-1.5 h-1.5 text-white stroke-[3]" />}
+                                </div>
+                                <span className="text-[10px] text-on-surface truncate">{displayName}</span>
+                              </button>
+                            );
+                          })}
                         </div>
-                        <span className="text-[10px] font-semibold text-on-surface truncate">{displayFilterType}</span>
-                      </button>
+                      </div>
                     );
                   })}
+
+                  {/* Ungrouped Events */}
+                  {groupedEventTypes.ungrouped.length > 0 && (
+                    <div className="flex flex-col gap-[1px]">
+                      {groupedEventTypes.ungrouped.map(item => {
+                        const lt = item.event_type;
+                        const checked = selectedEventTypes.includes(lt);
+                        const displayName = getEventDisplayName(item);
+
+                        return (
+                          <button
+                            key={lt}
+                            onClick={() => onToggleEventType(lt)}
+                            className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1"
+                          >
+                            <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-warning border-warning' : 'border-outline-variant'
+                              }`}>
+                              {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                            </div>
+                            <span className="text-[10px] font-semibold text-on-surface truncate">{displayName}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )
             )}
@@ -376,9 +492,6 @@ function LogFilter({
     </div>
   );
 }
-
-
-
 
 export function Dashboard() {
   const { t, i18n } = useTranslation();
@@ -942,6 +1055,7 @@ export function Dashboard() {
                       });
                     }}
                     onClearEventTypes={() => setSelectedEventTypes([])}
+                    setSelectedEventTypes={setSelectedEventTypes}
                   />
                 </div>
 

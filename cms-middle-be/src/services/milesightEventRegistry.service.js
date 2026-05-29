@@ -13,16 +13,16 @@ const FILE_NAME = 'milesight_events.json';
 let milesightEvents = [];
 
 const SEED_EVENTS = [
-  { event_type: 'fall',        event_description: 'milesight_fall_description',        default_enabled: true  },
-  { event_type: 'motionless',  event_description: 'milesight_motionless_description',  default_enabled: false },
-  { event_type: 'dwell',       event_description: 'milesight_dwell_description',       default_enabled: false },
-  { event_type: 'out_of_bed',  event_description: 'milesight_out_of_bed_description',  default_enabled: false },
-  { event_type: 'occupied',    event_description: 'milesight_occupied_description',    default_enabled: false },
-  { event_type: 'vacant',      event_description: 'milesight_vacant_description',      default_enabled: false },
-  { event_type: 'bradynea',    event_description: 'milesight_bradynea_description',    default_enabled: false },
-  { event_type: 'tachypnea',   event_description: 'milesight_tachypnea_description',   default_enabled: false },
-  { event_type: 'lying',       event_description: 'milesight_lying_description',       default_enabled: false },
-  { event_type: 'button_pressed', event_description: 'milesight_button_pressed_description', default_enabled: true },
+  { event_type: 'fall',        event_description: 'milesight_fall_description',        default_enabled: true,  event_group: 'accident' },
+  { event_type: 'motionless',  event_description: 'milesight_motionless_description',  default_enabled: false, event_group: 'vital_signs' },
+  { event_type: 'dwell',       event_description: 'milesight_dwell_description',       default_enabled: false, event_group: 'presence' },
+  { event_type: 'out_of_bed',  event_description: 'milesight_out_of_bed_description',  default_enabled: false, event_group: 'accident' },
+  { event_type: 'occupied',    event_description: 'milesight_occupied_description',    default_enabled: false, event_group: 'presence' },
+  { event_type: 'vacant',      event_description: 'milesight_vacant_description',      default_enabled: false, event_group: 'presence' },
+  { event_type: 'bradynea',    event_description: 'milesight_bradynea_description',    default_enabled: false, event_group: 'vital_signs' },
+  { event_type: 'tachypnea',   event_description: 'milesight_tachypnea_description',   default_enabled: false, event_group: 'vital_signs' },
+  { event_type: 'lying',       event_description: 'milesight_lying_description',       default_enabled: false, event_group: 'presence' },
+  { event_type: 'button_pressed', event_description: 'milesight_button_pressed_description', default_enabled: true, event_group: 'accident' },
 ];
 
 function loadRegistry() {
@@ -50,10 +50,10 @@ function loadRegistry() {
       milesightEvents.push(...missingSeeds);
     }
 
-    const hadMigration = parsed.some(e => e.default_enabled === undefined) || missingSeeds.length > 0;
+    const hadMigration = parsed.some(e => e.default_enabled === undefined || e.event_group === undefined) || missingSeeds.length > 0;
     if (hadMigration) {
       _writeFile(filePath, milesightEvents);
-      console.log(`[Milesight-Registry] Migrated legacy file (added default_enabled) → ${filePath}`);
+      console.log(`[Milesight-Registry] Migrated legacy file (added default_enabled/event_group) → ${filePath}`);
     }
 
     console.log(`[Milesight-Registry] Loaded ${milesightEvents.length} events from ${filePath}`);
@@ -86,10 +86,16 @@ function discoverEvent(eventType) {
   const seed = SEED_EVENTS.find(s => s.event_type === eventType);
   const i18nDescKey = seed?.event_description || ('milesight_' + eventType.replace(/\./g, '_') + '_description');
 
+  let group = undefined;
+  if (eventType === 'fall' || eventType === 'out_of_bed' || eventType === 'button_pressed') group = 'accident';
+  else if (eventType === 'lying' || eventType === 'occupied' || eventType === 'vacant' || eventType === 'dwell') group = 'presence';
+  else if (eventType === 'bradynea' || eventType === 'tachypnea' || eventType === 'motionless') group = 'vital_signs';
+
   const newEntry = {
     event_type: eventType,
     event_description: i18nDescKey,
     default_enabled: seed ? seed.default_enabled : false,
+    event_group: seed?.event_group || group
   };
   milesightEvents.push(newEntry);
 
@@ -112,6 +118,7 @@ function _migrateLegacyEntries(entries) {
       default_enabled: e.default_enabled !== undefined
         ? !!e.default_enabled
         : (seed ? seed.default_enabled : false),
+      event_group: e.event_group || seed?.event_group || undefined
     };
   });
 }

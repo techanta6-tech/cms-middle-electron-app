@@ -163,6 +163,7 @@ function _migrateLegacyEntries(entries) {
       default_enabled: e.default_enabled !== undefined
         ? !!e.default_enabled
         : (seed ? seed.default_enabled : false),
+      event_group: e.event_group || seed?.event_group || undefined
     };
   });
 }

@@ -113,6 +113,7 @@ export interface LogData {
 export interface EventTypeItem {
   event_type: string;
   log_source: 'svms' | 'mqtt' | 'sunell-camera' | 'i3ai' | 'other' | null;
+  event_group?: string;
 }
 
 export interface SVMS_LogPayload {

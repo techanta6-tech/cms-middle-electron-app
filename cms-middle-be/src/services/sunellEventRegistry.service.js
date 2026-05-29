@@ -13,11 +13,11 @@ const FILE_NAME = 'sunell_events.json';
 let sunellEvents = [];
 
 const SEED_EVENTS = [
-  { event_type: 'motion_event',          event_description: 'sunell_motion_event_description',          default_enabled: true  },
-  { event_type: 'lpr_event',             event_description: 'sunell_lpr_event_description',             default_enabled: true  },
-  { event_type: 'face_event',            event_description: 'sunell_face_event_description',            default_enabled: true  },
-  { event_type: 'iva_trip_wire',         event_description: 'sunell_iva_trip_wire_description',         default_enabled: true  },
-  { event_type: 'iva_perimeter_intrusion',event_description: 'sunell_iva_perimeter_intrusion_description',default_enabled: true  },
+  { event_type: 'motion_event',          event_description: 'sunell_motion_event_description',          default_enabled: true, event_group: 'motion'  },
+  { event_type: 'lpr_event',             event_description: 'sunell_lpr_event_description',             default_enabled: true, event_group: 'lpr'  },
+  { event_type: 'face_event',            event_description: 'sunell_face_event_description',            default_enabled: true, event_group: 'face'  },
+  { event_type: 'iva_trip_wire',         event_description: 'sunell_iva_trip_wire_description',         default_enabled: true, event_group: 'iva'  },
+  { event_type: 'iva_perimeter_intrusion',event_description: 'sunell_iva_perimeter_intrusion_description',default_enabled: true, event_group: 'iva'  },
 ];
 
 function loadRegistry() {
@@ -40,10 +40,15 @@ function loadRegistry() {
     const parsed = JSON.parse(raw);
     sunellEvents = _migrateLegacyEntries(parsed);
 
-    const hadMigration = parsed.some(e => e.default_enabled === undefined);
+    const missingSeeds = SEED_EVENTS.filter(seed => !sunellEvents.some(e => e.event_type === seed.event_type));
+    if (missingSeeds.length > 0) {
+      sunellEvents.push(...missingSeeds);
+    }
+
+    const hadMigration = parsed.some(e => e.default_enabled === undefined || e.event_group === undefined) || missingSeeds.length > 0;
     if (hadMigration) {
       _writeFile(filePath, sunellEvents);
-      console.log(`[Sunell-Registry] Migrated legacy file (added default_enabled) → ${filePath}`);
+      console.log(`[Sunell-Registry] Migrated legacy file (added default_enabled/event_group) → ${filePath}`);
     }
 
     console.log(`[Sunell-Registry] Loaded ${sunellEvents.length} events from ${filePath}`);
@@ -75,10 +80,17 @@ function discoverEvent(eventType) {
 
   const i18nDescKey = 'sunell_' + eventType.replace(/\./g, '_') + '_description';
 
+  let group = undefined;
+  if (eventType.startsWith('iva_')) group = 'iva';
+  else if (eventType.includes('lpr')) group = 'lpr';
+  else if (eventType.includes('face')) group = 'face';
+  else if (eventType.includes('motion')) group = 'motion';
+
   const newEntry = {
     event_type: eventType,
     event_description: i18nDescKey,
     default_enabled: false,
+    event_group: group
   };
   sunellEvents.push(newEntry);
 
@@ -101,6 +113,7 @@ function _migrateLegacyEntries(entries) {
       default_enabled: e.default_enabled !== undefined
         ? !!e.default_enabled
         : (seed ? seed.default_enabled : false),
+      event_group: e.event_group || seed?.event_group || undefined
     };
   });
 }

@@ -8,18 +8,21 @@ export interface SvmsKnownEvent {
   event_type: string;
   event_description: string; // i18n key tham chiếu, ví dụ: 'ai_alarm_crosswire_all_description'
   default_enabled: boolean;
+  event_group?: string;
 }
 
 export interface MilesightKnownEvent {
   event_type: string;
   event_description: string;
   default_enabled: boolean;
+  event_group?: string;
 }
 
 export interface SunellKnownEvent {
   event_type: string;
   event_description: string;
   default_enabled: boolean;
+  event_group?: string;
 }
 
 const env = {
@@ -208,16 +211,19 @@ export function useSocketManager() {
       ...svmsKnownEvents.map(e => ({
         event_type: e.event_type.replace(/\./g, '_'),
         log_source: 'svms' as const,
+        event_group: e.event_group,
       })),
       // Milesight (source = 'mqtt')
       ...milesightKnownEvents.map(e => ({
         event_type: e.event_type.replace(/\./g, '_'),
         log_source: 'mqtt' as const,
+        event_group: e.event_group,
       })),
       // Sunell
       ...sunellKnownEvents.map(e => ({
         event_type: e.event_type.replace(/\./g, '_'),
         log_source: 'sunell-camera' as const,
+        event_group: e.event_group,
       })),
     ];
     if (fromRegistry.length === 0) return;
