@@ -30,7 +30,7 @@ interface MQTT_Milesight_DeviceInfo {
   lastSeen: string;
 }
 
-interface DevicesManagerProps {
+interface DevicesManagementProps {
   servers: Record<string, ServerData>;
   devices: Record<string, DeviceData>;
   mqttServers: MqttServerConfig[];
@@ -56,12 +56,12 @@ interface DevicesManagerProps {
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
-export function DevicesManager({
+export function DevicesManagement({
   servers, devices, mqttServers, mqttGroups, mqttDevices, mqttLogs, cameraDevices,
   deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera,
   fetchCameras, handleAddMqttServer, handleAddMqttGroup, handleUpdateMqttGroup, handleAddMqttDevice, handleRemoveMqttGroup, handleRemoveMqttDevice, handleAddExternalServer,
   svmsDeviceFeatures, svmsKnownEvents, milesightKnownEvents, sunellKnownEvents
-}: DevicesManagerProps) {
+}: DevicesManagementProps) {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<SelectedItemType | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
@@ -210,7 +210,7 @@ export function DevicesManager({
   }, [fetchCameras]);
 
   return (
-    <div className="DevicesManager flex-1 overflow-hidden flex flex-col h-full">
+    <div className="DevicesManagement flex-1 overflow-hidden flex flex-col h-full">
       {isGroupPanelOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 animate-in fade-in duration-200">
           <div className="w-full max-w-sm bg-surface-container-low border border-outline-variant/30 rounded-lg shadow-2xl overflow-hidden">
@@ -320,7 +320,6 @@ export function DevicesManager({
           {/* SVMS Servers */}
           <GroupHeader icon={<Cpu className="w-3.5 h-3.5" />} label={t('app.devices.svms_servers')} color="text-secondary" count={svmsServers.length}
             expanded={!!expandedGroups.svms} onToggle={() => toggleGroup('svms')}
-          // onAdd={() => setAddingForm('svms')}
           />
           {expandedGroups.svms && (
             <div className="flex flex-col gap-2 ml-2 border-l-2 border-secondary/10 pl-2">
@@ -343,7 +342,7 @@ export function DevicesManager({
                     />
                     {expanded && matchDev?.devices?.map((dev, i) => (
                       <TreeItem key={i}
-                        label={dev.name} sublabel={dev.ip} indent
+                         label={dev.name} sublabel={dev.ip} indent
                         icon={<Camera className="w-3 h-3 text-on-surface-variant/60" />}
                         onClick={() => setSelected({ kind: 'svms-device', data: dev, server: srv })}
                         isSelected={selected?.kind === 'svms-device' && (selected.data as any).ip === dev.ip && (selected.data as any).name === dev.name}
@@ -633,15 +632,6 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
 
   const isSunell = item.kind === 'camera' && item.data.type === 'sunell';
 
-  const titleMap = {
-    'svms-server': t('app.devices.svms_server'),
-    'i3ai-server': 'i3AI Server',
-    'svms-device': t('app.devices.svms_device'),
-    'mqtt-group': 'MQTT Group',
-    'mqtt-device': t('app.devices.mqtt_device'),
-    'camera': isSunell ? t('app.devices.sunell_cameras') : t('app.devices.camera_device'),
-  };
-
   // Lấy dữ liệu mới nhất từ props để tránh lỗi stale-state khi React useState không tự cập nhật
   const latestCam = item.kind === 'camera'
     ? cameraDevices.find(c => c.id === item.data.id) || item.data
@@ -749,7 +739,6 @@ function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
   const [showEventList, setShowEventList] = useState(true);
 
   // Build SVMS_EVENTS dynamically từ registry.
-  // Label: thử i18n key "app.logtype.{type_với_underscore}", nếu không có → fallback đa ngôn ngữ.
   const SVMS_EVENTS = svmsKnownEvents.map(evt => {
     const i18nKey = `app.logtype.svms_${evt.event_type.replace(/\./g, '_')}`;
     const i18nLabel = t(i18nKey);
@@ -767,10 +756,9 @@ function SvmsDeviceDetail({ dev, srv, svmsDeviceFeatures, svmsKnownEvents }: {
   );
   const features = featureEntry?.features || {};
 
-  // M\u1eb7c \u0111\u1ecbnh: \u0111\u1ecdc t\u1eeb default_enabled trong registry, kh\u00f4ng hardcode
   const getEnabled = (code: string) => {
     if (features[code] !== undefined) return !!features[code];
-    if (code === '__other_events__') return true; // pseudo-event, lu\u00f4n m\u1eb7c \u0111\u1ecbnh b\u1eadt
+    if (code === '__other_events__') return true; // pseudo-event, luôn mặc định bật
     const registryEvt = svmsKnownEvents.find(e => e.event_type === code);
     return registryEvt?.default_enabled ?? false;
   };
@@ -912,49 +900,8 @@ function MqttGroupDetail({ group, devices, allCameras, onUpdateMqttGroup, onEdit
   );
 }
 
-function MqttServerDetail({ srv, devices, allCameras, onLinkMqttServerCamera, onEdit }: { srv: MqttServerConfig; devices: MQTT_Milesight_DeviceInfo[]; allCameras: MqttDeviceConfig[]; onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void; onEdit?: () => void; }) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-lg font-black text-on-surface">{srv.name || `${srv.brokerHost}:${srv.brokerPort}`}</h3>
-        {onEdit && (
-          <button
-            onClick={onEdit}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-amber-400 border border-amber-400/20 hover:border-amber-400/50 bg-amber-400/5 hover:bg-amber-400/10 rounded-md transition-all cursor-pointer"
-          >
-            <Edit2 className="w-3.5 h-3.5" />
-            {t('app.devices.edit') || 'Chỉnh sửa'}
-          </button>
-        )}
-      </div>
-      <div className="mb-3"><StatusBadge status={srv.status} /></div>
-      <InfoRow label={t('app.monitor.server_id')} value={srv.id} mono />
-      <InfoRow label={t('app.monitor.protocol')} value={srv.protocol} />
-      <InfoRow label={t('app.monitor.topic')} value={srv.topic || srv.defaultTopic} mono />
-      <InfoRow label={t('app.monitor.log_count')} value={srv.logCount ?? 0} />
-      <InfoRow label={t('app.monitor.camera_id')} value={srv.cameraId || '(none)'} mono />
-      <InfoRow label={t('app.monitor.devices_seen')} value={devices.length} />
-      <div className="mt-4 border-t border-outline-variant/10 flex items-center gap-3">
-        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest shrink-0">{t('app.monitor.default_camera') || 'Bound Camera'}</span>
-        <select
-          value={srv.cameraId || ''}
-          onChange={(e) => onLinkMqttServerCamera(srv.id, e.target.value || null)}
-          className="flex-1 text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface focus:outline-none focus:border-cyan-500/50 transition-colors"
-        >
-          <option value="">📷 {t('app.monitor.no_camera_disabled')}</option>
-          {allCameras.map(cam => (
-            <option key={cam.id} value={cam.id}>{(cam as any).name || `${cam.type.toUpperCase()} - ${cam.cameraIp}:${cam.cameraPort}`}</option>
-          ))}
-        </select>
-      </div>
-    </div>
-  );
-}
-
 function MqttDeviceDetail({ dev, group, allCameras, deviceCameraLinks, onLinkDeviceCamera, milesightKnownEvents }: { dev: MqttDevice; group: MqttGroup; allCameras: MqttDeviceConfig[]; deviceCameraLinks: DeviceCameraLink[]; onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null, mqttDeviceId?: string, groupId?: string) => void; milesightKnownEvents: any[]; }) {
   const { t, i18n } = useTranslation();
-  const [dragOverCatId, setDragOverCatId] = useState<string | null>(null);
   const [showEventList, setShowEventList] = useState(true);
 
   const MILESIGHT_EVENTS = milesightKnownEvents.map(evt => {
@@ -975,7 +922,6 @@ function MqttDeviceDetail({ dev, group, allCameras, deviceCameraLinks, onLinkDev
 
   const features = (link as any)?.features || {};
 
-  // Normalize feature: hỗ trợ cả boolean cũ và object { enabled, cameraId } mới
   const getFeature = (code: string): { enabled: boolean; cameraId: string | null } => {
     const raw = features[code];
     const registryEvt = MILESIGHT_EVENTS.find(e => e.code === code);
@@ -1011,13 +957,6 @@ function MqttDeviceDetail({ dev, group, allCameras, deviceCameraLinks, onLinkDev
 
   const totalEnabled = MILESIGHT_EVENTS.filter(e => getFeature(e.code).enabled).length + (otherEventsEnabled ? 1 : 0);
   const totalEvents = MILESIGHT_EVENTS.length + 1; // +1 cho Sự kiện khác
-
-  const activeCameraId = link?.cameraId === 'none' ? null : (link?.cameraId || group.cameraId);
-  const activeCamera = activeCameraId ? allCameras.find(c => c.id === activeCameraId) : null;
-  const activeCameraName = activeCamera
-    ? ((activeCamera as any).name || `${activeCamera.type.toUpperCase()} - ${activeCamera.cameraIp}:${activeCamera.cameraPort}`)
-    : t('app.devices.radar_categories.unassigned');
-  const isInherited = activeCameraId && activeCameraId === group.cameraId && (!link || !link.cameraId);
 
   return (
     <div className="flex flex-col gap-1">
@@ -1085,7 +1024,7 @@ function MqttDeviceDetail({ dev, group, allCameras, deviceCameraLinks, onLinkDev
                         <span className={`text-[11px] font-medium leading-tight transition-colors duration-200 ${enabled ? 'text-on-surface' : 'text-on-surface-variant/40'} min-w-[18%]`}>
                           {evt.label}
                         </span>
-                        {/* Per-event camera selector — chỉ hiện khi event đang bật */}
+                        {/* Per-event camera selector */}
                         <div className="ml-3 flex items-center gap-2">
                           <select
                             disabled={!enabled}
@@ -1108,7 +1047,7 @@ function MqttDeviceDetail({ dev, group, allCameras, deviceCameraLinks, onLinkDev
                       <button
                         onClick={() => handleToggle(evt.code, !enabled)}
                         className={`flex items-center w-7 h-4 rounded-full transition-colors transition-opacity cursor-pointer shrink-0 border-0 px-0.5
-                      ${enabled ? 'bg-cyan-400 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
+                       ${enabled ? 'bg-cyan-400 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
                         title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
                       >
                         <span
@@ -1352,7 +1291,7 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
                       <button
                         onClick={() => handleToggle(evt.code, !enabled)}
                         className={`flex items-center w-7 h-4 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
-                      ${enabled ? 'bg-green-500 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
+                       ${enabled ? 'bg-green-500 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
                         title={enabled ? 'Đang bật — Click để tắt' : 'Đang tắt — Click để bật'}
                       >
                         <span className="w-3.25 h-3.25 rounded-full bg-white shadow transition-all duration-200" />
@@ -1375,7 +1314,7 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
                 <button
                   onClick={() => handleToggle('__other_events__', !otherEventsEnabled)}
                   className={`flex items-center w-9 h-5 rounded-full transition-colors cursor-pointer shrink-0 border-0 px-0.5
-                ${otherEventsEnabled ? 'bg-green-500 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
+                 ${otherEventsEnabled ? 'bg-green-500 justify-end' : 'bg-surface-container-high justify-start opacity-50'}`}
                   title={otherEventsEnabled ? 'Đang nhận sự kiện khác — Click để tắt' : 'Không nhận sự kiện khác — Click để bật'}
                 >
                   <span className="w-4 h-4 rounded-full bg-white shadow transition-all duration-200" />
@@ -1392,4 +1331,3 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
     </div>
   );
 }
-

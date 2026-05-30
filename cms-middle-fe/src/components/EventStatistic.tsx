@@ -96,14 +96,6 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
   const displayedLogs = filteredLogs.slice(0, displayLimit);
   const hasMore = filteredLogs.length > displayLimit;
 
-  const logTypeBadgeColor = (type: string) => {
-    const t = type?.toUpperCase() || '';
-    if (t.includes('ALARM') || t.includes('ALERT')) return 'text-tertiary';
-    if (t.includes('EVENT') || t.includes('MOTION')) return 'text-amber-400';
-    if (t.includes('FACE') || t.includes('RECOGNIZE')) return 'text-primary';
-    return 'text-on-surface-variant';
-  };
-
   return (
     <div className="device-log-panel mt-1 bg-surface-container-lowest/60 border border-outline-variant/10 rounded-md overflow-hidden">
       {/* Filters row */}
@@ -127,8 +119,6 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
           >
             <option value="__all__">{t('app.monitor.all_types')}</option>
             {logTypes.map(lt => {
-
-              const translatedType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
               let displayFilterType = t(`app.logtype.${lt.toLowerCase().replace(/ /g, '_').replace(/\./g, '_')}`, { defaultValue: lt });
 
               if (log_source) {
@@ -136,7 +126,6 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
                   case 'svms': {
                     const normalizedType = lt.replace(/\./g, '_');
                     displayFilterType = t(`app.logtype.svms_${normalizedType}`);
-
                     break;
                   }
                   case 'milesight-radar': {
@@ -215,7 +204,6 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
                     const descKey = log.log_description.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
                     displayDesc = t(`app.logtype.${descKey}`, { defaultValue: log.log_description });
                   }
-                  console.log("cant find, use: ", displayType, displayDesc, log)
               }
 
               return (
@@ -252,7 +240,7 @@ function DeviceLogPanel({ logs }: { logs: LogData[] }) {
   );
 }
 
-export function ConnectionsMonitor({
+export function EventStatistic({
   isConnected,
   systemConfig,
   receiveServers,
@@ -276,10 +264,8 @@ export function ConnectionsMonitor({
   onSaveSystemConfig: (config: SystemConfig) => void,
   onRemoveConnection: (ip: string, port: string) => void,
 }) {
-  // ─── Throttle logs riêng cho tab này: 1 lần/giây thay vì 500ms ──────────
   const throttledLogs = useThrottledValue(logs, MONITOR_THROTTLE_MS);
 
-  // ─── Pre-filter logs by category to minimize cascading re-renders ────────
   const svmsLogs = useMemo(() =>
     (throttledLogs || []).filter(l => l.log_source === 'svms'),
     [throttledLogs]
@@ -290,7 +276,6 @@ export function ConnectionsMonitor({
     [throttledLogs]
   );
 
-  // Pre-group SVMS logs by server_id → each ServerInputCard gets its own small slice
   const svmsLogsByServer = useMemo(() => {
     const map: Record<string, LogData[]> = {};
     svmsLogs.forEach(l => {
@@ -301,14 +286,14 @@ export function ConnectionsMonitor({
     return map;
   }, [svmsLogs]);
 
-  // Group log stats strictly by server_id + server_serial + device_name + device_ip
   const deviceLogStats = useMemo(() => {
     const stats: Record<string, { serverId: string; serverSerial: string; deviceName: string; deviceIp: string; logCount: number }> = {};
     svmsLogs.forEach(log => {
       const sId = log.raw?.server?.server_id || log.server_unique_id || '';
       const sSerial = log.raw?.server?.serial || '';
       const dName = log.device_info?.name || '';
-      const dIp = log.raw?.device_ip || log.device_info?.id || '';
+      const rawIp = log.raw?.device_ip || log.device_info?.id || '';
+      const dIp = typeof rawIp === 'string' ? rawIp.split(':')[0] : String(rawIp);
 
       const key = `${sId}_${sSerial}_${dName}_${dIp}`;
 
@@ -326,7 +311,6 @@ export function ConnectionsMonitor({
     return stats;
   }, [svmsLogs]);
 
-  // Find logs that don't match any configured server/device
   const orphanDevices = useMemo(() => {
     const knownKeys = new Set<string>();
     Object.values(servers).forEach(srv => {
@@ -338,7 +322,8 @@ export function ConnectionsMonitor({
       if (matchedDevices && matchedDevices.devices) {
         matchedDevices.devices.forEach((d: any) => {
           const dName = d.name || '';
-          const dIp = d.ip || '';
+          const rawIp = d.ip || '';
+          const dIp = typeof rawIp === 'string' ? rawIp.split(':')[0] : String(rawIp);
           knownKeys.add(`${sId}_${sSerial}_${dName}_${dIp}`);
         });
       }
@@ -348,7 +333,11 @@ export function ConnectionsMonitor({
     Object.keys(deviceLogStats).forEach(key => {
       if (!knownKeys.has(key)) {
         const stat = deviceLogStats[key];
-        const isCamera = cameraDevices.some(cam => cam.cameraIp === stat.deviceIp || cam.id === stat.deviceName);
+        const isCamera = cameraDevices.some(cam => {
+          const camCleanIp = cam.cameraIp?.split(':')[0] || '';
+          const statCleanIp = stat.deviceIp?.split(':')[0] || '';
+          return (camCleanIp && statCleanIp && camCleanIp === statCleanIp) || cam.id === stat.deviceName;
+        });
         if (isCamera) return;
 
         orphans.push({
@@ -361,7 +350,6 @@ export function ConnectionsMonitor({
     return orphans;
   }, [deviceLogStats, servers, devices]);
 
-  // MQTT devices come from BE snapshot. Logs are used only for per-device counts.
   const mqttDevicesByServer = useMemo(() => {
     const map: Record<string, { devEui: string; applicationId: string; deviceName: string; deviceProfileName: string; alarmCount: number; lastSeen: string }[]> = {};
     (mqttDevices || []).forEach(device => {
@@ -385,17 +373,11 @@ export function ConnectionsMonitor({
     return map;
   }, [mqttDevices, throttledLogs]);
 
-
   const { t } = useTranslation();
 
   return (
-    <div className="ConnectionsMonitor flex flex-col h-full bg-background relative">
+    <div className="EventStatistic flex flex-col h-full bg-background relative">
       <div className="flex-1 overflow-hidden p-6 h-full flex flex-col gap-4 min-h-0">
-
-        {/* Tab Headers */}
-        Thêm thẻ thống kê biểu đồ bla bla vào đây
-
-
         {/* Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-surface-container/20 border border-outline-variant/30 rounded-lg p-5">
             <div className="flex flex-col gap-4">
@@ -416,7 +398,7 @@ export function ConnectionsMonitor({
                         srv={srv}
                         matchedDevices={matchedDevices}
                         deviceLogStats={deviceLogStats}
-                        serverLogs={svmsLogsByServer[srv.id || ''] || EMPTY_LOGS}
+                        serverLogs={svmsLogsByServer[`${srv.serial || ''}-${srv.id || ''}`] || svmsLogsByServer[srv.id || ''] || EMPTY_LOGS}
                       />
                     );
                   })}
@@ -443,7 +425,6 @@ export function ConnectionsMonitor({
               )}
             </div>
         </div>
-
       </div>
     </div>
   );
@@ -661,8 +642,6 @@ const CameraItemWithLogs = memo(function CameraItemWithLogs({ cam, logCount, isC
         </InfoTooltip>
         <div className="flex flex-col flex-1 min-w-0">
           <InfoTooltip content="Tên Camera" side="bottom">
-            <span className={`text-[11px] font-bold tracking-wide truncate max-w-[200px] block ${!isConnected ? 'text-on-surface-variant/50' : 'text-on-surface-variant'
-              }`}>{cam.name || cam.id}</span>
             <span className={`text-[11px] font-bold tracking-wide truncate max-w-[200px] block ${!isConnected ? 'text-on-surface-variant/50' : 'text-on-surface-variant'
               }`}>{cam.name || cam.id}</span>
           </InfoTooltip>
@@ -886,7 +865,8 @@ const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, dev
                 const sId = srv.id || '';
                 const sSerial = srv.serial || '';
                 const dName = device.name || '';
-                const dIp = device.ip || '';
+                const rawIp = device.ip || '';
+                const dIp = typeof rawIp === 'string' ? rawIp.split(':')[0] : String(rawIp);
                 const key = `${sId}_${sSerial}_${dName}_${dIp}`;
 
                 const dStats = deviceLogStats[key];
@@ -897,7 +877,8 @@ const ServerInputCard = memo(function ServerInputCard({ srv, matchedDevices, dev
                   const lsId = l.raw?.server?.server_id || l.server_unique_id || '';
                   const lsSerial = l.raw?.server?.serial || '';
                   const ldName = l.device_info?.name || '';
-                  const ldIp = l.raw?.device_ip || l.device_info?.id || '';
+                  const rawLdIp = l.raw?.device_ip || l.device_info?.id || '';
+                  const ldIp = typeof rawLdIp === 'string' ? rawLdIp.split(':')[0] : String(rawLdIp);
                   return `${lsId}_${lsSerial}_${ldName}_${ldIp}` === key;
                 });
 
@@ -941,29 +922,6 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
 }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isControllingBuzzer, setIsControllingBuzzer] = useState<string | null>(null);
-
-  const handleControlBuzzer = async (devEui: string, applicationId: string, enable: boolean) => {
-    if (!applicationId) {
-      alert("Thiếu Application ID để gửi lệnh. Vui lòng đợi thiết bị gửi dữ liệu để cập nhật ID.");
-      return;
-    }
-    const actionKey = `${devEui}-${enable}`;
-    setIsControllingBuzzer(actionKey);
-    try {
-      await apiClient.post(`/api/v1/mqtt-servers/${server.id}/buzzer`, {
-        applicationId,
-        devEui,
-        enable
-      });
-      console.log(`[Buzzer] ${enable ? 'ON' : 'OFF'} sent for ${devEui}`);
-    } catch (err: any) {
-      console.error('Failed to control buzzer:', err);
-      alert(`Lỗi điều khiển còi: ${err?.response?.data?.message || err.message}`);
-    } finally {
-      setIsControllingBuzzer(null);
-    }
-  };
 
   const status = server.status || 'disconnected';
   const isConnected = status === 'connected';
@@ -1049,9 +1007,6 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
       {/* Expandable body */}
       <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-2' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
         <div className={`min-h-0 ${isExpanded ? 'overflow-visible' : 'overflow-hidden'}`}>
-
-
-
           {devices.length > 0 && (
             <div className="mb-3">
               <div className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
@@ -1115,187 +1070,6 @@ function MqttServerCard({ server, devices, allCameras, deviceCameraLinks, onLink
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function CameraDevicesList({ cameras }: { cameras: MqttDeviceConfig[] }) {
-  const { t } = useTranslation();
-  const [isAddingDevice, setIsAddingDevice] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [addDeviceForm, setAddDeviceForm] = useState({
-    type: 'sunell' as 'sunell' | 'other',
-    cameraIp: '192.168.1.207',
-    cameraPort: '30001',
-    cameraUser: 'admin',
-    cameraPass: 'admin1234',
-    rtspUrl: 'rtsp://admin:admin1234@192.168.1.207:555/snl/live/1/1',
-  });
-
-  const handleSubmitDevice = async () => {
-    setIsSubmitting(true);
-    try {
-      const res = await apiClient.post('/api/v1/cameras', {
-        type: addDeviceForm.type,
-        cameraIp: addDeviceForm.cameraIp,
-        cameraPort: parseInt(addDeviceForm.cameraPort) || 30001,
-        cameraUser: addDeviceForm.cameraUser,
-        cameraPass: addDeviceForm.cameraPass,
-        rtspUrl: addDeviceForm.rtspUrl,
-      });
-      console.log('[Camera-Device] Added:', res.data);
-      setIsAddingDevice(false);
-    } catch (err: any) {
-      console.error('[Camera-Device] Add failed:', err);
-      alert(`Lỗi thêm thiết bị: ${err?.response?.data?.error || err.message}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDeleteDevice = async (deviceId: string) => {
-    try {
-      await apiClient.delete(`/api/v1/cameras/${deviceId}`);
-      console.log('[Camera-Device] Deleted:', deviceId);
-    } catch (err: any) {
-      console.error('[Camera-Device] Delete failed:', err);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-3">
-      {cameras.map((cam) => (
-        <div key={cam.id} className="flex flex-col gap-1.5 px-3 py-2 bg-surface-container-lowest/40 rounded border border-outline-variant/5 hover:border-outline-variant/20 transition-colors">
-          <div className="flex items-center gap-3">
-            <InfoTooltip content={cam.status === 'connected' ? 'Connected' : cam.status} side="bottom">
-              <div className={`w-2 h-2 rounded-full shrink-0 ring-2 ${cam.status === 'connected' ? 'bg-secondary ring-secondary/20' : cam.status === 'error' ? 'bg-red-500 ring-red-500/20' : 'bg-amber-400 ring-amber-400/20 animate-pulse'}`}></div>
-            </InfoTooltip>
-            <span className="text-[9.5px] font-mono font-medium min-w-[50px] text-center px-1.5 py-0.5 rounded shadow-sm text-cyan-500 bg-cyan-500/10 border border-cyan-500/20 uppercase">
-              {cam.type}
-            </span>
-            <div className="flex-1 flex flex-col min-w-0">
-              <span className="text-[11px] font-bold tracking-wide text-on-surface-variant truncate">{cam.name || cam.id}</span>
-              <span className="text-[10px] font-mono text-on-surface-variant/70 truncate">{cam.cameraIp}:{cam.cameraPort}</span>
-            </div>
-            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${cam.status === 'connected' ? 'text-secondary bg-secondary/10 border-secondary/20' : cam.status === 'error' ? 'text-red-500 bg-red-500/10 border-red-500/20' : 'text-amber-400 bg-amber-400/10 border-amber-400/20'}`}>{cam.status}</span>
-            <button
-              onClick={() => handleDeleteDevice(cam.id)}
-              className="p-1 text-on-surface-variant/40 hover:text-tertiary transition-colors"
-              title={t('app.devices.confirm_delete_camera')}
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
-          </div>
-          {/* Editable RTSP URL */}
-          <div className="flex items-center gap-1.5 pl-5">
-            <span className="text-[8px] font-bold text-on-surface-variant/60 uppercase tracking-widest shrink-0">RTSP</span>
-            <input
-              defaultValue={cam.rtspUrl || ''}
-              className="text-[10px] font-mono bg-surface-container/60 border border-outline-variant/15 rounded px-1.5 py-0.5 text-on-surface-variant flex-1 focus:border-cyan-500/40 focus:outline-none transition-colors"
-              placeholder="rtsp://..."
-              onBlur={async (e) => {
-                const newUrl = e.target.value;
-                if (newUrl !== (cam.rtspUrl || '')) {
-                  try {
-                    await apiClient.patch(`/api/v1/cameras/${cam.id}`, { rtspUrl: newUrl });
-                  } catch (err) { console.error('RTSP update failed:', err); }
-                }
-              }}
-              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-            />
-          </div>
-        </div>
-      ))}
-
-      {/* Add Device Form */}
-      {isAddingDevice && (
-        <div className="mt-2 p-3 bg-surface-container-lowest/60 border border-cyan-500/20 rounded-md">
-          <div className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest mb-3">Thêm Camera Device</div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Type</label>
-              <select
-                value={addDeviceForm.type}
-                onChange={e => setAddDeviceForm(f => ({ ...f, type: e.target.value as 'sunell' | 'other' }))}
-                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
-              >
-                <option value="sunell">Sunell (SDK + RTSP)</option>
-                <option value="other">Other (RTSP Only)</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Camera IP</label>
-              <input
-                value={addDeviceForm.cameraIp}
-                onChange={e => setAddDeviceForm(f => ({ ...f, cameraIp: e.target.value }))}
-                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
-                placeholder="192.168.1.xxx"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Camera Port</label>
-              <input
-                value={addDeviceForm.cameraPort}
-                onChange={e => setAddDeviceForm(f => ({ ...f, cameraPort: e.target.value }))}
-                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
-                placeholder={addDeviceForm.type === 'sunell' ? "30001" : "554"}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Username</label>
-              <input
-                value={addDeviceForm.cameraUser}
-                onChange={e => setAddDeviceForm(f => ({ ...f, cameraUser: e.target.value }))}
-                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
-                placeholder="admin"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Password</label>
-              <input
-                value={addDeviceForm.cameraPass}
-                onChange={e => setAddDeviceForm(f => ({ ...f, cameraPass: e.target.value }))}
-                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface"
-                placeholder="admin1234"
-                type="password"
-              />
-            </div>
-            <div className="flex flex-col gap-1 col-span-2">
-              <label className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">RTSP URL</label>
-              <input
-                value={addDeviceForm.rtspUrl}
-                onChange={e => setAddDeviceForm(f => ({ ...f, rtspUrl: e.target.value }))}
-                className="text-[11px] font-mono bg-surface-container border border-outline-variant/20 rounded px-2 py-1.5 text-on-surface w-full"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2 mt-3">
-            <button
-              onClick={handleSubmitDevice}
-              disabled={isSubmitting || !addDeviceForm.cameraIp}
-              className="px-4 py-1.5 bg-cyan-500 text-white text-[10px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity disabled:opacity-40"
-            >
-              {isSubmitting ? 'Đang lưu...' : 'Lưu Camera'}
-            </button>
-            <button
-              onClick={() => setIsAddingDevice(false)}
-              className="px-4 py-1.5 text-on-surface-variant text-[10px] font-bold uppercase tracking-widest rounded border border-outline-variant/20 hover:bg-surface-container transition-colors"
-            >
-              Hủy
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Add Device Button */}
-      {!isAddingDevice && (
-        <button
-          onClick={(e) => { e.stopPropagation(); setIsAddingDevice(true); }}
-          className="mt-2 w-full py-2.5 border border-dashed border-cyan-500/30 text-cyan-500 hover:bg-cyan-500/10 bg-cyan-500/5 rounded-md flex justify-center items-center gap-2 text-[9px] uppercase font-bold tracking-widest transition-colors cursor-pointer"
-        >
-          <Plus className="w-3.5 h-3.5" /> {t('app.monitor.add_new_camera')}
-        </button>
-      )}
     </div>
   );
 }

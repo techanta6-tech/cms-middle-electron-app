@@ -91,3 +91,22 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--outline);
 }
+
+.traffic-mini-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+.traffic-mini-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.traffic-mini-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.traffic-mini-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.38);
+  border-radius: 999px;
+}
+.traffic-mini-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.62);
+}

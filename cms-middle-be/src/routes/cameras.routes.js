@@ -5,7 +5,8 @@ const {
   updateCameraDevice,
   getCamerasList,
   getSdkSnapshotForCamera,
-  getSnapshotUrlForCamera
+  getSnapshotUrlForCamera,
+  simulateCameraAlarm
 } = require('../services/cameras.service');
 const authMiddleware = require('../middleware/auth.middleware');
 
@@ -74,6 +75,28 @@ router.post('/api/v1/cameras/:id/snapshot/url', authMiddleware, async (req, res)
       return res.status(result.statusCode || 500).json(result);
     }
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || String(err) });
+  }
+});
+
+// POST /api/v1/cameras/simulate-log — Simulate Sunell Camera Alarm
+router.post('/api/v1/cameras/simulate-log', authMiddleware, async (req, res) => {
+  const { cameraId, logType, plateNum, confidence, snapshotBase64 } = req.body;
+
+  try {
+    const result = await simulateCameraAlarm(cameraId, {
+      logType,
+      plateNum,
+      confidence,
+      snapshotBase64
+    });
+    
+    if (result && result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result || { success: false, error: 'Simulation failed' });
+    }
   } catch (err) {
     res.status(500).json({ success: false, error: err.message || String(err) });
   }

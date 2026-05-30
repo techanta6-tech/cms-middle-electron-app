@@ -8,8 +8,11 @@ const resources = {
         sidebar: {
           alert_wall: "Cảnh Báo",
           emap: "Bản đồ số",
-          connections_monitor: "Giám Sát Sự Kiện",
-          devices: "Quản Lý Kết Nối",
+          event_statistic: "Giám sát sự kiện",
+          devices_management: "Quản lý thiết bị",
+          traffic_management: "Quản lý giao thông",
+          area_management: "Quản lý khu vực",
+          livewall: "Xem trực tiếp",
           help_docs: "Trợ Giúp & Tài Liệu"
         },
         footer: {
@@ -592,8 +595,11 @@ const resources = {
         sidebar: {
           alert_wall: "Alert Wall",
           emap: "E-MAP",
-          connections_monitor: "Events Monitor",
-          devices: "Connections Management",
+          event_statistic: "Event Statistic",
+          devices_management: "Devices Management",
+          traffic_management: "Traffic Management",
+          area_management: "Area Management",
+          livewall: "Live Wall",
           help_docs: "Help & Docs"
         },
         footer: {

@@ -348,6 +348,415 @@ async function attachOverviewSnapshotForLpr(device, payload) {
   return payload;
 }
 
+async function processCameraAlarm(device, rawJsonStr) {
+  const id = device.id;
+  try {
+    const originalRawJson = typeof rawJsonStr === 'string'
+      ? rawJsonStr
+      : JSON.stringify(rawJsonStr, null, 2);
+    const payload = typeof rawJsonStr === 'string' ? JSON.parse(rawJsonStr) : rawJsonStr;
+    const alarmReceivedAtMs = Date.now();
+
+    // Neu device chua co features mac dinh thi coi nhu dc bat
+    const features = device.features || {};
+    const enableLPR = features.enableLPR ?? true;
+    const enableMotion = features.enableMotion ?? true;
+    const enableFace = features.enableFace ?? true;
+    const enableIVA = features.enableIVA ?? true;
+    const enableSystem = features.enableSystem ?? true;
+
+    // Phân tích loại sự kiện
+    let isLpr = false;
+    let isFace = false;
+    let isMotion = false;
+    let isIVA = false;
+    let isSystem = false;
+    let ivaSubType = -1; // lưu sub_type của IVA để map chi tiết
+    let logType = 'unknown';
+    let description = 'Sự kiện không xác định';
+
+    // 1. Phân tích sự kiện nhận diện (AI Targets) từ detect_cb
+    if (payload.TargetDetectList && Array.isArray(payload.TargetDetectList)) {
+      for (const target of payload.TargetDetectList) {
+        if (target.Type === 3) isLpr = true;
+        if (target.Type === 0) isFace = true;
+      }
+    }
+
+    // 2. Phân tích sự kiện báo động (Alarms) từ alarm_cb
+    let globalMainType = null;
+    let globalSubType = null;
+    if (payload.data && typeof payload.data.main_type !== 'undefined') {
+      globalMainType = payload.data.main_type;
+      globalSubType = payload.data.sub_type;
+
+      if (globalMainType === 1 && globalSubType === 2) {
+        isMotion = true;
+      } else if (globalMainType === 6 || globalMainType === 9) {
+        isIVA = true;
+        ivaSubType = globalSubType;
+      } else if (globalMainType === 1 || globalMainType === 4 || globalMainType === 5 || globalMainType === 7) {
+        // 1: Safety, 4: Disk, 5: Video, 7: Temperature/Thermal
+        isSystem = true;
+      }
+    }
+
+    // Nếu không nhận diện được loại nào thì fallback theo keyword trong JSON
+    if (!isLpr && !isFace && !isMotion && !isIVA && !isSystem) {
+      const strBody = JSON.stringify(payload).toLowerCase();
+      const targetListEmpty = payload.TargetDetectList && Array.isArray(payload.TargetDetectList) && payload.TargetDetectList.length === 0;
+      if (strBody.includes('plate') && !targetListEmpty) isLpr = true;
+      else isMotion = true; // Fallback cuối cùng
+    }
+
+    // Map IVA sub_type → logType
+    const IVA_SUBTYPE_MAP = {
+      21: { logType: 'iva_trip_wire' },
+      22: { logType: 'iva_smd' },
+      23: { logType: 'iva_occlusion' },
+      24: { logType: 'iva_perimeter_intrusion' },
+      25: { logType: 'iva_double_trip_wire' },
+      26: { logType: 'iva_loitering' },
+      27: { logType: 'iva_crowd_loitering' },
+      28: { logType: 'iva_object_left' },
+      29: { logType: 'iva_object_removed' },
+      30: { logType: 'iva_abnormal_speed' },
+      31: { logType: 'iva_retrograde' },
+      32: { logType: 'iva_illegal_parking' },
+      33: { logType: 'iva_camera_shift' },
+      34: { logType: 'iva_signal_bad' },
+    };
+
+    // --- DETERMINE EVENT TYPE ---
+    if (isLpr) {
+      logType = 'lpr_event';
+      description = 'Phát hiện biển số (LPR)';
+    } else if (isFace) {
+      logType = 'face_event';
+      description = 'Phát hiện khuôn mặt (Face)';
+    } else if (isMotion) {
+      logType = 'motion_event';
+      description = (globalMainType != null && globalSubType != null)
+        ? getAlarmName(globalMainType, globalSubType)
+        : 'Phát hiện chuyển động (Motion)';
+    } else if (isIVA) {
+      const ivaInfo = IVA_SUBTYPE_MAP[ivaSubType];
+      logType = ivaInfo ? ivaInfo.logType : `iva_event_${ivaSubType}`;
+      description = (globalMainType != null && globalSubType != null)
+        ? getAlarmName(globalMainType, globalSubType)
+        : 'Phân tích AI (IVS/IVA)';
+    } else if (isSystem) {
+      logType = (globalMainType != null && globalSubType != null)
+        ? `system_event_${globalMainType}_${globalSubType}`
+        : 'system_event';
+      description = (globalMainType != null && globalSubType != null)
+        ? getAlarmName(globalMainType, globalSubType)
+        : 'Cảnh báo hệ thống / an ninh';
+    } else {
+      return { success: false, error: 'Unknown event type' };
+    }
+
+    // --- AUTO-DISCOVER & FILTERING ---
+    const knownTypesSet = sunellEventRegistry.getKnownTypesSet();
+    const isKnown = knownTypesSet.has(logType);
+    let shouldProcess = false;
+
+    if (!isKnown) {
+      // Sự kiện ngoài danh sách: check cấu hình __other_events__ (mặc định là true)
+      const otherEnabled = features.__other_events__ !== undefined
+        ? !!features.__other_events__
+        : true;
+
+      if (!otherEnabled) {
+        console.log(`[Camera-${id}] Bỏ qua sự kiện lạ ngoài danh sách: ${logType} (__other_events__ đang tắt)`);
+        return { success: false, error: 'Disabled event type' };
+      }
+
+      // Nếu bật: nhận và tự động đăng ký vào danh sách
+      const isNewEvent = sunellEventRegistry.discoverEvent(logType);
+      if (isNewEvent) {
+        const clientSockets = getClientSockets();
+        if (clientSockets) {
+          clientSockets.emit('update-sunell-known-events', sunellEventRegistry.getEvents());
+        }
+      }
+      shouldProcess = true;
+    } else {
+      // Hỗ trợ backwards compatibility: nếu user đã set 'enableLPR', 'enableMotion' vv thì chuyển qua logType
+      const legacyMap = {
+        'lpr_event': features.enableLPR,
+        'face_event': features.enableFace,
+        'motion_event': features.enableMotion,
+      };
+      if (isIVA) legacyMap[logType] = features.enableIVA;
+      if (isSystem) legacyMap[logType] = features.enableSystem;
+
+      // Ưu tiên 1: features[logType] (nếu FE update theo dạng phẳng)
+      // Ưu tiên 2: features.enableLPR/enableMotion (nếu FE dùng dạng nhóm cũ)
+      // Ưu tiên 3: sunellEventRegistry.getDefaultEnabled
+      if (features[logType] !== undefined) {
+        shouldProcess = !!features[logType];
+      } else if (legacyMap[logType] !== undefined) {
+        shouldProcess = !!legacyMap[logType];
+      } else {
+        shouldProcess = sunellEventRegistry.getDefaultEnabled(logType);
+      }
+    }
+
+    // Nếu sự kiện không được bật thì bỏ qua
+    if (!shouldProcess) {
+      console.log(`[Camera-${id}] Bỏ qua sự kiện bị vô hiệu hóa: ${logType}`);
+      return { success: false, error: 'Disabled event type' };
+    }
+
+    if (isLpr) {
+      if (trafficService.isDuplicateLpr(payload, device.id)) {
+        console.log(`[Camera-${id}] [Traffic] Bỏ qua LPR log trùng lặp (chống lặp 30s)`);
+        return { success: false, error: 'Duplicate LPR log ignored (30s rule)' };
+      }
+    }
+
+    // YÊU CẦU: Áp dụng lấy ảnh toàn cảnh (fullshot) từ luồng RTSP streaming ngầm CHỈ cho lpr_event
+    if (isLpr) {
+      saveSunellSnapshotAfterPrefilter(device, payload, logType);
+      payload.plateImageBase64 = payload.snapshotBase64 || null;
+      payload.plateImagePath = payload.snapshotPath || payload.sunellSnapshotPath || null;
+    }
+
+    if (isLpr) {
+      payload.lprSnapshotLatencyMs = null;
+      try {
+        await sleep(LPR_SNAPSHOT_DELAY_MS);
+        
+        // Dùng luồng stream RTSP thay vì gọi HTTP tới Camera (chỉ khi không phải mock device)
+        if (device.id !== 'cam-mock-sunell') {
+          const snapshotResult = await captureRtspSnapshot(device.id, {
+            includeBase64: true,
+            timeoutMs: OVERVIEW_SNAPSHOT_TIMEOUT_MS,
+            fresh: true,
+          });
+
+          if (snapshotResult && snapshotResult.success && snapshotResult.snapshotBase64) {
+            payload.fullStreamSnapshotBase64 = snapshotResult.snapshotBase64;
+            payload.fullStreamSnapshotPath = snapshotResult.snapshotPath || null;
+
+            payload.snapshotBase64 = snapshotResult.snapshotBase64;
+            payload.snapshotPath = snapshotResult.snapshotPath || null;
+            payload.snapshotSource = 'rtsp-stream';
+            payload.lprSnapshotLatencyMs = Date.now() - alarmReceivedAtMs;
+            console.log(`[Camera-${id}] [LPR SNAPSHOT] RTSP Stream Frame captured and applied to log snapshot, size=${snapshotResult.snapshotBase64.length}`);
+          } else {
+            console.warn(`[Camera-${id}] [FULL SHOT] RTSP Stream Snapshot failed: ${snapshotResult ? snapshotResult.error : 'Unknown'}`);
+          }
+        }
+      } catch (err) {
+        console.error(`[Camera-${id}] [FULL SHOT] RTSP Stream Snapshot error: ${err.message}`);
+      }
+    }
+
+    if (!isLpr) {
+      saveSunellSnapshotAfterPrefilter(device, payload, logType);
+    }
+
+    // ─── Traffic module: ghi nhận biển số xe (LPR) ───
+    if (isLpr) {
+      try {
+        const trafficResult = trafficService.appendTrafficRecord(payload, device);
+        if (trafficResult) {
+          const plates = Array.isArray(trafficResult) ? trafficResult : [trafficResult];
+          console.log(`[Camera-${id}] [Traffic] Ghi nhan ${plates.length} bien so: ${plates.map(p => p.plate_num).join(', ')}`);
+        }
+      } catch (trafficErr) {
+        console.error(`[Camera-${id}] [Traffic] Loi ghi nhan bien so:`, trafficErr.message);
+      }
+    }
+
+    let eventKey = logType;
+    let eventNameSafe = '';
+    const rawEventName = payload.eventName || (payload.data && payload.data.eventName) || '';
+
+    if (rawEventName) {
+      // Tìm chuỗi nằm trong dấu ngoặc đơn (VD: "Perimeter intrusion")
+      const match = rawEventName.match(/\(([^)]+)\)/);
+      const extractedName = match ? match[1] : rawEventName;
+
+      // Lọc bỏ các ký tự đặc biệt để làm tên file
+      eventNameSafe = extractedName.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').toLowerCase();
+      // Xóa gạch dưới ở 2 đầu nếu có
+      eventNameSafe = eventNameSafe.replace(/^_|_$/g, '');
+      eventKey = `${logType}_${eventNameSafe}`;
+    }
+
+    if (!loggedEventTypes.has(eventKey)) {
+      loggedEventTypes.add(eventKey);
+      const fileName = eventNameSafe ? `${logType}_${eventNameSafe}.txt` : `${logType}.txt`;
+      const logFilePath = path.join(sampleLogsDir, fileName);
+
+      let dataToWrite = `--- SUNELL EVENT: ${logType.toUpperCase()} ${rawEventName ? `(${rawEventName})` : ''} ---\n`;
+      dataToWrite += `Time: ${new Date().toISOString()}\n`;
+      dataToWrite += `Camera: ${device.name} (${device.id})\n`;
+      dataToWrite += `Description: ${description}\n`;
+      dataToWrite += `Raw JSON:\n`;
+      dataToWrite += originalRawJson + '\n\n';
+
+      try {
+        fs.writeFileSync(logFilePath, dataToWrite, 'utf8');
+        console.log(`[Sunell-Sample] Đã ghi file log mẫu cho sự kiện ${eventKey} tại ${logFilePath}`);
+      } catch (err) {
+        console.error(`[Sunell-Sample] Lỗi ghi file log mẫu:`, err);
+      }
+    }
+
+    const logData = {
+      id: `sunell-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      receive_time: Date.now(),
+      log_type: logType,
+      log_description: description,
+      snapshot: payload.snapshotBase64 || undefined,
+      fullshotimage: payload.fullStreamSnapshotBase64 || payload.snapshotBase64 || undefined,
+      snapshot_path: payload.snapshotPath || payload.sunellSnapshotPath || undefined,
+      overviewSnapshotBase64: payload.overviewSnapshotBase64 || undefined,
+      overviewSnapshotPath: payload.overviewSnapshotPath || undefined,
+      overviewSnapshotSource: payload.overviewSnapshotSource || undefined,
+      log_source: 'sunell-camera',
+      device_info: {
+        name: device.name || 'Sunell Camera',
+        id: device.id,
+      },
+      server_unique_id: `camera-${device.id}`,
+      raw: payload,
+    };
+    appendLog(logData);
+
+    const sockets = getClientSockets();
+    if (sockets) {
+      // DEBUG: Emit toàn bộ raw data Sunell gửi về để FE console.log
+      sockets.emit('sunell-test', {
+        _debug_timestamp: new Date().toISOString(),
+        _raw_json_string: typeof rawJsonStr === 'string' ? rawJsonStr : JSON.stringify(rawJsonStr),
+        _parsed_payload: payload,
+        _camera_id: device.id,
+        _camera_name: device.name,
+        _log_type: logType,
+        _has_snapshot: !!payload.snapshotBase64,
+        _snapshot_length: payload.snapshotBase64 ? payload.snapshotBase64.length : 0,
+        _snapshot_preview: payload.snapshotBase64 ? payload.snapshotBase64.substring(0, 100) + '...' : '(empty)',
+        _has_overview_snapshot: !!payload.overviewSnapshotBase64,
+        _overview_snapshot_length: payload.overviewSnapshotBase64 ? payload.overviewSnapshotBase64.length : 0,
+      });
+
+      // Bắn log qua socket với mục raw_data chứa toàn bộ event
+      sockets.emit('receive-sunell-log', {
+        id: logData.id,
+        timestamp: new Date().toISOString(),
+        source: 'sunell-camera',
+        camera_id: device.id,
+        camera_name: device.name,
+        log_type: logType,
+        description: description,
+        raw_data: payload,
+        image_data: payload.snapshotBase64,
+        fullshotimage: payload.fullStreamSnapshotBase64 || payload.snapshotBase64 || undefined,
+        image_path: payload.snapshotPath || payload.sunellSnapshotPath || undefined,
+        overview_image_data: payload.overviewSnapshotBase64,
+        overview_image_path: payload.overviewSnapshotPath || undefined,
+        overview_image_source: payload.overviewSnapshotSource || undefined,
+      });
+    }
+    return { success: true, logData };
+  } catch (e) {
+    console.error(`[Camera-${id}] Lỗi xử lý alarm:`, e);
+    return { success: false, error: e.message || String(e) };
+  }
+}
+
+async function simulateCameraAlarm(cameraId, eventData = {}) {
+  let device = cameraDevices.find(d => d.id === cameraId) || cameraDevices[0];
+  if (!device) {
+    device = {
+      id: cameraId || 'cam-mock-sunell',
+      name: 'Mock Sunell Camera',
+      type: 'sunell',
+      status: 'connected',
+      features: {
+        enableLPR: true,
+        enableMotion: true,
+        enableFace: true,
+        enableIVA: true,
+        enableSystem: true
+      }
+    };
+  }
+
+  const logType = eventData.logType || 'lpr_event';
+  const defaultSnapshot = eventData.snapshotBase64 || "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  let payload = {};
+
+  if (logType === 'lpr_event') {
+    const plateNum = eventData.plateNum || '30A-88888';
+    payload = {
+      TargetDetectList: [
+        {
+          Type: 3,
+          PlateInfo: {
+            Plate_num: plateNum,
+            Plate_confidence: eventData.confidence || 98,
+            Plate_color: 0,
+            Plate_type: 1
+          }
+        }
+      ],
+      snapshotBase64: defaultSnapshot,
+      plateImageBase64: defaultSnapshot
+    };
+  } else if (logType === 'face_event') {
+    payload = {
+      TargetDetectList: [
+        {
+          Type: 0,
+          FaceInfo: {
+            Age: 28,
+            Gender: 'female',
+            Confidence: eventData.confidence || 95
+          }
+        }
+      ],
+      snapshotBase64: defaultSnapshot
+    };
+  } else if (logType === 'motion_event') {
+    payload = {
+      data: {
+        main_type: 1,
+        sub_type: 2,
+        eventName: 'Motion detection'
+      },
+      snapshotBase64: defaultSnapshot
+    };
+  } else if (logType.startsWith('iva_')) {
+    let subType = 21; // trip wire
+    if (logType === 'iva_perimeter_intrusion') subType = 24;
+    payload = {
+      data: {
+        main_type: 6,
+        sub_type: subType,
+        eventName: `IVA Event (${logType})`
+      },
+      snapshotBase64: defaultSnapshot
+    };
+  } else {
+    payload = {
+      data: {
+        main_type: 4,
+        sub_type: 1,
+        eventName: 'System status warning'
+      },
+      snapshotBase64: defaultSnapshot
+    };
+  }
+
+  return await processCameraAlarm(device, JSON.stringify(payload));
+}
+
 async function addCameraDevice(deviceConfig, options = {}) {
   const { persist = true, id: providedId } = options;
   const { name, type, cameraIp, cameraPort, cameraUser, cameraPass, rtspUrl } = deviceConfig;
@@ -406,321 +815,7 @@ async function addCameraDevice(deviceConfig, options = {}) {
       }
     },
     onAlarm: async (rawJsonStr) => {
-      if (!cameraDevices.some(d => d.id === id)) return;
-      try {
-        const originalRawJson = typeof rawJsonStr === 'string'
-          ? rawJsonStr
-          : JSON.stringify(rawJsonStr, null, 2);
-        const payload = typeof rawJsonStr === 'string' ? JSON.parse(rawJsonStr) : rawJsonStr;
-        const alarmReceivedAtMs = Date.now();
-
-        // Neu device chua co features mac dinh thi coi nhu dc bat
-        const features = device.features || {};
-        const enableLPR = features.enableLPR ?? true;
-        const enableMotion = features.enableMotion ?? true;
-        const enableFace = features.enableFace ?? true;
-        const enableIVA = features.enableIVA ?? true;
-        const enableSystem = features.enableSystem ?? true;
-
-        // Phân tích loại sự kiện
-        let isLpr = false;
-        let isFace = false;
-        let isMotion = false;
-        let isIVA = false;
-        let isSystem = false;
-        let ivaSubType = -1; // lưu sub_type của IVA để map chi tiết
-        let logType = 'unknown';
-        let description = 'Sự kiện không xác định';
-
-        // 1. Phân tích sự kiện nhận diện (AI Targets) từ detect_cb
-        if (payload.TargetDetectList && Array.isArray(payload.TargetDetectList)) {
-          for (const target of payload.TargetDetectList) {
-            if (target.Type === 3) isLpr = true;
-            if (target.Type === 0) isFace = true;
-          }
-        }
-
-        // 2. Phân tích sự kiện báo động (Alarms) từ alarm_cb
-        let globalMainType = null;
-        let globalSubType = null;
-        if (payload.data && typeof payload.data.main_type !== 'undefined') {
-          globalMainType = payload.data.main_type;
-          globalSubType = payload.data.sub_type;
-
-          if (globalMainType === 1 && globalSubType === 2) {
-            isMotion = true;
-          } else if (globalMainType === 6 || globalMainType === 9) {
-            isIVA = true;
-            ivaSubType = globalSubType;
-          } else if (globalMainType === 1 || globalMainType === 4 || globalMainType === 5 || globalMainType === 7) {
-            // 1: Safety, 4: Disk, 5: Video, 7: Temperature/Thermal
-            isSystem = true;
-          }
-        }
-
-        // Nếu không nhận diện được loại nào thì fallback theo keyword trong JSON
-        if (!isLpr && !isFace && !isMotion && !isIVA && !isSystem) {
-          const strBody = JSON.stringify(payload).toLowerCase();
-          const targetListEmpty = payload.TargetDetectList && Array.isArray(payload.TargetDetectList) && payload.TargetDetectList.length === 0;
-          if (strBody.includes('plate') && !targetListEmpty) isLpr = true;
-          else isMotion = true; // Fallback cuối cùng
-        }
-
-        // Map IVA sub_type → logType
-        const IVA_SUBTYPE_MAP = {
-          21: { logType: 'iva_trip_wire' },
-          22: { logType: 'iva_smd' },
-          23: { logType: 'iva_occlusion' },
-          24: { logType: 'iva_perimeter_intrusion' },
-          25: { logType: 'iva_double_trip_wire' },
-          26: { logType: 'iva_loitering' },
-          27: { logType: 'iva_crowd_loitering' },
-          28: { logType: 'iva_object_left' },
-          29: { logType: 'iva_object_removed' },
-          30: { logType: 'iva_abnormal_speed' },
-          31: { logType: 'iva_retrograde' },
-          32: { logType: 'iva_illegal_parking' },
-          33: { logType: 'iva_camera_shift' },
-          34: { logType: 'iva_signal_bad' },
-        };
-
-        // --- DETERMINE EVENT TYPE ---
-        if (isLpr) {
-          logType = 'lpr_event';
-          description = 'Phát hiện biển số (LPR)';
-        } else if (isFace) {
-          logType = 'face_event';
-          description = 'Phát hiện khuôn mặt (Face)';
-        } else if (isMotion) {
-          logType = 'motion_event';
-          description = (globalMainType != null && globalSubType != null)
-            ? getAlarmName(globalMainType, globalSubType)
-            : 'Phát hiện chuyển động (Motion)';
-        } else if (isIVA) {
-          const ivaInfo = IVA_SUBTYPE_MAP[ivaSubType];
-          logType = ivaInfo ? ivaInfo.logType : `iva_event_${ivaSubType}`;
-          description = (globalMainType != null && globalSubType != null)
-            ? getAlarmName(globalMainType, globalSubType)
-            : 'Phân tích AI (IVS/IVA)';
-        } else if (isSystem) {
-          logType = (globalMainType != null && globalSubType != null)
-            ? `system_event_${globalMainType}_${globalSubType}`
-            : 'system_event';
-          description = (globalMainType != null && globalSubType != null)
-            ? getAlarmName(globalMainType, globalSubType)
-            : 'Cảnh báo hệ thống / an ninh';
-        } else {
-          return; // Bỏ qua nếu không nhận dạng được event nào
-        }
-
-        // --- AUTO-DISCOVER & FILTERING ---
-        const knownTypesSet = sunellEventRegistry.getKnownTypesSet();
-        const isKnown = knownTypesSet.has(logType);
-        let shouldProcess = false;
-
-        if (!isKnown) {
-          // Sự kiện ngoài danh sách: check cấu hình __other_events__ (mặc định là true)
-          const otherEnabled = features.__other_events__ !== undefined
-            ? !!features.__other_events__
-            : true;
-
-          if (!otherEnabled) {
-            console.log(`[Camera-${id}] Bỏ qua sự kiện lạ ngoài danh sách: ${logType} (__other_events__ đang tắt)`);
-            return;
-          }
-
-          // Nếu bật: nhận và tự động đăng ký vào danh sách
-          const isNewEvent = sunellEventRegistry.discoverEvent(logType);
-          if (isNewEvent) {
-            const clientSockets = getClientSockets();
-            if (clientSockets) {
-              clientSockets.emit('update-sunell-known-events', sunellEventRegistry.getEvents());
-            }
-          }
-          shouldProcess = true;
-        } else {
-          // Hỗ trợ backwards compatibility: nếu user đã set 'enableLPR', 'enableMotion' vv thì chuyển qua logType
-          const legacyMap = {
-            'lpr_event': features.enableLPR,
-            'face_event': features.enableFace,
-            'motion_event': features.enableMotion,
-          };
-          if (isIVA) legacyMap[logType] = features.enableIVA;
-          if (isSystem) legacyMap[logType] = features.enableSystem;
-
-          // Ưu tiên 1: features[logType] (nếu FE update theo dạng phẳng)
-          // Ưu tiên 2: features.enableLPR/enableMotion (nếu FE dùng dạng nhóm cũ)
-          // Ưu tiên 3: sunellEventRegistry.getDefaultEnabled
-          if (features[logType] !== undefined) {
-            shouldProcess = !!features[logType];
-          } else if (legacyMap[logType] !== undefined) {
-            shouldProcess = !!legacyMap[logType];
-          } else {
-            shouldProcess = sunellEventRegistry.getDefaultEnabled(logType);
-          }
-        }
-
-        // Nếu sự kiện không được bật thì bỏ qua
-        if (!shouldProcess) {
-          console.log(`[Camera-${id}] Bỏ qua sự kiện bị vô hiệu hóa: ${logType}`);
-          return;
-        }
-
-        if (isLpr) {
-          if (trafficService.isDuplicateLpr(payload, device.id)) {
-            console.log(`[Camera-${id}] [Traffic] Bỏ qua LPR log trùng lặp (chống lặp 30s)`);
-            return;
-          }
-        }
-
-        // YÊU CẦU: Áp dụng lấy ảnh toàn cảnh (fullshot) từ luồng RTSP streaming ngầm CHỈ cho lpr_event
-        if (isLpr) {
-          saveSunellSnapshotAfterPrefilter(device, payload, logType);
-          payload.plateImageBase64 = payload.snapshotBase64 || null;
-          payload.plateImagePath = payload.snapshotPath || payload.sunellSnapshotPath || null;
-        }
-
-        if (isLpr) {
-          payload.lprSnapshotLatencyMs = null;
-          try {
-            await sleep(LPR_SNAPSHOT_DELAY_MS);
-            
-            // Dùng luồng stream RTSP thay vì gọi HTTP tới Camera
-            const snapshotResult = await captureRtspSnapshot(device.id, {
-              includeBase64: true,
-              timeoutMs: OVERVIEW_SNAPSHOT_TIMEOUT_MS,
-              fresh: true,
-            });
-
-            if (snapshotResult && snapshotResult.success && snapshotResult.snapshotBase64) {
-              payload.fullStreamSnapshotBase64 = snapshotResult.snapshotBase64;
-              payload.fullStreamSnapshotPath = snapshotResult.snapshotPath || null;
-
-              payload.snapshotBase64 = snapshotResult.snapshotBase64;
-              payload.snapshotPath = snapshotResult.snapshotPath || null;
-              payload.snapshotSource = 'rtsp-stream';
-              payload.lprSnapshotLatencyMs = Date.now() - alarmReceivedAtMs;
-              console.log(`[Camera-${id}] [LPR SNAPSHOT] RTSP Stream Frame captured and applied to log snapshot, size=${snapshotResult.snapshotBase64.length}`);
-            } else {
-              console.warn(`[Camera-${id}] [FULL SHOT] RTSP Stream Snapshot failed: ${snapshotResult ? snapshotResult.error : 'Unknown'}`);
-            }
-          } catch (err) {
-            console.error(`[Camera-${id}] [FULL SHOT] RTSP Stream Snapshot error: ${err.message}`);
-          }
-        }
-
-        if (!isLpr) {
-          saveSunellSnapshotAfterPrefilter(device, payload, logType);
-        }
-
-        // ─── Traffic module: ghi nhận biển số xe (LPR) ───
-        if (isLpr) {
-          try {
-            const trafficResult = trafficService.appendTrafficRecord(payload, device);
-            if (trafficResult) {
-              const plates = Array.isArray(trafficResult) ? trafficResult : [trafficResult];
-              console.log(`[Camera-${id}] [Traffic] Ghi nhan ${plates.length} bien so: ${plates.map(p => p.plate_num).join(', ')}`);
-            }
-          } catch (trafficErr) {
-            console.error(`[Camera-${id}] [Traffic] Loi ghi nhan bien so:`, trafficErr.message);
-          }
-        }
-
-        let eventKey = logType;
-        let eventNameSafe = '';
-        const rawEventName = payload.eventName || (payload.data && payload.data.eventName) || '';
-
-        if (rawEventName) {
-          // Tìm chuỗi nằm trong dấu ngoặc đơn (VD: "Perimeter intrusion")
-          const match = rawEventName.match(/\(([^)]+)\)/);
-          const extractedName = match ? match[1] : rawEventName;
-
-          // Lọc bỏ các ký tự đặc biệt để làm tên file
-          eventNameSafe = extractedName.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').toLowerCase();
-          // Xóa gạch dưới ở 2 đầu nếu có
-          eventNameSafe = eventNameSafe.replace(/^_|_$/g, '');
-          eventKey = `${logType}_${eventNameSafe}`;
-        }
-
-        if (!loggedEventTypes.has(eventKey)) {
-          loggedEventTypes.add(eventKey);
-          const fileName = eventNameSafe ? `${logType}_${eventNameSafe}.txt` : `${logType}.txt`;
-          const logFilePath = path.join(sampleLogsDir, fileName);
-
-          let dataToWrite = `--- SUNELL EVENT: ${logType.toUpperCase()} ${rawEventName ? `(${rawEventName})` : ''} ---\n`;
-          dataToWrite += `Time: ${new Date().toISOString()}\n`;
-          dataToWrite += `Camera: ${device.name} (${device.id})\n`;
-          dataToWrite += `Description: ${description}\n`;
-          dataToWrite += `Raw JSON:\n`;
-          dataToWrite += originalRawJson + '\n\n';
-
-          try {
-            fs.writeFileSync(logFilePath, dataToWrite, 'utf8');
-            console.log(`[Sunell-Sample] Đã ghi file log mẫu cho sự kiện ${eventKey} tại ${logFilePath}`);
-          } catch (err) {
-            console.error(`[Sunell-Sample] Lỗi ghi file log mẫu:`, err);
-          }
-        }
-
-        const logData = {
-          id: `sunell-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          receive_time: Date.now(),
-          log_type: logType,
-          log_description: description,
-          snapshot: payload.snapshotBase64 || undefined,
-          fullshotimage: payload.fullStreamSnapshotBase64 || payload.snapshotBase64 || undefined,
-          snapshot_path: payload.snapshotPath || payload.sunellSnapshotPath || undefined,
-          overviewSnapshotBase64: payload.overviewSnapshotBase64 || undefined,
-          overviewSnapshotPath: payload.overviewSnapshotPath || undefined,
-          overviewSnapshotSource: payload.overviewSnapshotSource || undefined,
-          log_source: 'sunell-camera',
-          device_info: {
-            name: device.name || 'Sunell Camera',
-            id: device.id,
-          },
-          server_unique_id: `camera-${device.id}`,
-          raw: payload,
-        };
-        appendLog(logData);
-
-        const sockets = getClientSockets();
-        if (sockets) {
-          // DEBUG: Emit toàn bộ raw data Sunell gửi về để FE console.log
-          sockets.emit('sunell-test', {
-            _debug_timestamp: new Date().toISOString(),
-            _raw_json_string: typeof rawJsonStr === 'string' ? rawJsonStr : JSON.stringify(rawJsonStr),
-            _parsed_payload: payload,
-            _camera_id: device.id,
-            _camera_name: device.name,
-            _log_type: logType,
-            _has_snapshot: !!payload.snapshotBase64,
-            _snapshot_length: payload.snapshotBase64 ? payload.snapshotBase64.length : 0,
-            _snapshot_preview: payload.snapshotBase64 ? payload.snapshotBase64.substring(0, 100) + '...' : '(empty)',
-            _has_overview_snapshot: !!payload.overviewSnapshotBase64,
-            _overview_snapshot_length: payload.overviewSnapshotBase64 ? payload.overviewSnapshotBase64.length : 0,
-          });
-
-          // Bắn log qua socket với mục raw_data chứa toàn bộ event
-          sockets.emit('receive-sunell-log', {
-            id: logData.id,
-            timestamp: new Date().toISOString(),
-            source: 'sunell-camera',
-            camera_id: device.id,
-            camera_name: device.name,
-            log_type: logType,
-            description: description,
-            raw_data: payload,
-            image_data: payload.snapshotBase64,
-            fullshotimage: payload.fullStreamSnapshotBase64 || payload.snapshotBase64 || undefined,
-            image_path: payload.snapshotPath || payload.sunellSnapshotPath || undefined,
-            overview_image_data: payload.overviewSnapshotBase64,
-            overview_image_path: payload.overviewSnapshotPath || undefined,
-            overview_image_source: payload.overviewSnapshotSource || undefined,
-          });
-        }
-      } catch (e) {
-        console.error(`[Camera-${id}] Lỗi xử lý alarm:`, e);
-      }
+      await processCameraAlarm(device, rawJsonStr);
     }
   });
 
@@ -1181,5 +1276,7 @@ module.exports = {
   getSnapshotForCamera,
   getSdkSnapshotForCamera,
   getSnapshotUrlForCamera,
-  updateCameraFeatures
+  updateCameraFeatures,
+  processCameraAlarm,
+  simulateCameraAlarm
 };

@@ -2,21 +2,23 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { EventTypeItem, LogData, ServerData, DeviceData } from '../types';
 import { useTranslation } from 'react-i18next';
 import { useSocketManager } from '../hooks/useSocketManager';
-import { ConnectionsMonitor } from './ConnectionsMonitor';
+import { EventStatistic } from './EventStatistic';
 import { LogPopup } from './LogPopup';
-import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut, ChevronDown, MapPinned, Car, Tv } from 'lucide-react';
+import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut, ChevronDown, MapPinned, Car, Tv, Layers } from 'lucide-react';
 import { ConfigSystem } from './ConfigSystem';
 import apiClient from '../api/apiClient';
 import { LogEntry } from './LogEntry';
 import { AlertWall } from './AlertWall';
-import { DevicesManager } from './DevicesManager';
+import { DevicesManagement } from './DevicesManagement';
 import { authApi } from '../api/authApi';
 import { EMap } from './EMap';
 import { DeviceDraggablePanel } from './DeviceDraggablePanel';
-import { TrafficManager } from './TrafficManager';
+import { TrafficManagement } from './TrafficManagement';
 import { LiveWall } from './LiveWall';
+import { AreaManagement } from './AreaManagement';
+import { NewDashboard } from './NewDashboard';
 
-function LogFilter({
+export function LogFilter({
   logs,
   servers,
   devices,
@@ -201,12 +203,16 @@ function LogFilter({
   const deviceList = useMemo(() => {
     const seen = new Set<string>();
     const svmsDevs = Object.values(devices).flatMap(serverData =>
-      (serverData.devices || []).map(d => ({
-        ...d,
-        ip: d.ip || d.device_ip || 'unknown-ip',
-        serverId: serverData.server.server_id,
-        originalName: undefined
-      }))
+      (serverData.devices || []).map(d => {
+        const rawIp = d.ip || d.device_ip || 'unknown-ip';
+        const cleanIp = typeof rawIp === 'string' ? rawIp.split(':')[0] : String(rawIp);
+        return {
+          ...d,
+          ip: cleanIp,
+          serverId: serverData.server.server_id,
+          originalName: undefined
+        };
+      })
     ).filter(d => {
       const uniqueKey = `${d.serverId}_${d.ip}_${d.name}`;
       if (seen.has(uniqueKey)) return false;
@@ -598,8 +604,9 @@ export function Dashboard() {
   const displayLogCount = KEEP_TOTAL_LOG_COUNT ? totalLogCount : logs.length;
 
   const [selectedLog, setSelectedLog] = useState<LogData | null>(null);
-  const [selectedServers, setSelectedServers] = useState<Set<string>>(new Set());
-  const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
+  const [excludedServers, setExcludedServers] = useState<Set<string>>(new Set());
+  const [excludedDevices, setExcludedDevices] = useState<Set<string>>(new Set());
+  const [excludedEventTypes, setExcludedEventTypes] = useState<Set<string>>(new Set());
 
   // MQTT devices come from BE snapshot; logs are only used for display/counting.
   const mqttDevicesByServer = useMemo(() => {
@@ -697,24 +704,21 @@ export function Dashboard() {
     return [...svmsDevs, ...indepCams, ...mqttDevs];
   }, [devices, cameraDevices, mqttDevicesByServer, mqttServers]);
 
-  const [hasInitializedServers, setHasInitializedServers] = useState(false);
-  const [hasInitializedDevices, setHasInitializedDevices] = useState(false);
 
-  useEffect(() => {
-    if (serverList.length > 0 && !hasInitializedServers) {
-      setSelectedServers(new Set(serverList.map(srv => srv.id)));
-      setHasInitializedServers(true);
-    }
-  }, [serverList, hasInitializedServers]);
-
-  useEffect(() => {
-    if (deviceList.length > 0 && !hasInitializedDevices) {
-      setSelectedDevices(new Set(deviceList.map(dev => `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`)));
-      setHasInitializedDevices(true);
-    }
-  }, [deviceList, hasInitializedDevices]);
   const [rightTab, setRightTab] = useState<'logs' | 'devices'>('logs');
-  const [mainTab, setMainTab] = useState<'alert' | 'emap' | 'connections' | 'devices' | 'traffic' | 'livewall'>('emap');
+  const [mainTab, setMainTab] = useState<'alert' | 'emap' | 'event_statistic' | 'devices_management' | 'traffic_management' | 'livewall' | 'area_management' | 'newDashboard'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam === 'new_dashboard' || tabParam === 'newDashboard') return 'newDashboard';
+    if (tabParam === 'alertwall' || tabParam === 'alert') return 'alert';
+    if (tabParam === 'traffic' || tabParam === 'traffic_management') return 'traffic_management';
+    if (tabParam === 'emap') return 'emap';
+    if (tabParam === 'connections' || tabParam === 'event_statistic') return 'event_statistic';
+    if (tabParam === 'devices' || tabParam === 'devices_management') return 'devices_management';
+    if (tabParam === 'livewall') return 'livewall';
+    if (tabParam === 'area' || tabParam === 'area_management') return 'area_management';
+    return 'emap';
+  });
   const [visibleAlerts, setVisibleAlerts] = useState<number>(30);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -774,54 +778,103 @@ export function Dashboard() {
   }, [cameraDevices, devices, mqttDevicesByServer, mqttGroups]);
 
   const toggleServer = useCallback((id: string) => {
-    const isSelecting = !selectedServers.has(id);
+    const isCurrentlyExcluded = excludedServers.has(id);
+    const willExclude = !isCurrentlyExcluded;
 
-    setSelectedServers(prev => {
-      const s = new Set(prev);
-      if (isSelecting) s.add(id); else s.delete(id);
-      return s;
+    setExcludedServers(prev => {
+      const next = new Set(prev);
+      if (willExclude) next.add(id); else next.delete(id);
+      return next;
     });
 
-    setSelectedDevices(prevDevs => {
-      const d = new Set(prevDevs);
+    setExcludedDevices(prevDevs => {
+      const nextDevs = new Set(prevDevs);
+      const syncDevices = (devsList: any[], getKey: (dev: any) => string) => {
+        devsList.forEach(dev => {
+          const devKey = getKey(dev);
+          if (willExclude) nextDevs.add(devKey); else nextDevs.delete(devKey);
+        });
+      };
 
       if (devices[id]) {
-        devices[id].devices?.forEach(dev => {
-          const devKey = `${devices[id].server.server_id}_${dev.ip}_${dev.name}`;
-          if (isSelecting) d.add(devKey);
-          else d.delete(devKey);
+        syncDevices(devices[id].devices || [], dev => {
+          const rawIp = dev.ip || '';
+          const cleanIp = typeof rawIp === 'string' ? rawIp.split(':')[0] : String(rawIp);
+          return `${devices[id].server.server_id}_${cleanIp}_${dev.name}`;
         });
       }
 
       if (mqttDevicesByServer[id]) {
-        mqttDevicesByServer[id].forEach(dev => {
+        syncDevices(mqttDevicesByServer[id], dev => {
           const devName = dev.deviceName || 'MQTT Device';
-          const devKey = `${id}_${dev.devEui}_${devName}`;
-          if (isSelecting) d.add(devKey);
-          else d.delete(devKey);
+          return `${id}_${dev.devEui}_${devName}`;
         });
       }
 
-      return d;
+      return nextDevs;
     });
-  }, [selectedServers, devices, mqttDevicesByServer]);
+  }, [excludedServers, devices, mqttDevicesByServer]);
 
-  const toggleDevice = (ip: string) =>
-    setSelectedDevices(prev => {
-      const s = new Set(prev);
-      if (s.has(ip)) {
-        s.delete(ip);
+  const toggleDevice = useCallback((ip: string) => {
+    setExcludedDevices(prevDevs => {
+      const nextDevs = new Set(prevDevs);
+      const isCurrentlyExcluded = nextDevs.has(ip);
+      const willExclude = !isCurrentlyExcluded;
+
+      if (willExclude) {
+        nextDevs.add(ip);
       } else {
-        s.add(ip);
+        nextDevs.delete(ip);
       }
-      return s;
-    });
 
-  // Lọc logs theo server và device (event_type filter đã được xử lý bởi filteredLogs từ hook)
+      // Sync with parent Server checkbox state
+      const serverId = ip.split('_')[0];
+      if (serverId) {
+        let allDeviceKeys: string[] = [];
+        if (devices[serverId]) {
+          const serverData = devices[serverId];
+          const allDevices = serverData?.devices || [];
+          allDeviceKeys = allDevices.map(dev => {
+            const rawIp = dev.ip || '';
+            const cleanIp = typeof rawIp === 'string' ? rawIp.split(':')[0] : String(rawIp);
+            return `${serverData.server.server_id}_${cleanIp}_${dev.name}`;
+          });
+        } else if (mqttDevicesByServer[serverId]) {
+          const mqttDevs = mqttDevicesByServer[serverId] || [];
+          allDeviceKeys = mqttDevs.map(dev => {
+            const devName = dev.deviceName || 'MQTT Device';
+            return `${serverId}_${dev.devEui}_${devName}`;
+          });
+        }
+
+        if (allDeviceKeys.length > 0) {
+          // If any device of this server is excluded, the server checkbox gets unticked (added to exclusion)
+          // If all devices of this server are ticked (none excluded), the server checkbox gets ticked (removed from exclusion)
+          const anyDeviceExcluded = allDeviceKeys.some(k => nextDevs.has(k));
+          setExcludedServers(prevServers => {
+            const nextServers = new Set(prevServers);
+            if (anyDeviceExcluded) {
+              nextServers.add(serverId);
+            } else {
+              nextServers.delete(serverId);
+            }
+            return nextServers;
+          });
+        }
+      }
+
+      return nextDevs;
+    });
+  }, [devices, mqttDevicesByServer]);
+
   const displayLogs = useMemo(() => {
-    if (selectedServers.size === 0 && selectedDevices.size === 0) return filteredLogs;
-    return filteredLogs.filter(log => {
-      // Chuẩn hóa serverId tùy theo log source để khớp với serverId dùng trong checkbox filter
+    return logs.filter(log => {
+      // 1. Event Type filter (Exclusion)
+      if (log.log_type && excludedEventTypes.has(log.log_type)) {
+        return false;
+      }
+
+      // 2. Server filter (Exclusion)
       let logServerId = log.server_unique_id;
       if (log.log_source === 'sunell-camera') {
         logServerId = 'SUNELL-LOCAL';
@@ -830,45 +883,48 @@ export function Dashboard() {
         logServerId = parts[parts.length - 1] || logServerId;
       }
 
-      // Chuẩn hóa devKey tương ứng với serverId đã chuẩn hóa
-      const devKey = `${logServerId}_${log.device_info.id}_${log.device_info.name}`;
+      let isServerExcluded = excludedServers.has(logServerId);
 
-      let matchServer = selectedServers.size === 0 || selectedServers.has(logServerId);
-      let matchDevice = selectedDevices.size === 0 || selectedDevices.has(devKey);
+      // 3. Device filter (Exclusion)
+      let logDeviceIp = log.device_info.id;
+      if (log.log_source === 'svms') {
+        const rawLdIp = log.raw?.device_ip || log.device_info.id || '';
+        logDeviceIp = typeof rawLdIp === 'string' ? rawLdIp.split(':')[0] : String(rawLdIp);
+      }
+      const devKey = `${logServerId}_${logDeviceIp}_${log.device_info.name}`;
+      let isDeviceExcluded = excludedDevices.has(devKey);
 
-      // Nếu thiết bị được tích chọn đích danh trong bộ lọc, tự động cho qua Server kiểm tra
-      if (selectedDevices.has(devKey)) {
-        matchServer = true;
+      // Special check: If a device is NOT excluded, we override server exclusion (meaning the server log is shown)
+      if (!isDeviceExcluded) {
+        isServerExcluded = false;
       }
 
-      // Nếu là camera log, kiểm tra xem có được liên kết với Radar hay Server đang được chọn hay không
+      // Linkage for Independent/Sunell Camera logs:
       if (log.log_source === 'sunell-camera') {
-        const isLinkedToSelectedRadar = Array.from(selectedDevices).some(selectedKey => {
-          return deviceCameraLinks.some(link => {
-            if (link.cameraId !== log.device_info.id) return false;
-            const groupId = link.groupId || link.mqttServerId || '';
-            const devs = mqttDevicesByServer[groupId] || [];
-            const dev = devs.find(d => d.devEui === link.devEui);
-            if (!dev) return false;
-            const devName = dev.deviceName || 'MQTT Device';
-            const radarKey = `${groupId}_${dev.devEui}_${devName}`;
-            return selectedKey === radarKey;
-          });
+        const isLinkedToActiveRadar = deviceCameraLinks.some(link => {
+          if (link.cameraId !== log.device_info.id) return false;
+          const groupId = link.groupId || link.mqttServerId || '';
+          const devs = mqttDevicesByServer[groupId] || [];
+          const dev = devs.find(d => d.devEui === link.devEui);
+          if (!dev) return false;
+          const devName = dev.deviceName || 'MQTT Device';
+          const radarKey = `${groupId}_${dev.devEui}_${devName}`;
+          // Active means not excluded
+          return !excludedDevices.has(radarKey);
         });
 
-        const isLinkedToSelectedServer = Array.from(selectedServers).some(selectedServerId => {
-          return deviceCameraLinks.some(link => {
-            return link.cameraId === log.device_info.id && (link.groupId || link.mqttServerId) === selectedServerId;
-          });
+        const isLinkedToActiveServer = deviceCameraLinks.some(link => {
+          return link.cameraId === log.device_info.id && 
+            !excludedServers.has(link.groupId || link.mqttServerId || '');
         });
 
-        if (isLinkedToSelectedRadar) matchDevice = true;
-        if (isLinkedToSelectedServer) matchServer = true;
+        if (isLinkedToActiveRadar) isDeviceExcluded = false;
+        if (isLinkedToActiveServer) isServerExcluded = false;
       }
 
-      return matchServer && matchDevice;
+      return !isServerExcluded && !isDeviceExcluded;
     });
-  }, [filteredLogs, selectedServers, selectedDevices, deviceCameraLinks, mqttServers, mqttDevicesByServer]);
+  }, [logs, excludedServers, excludedDevices, excludedEventTypes, deviceCameraLinks, mqttDevicesByServer]);
 
 
   // ESC key logout removed as requested
@@ -890,60 +946,77 @@ export function Dashboard() {
 
 
   return (
-    <div className="app-dashboard-root flex flex-col h-screen overflow-hidden bg-background text-on-surface font-sans selection:bg-primary/30 antialiased">
+    <div className="Dashboard flex flex-col h-screen overflow-hidden bg-background text-on-surface font-sans selection:bg-primary/30 antialiased">
       <main className={`app-dashboard-main flex-1 overflow-hidden ${isNarrow ? 'flex flex-col' : ((mainTab === 'alert' || mainTab === 'emap' || mainTab === 'livewall') && !isAlertWallFullscreen) ? 'grid grid-cols-4 gap-0' : 'flex'}`}>
         {/* Main Section */}
         <div className={`app-dashboard-left-section overflow-hidden bg-background border-outline-variant/20 ${isNarrow ? 'flex-1 border-b' : ((mainTab === 'alert' || mainTab === 'emap' || mainTab === 'livewall') && !isAlertWallFullscreen) ? 'col-span-3 grid grid-rows-[1fr] h-full border-r' : 'flex-1 h-full'}`}>
           <div className="flex flex-col overflow-hidden h-full">
             {!isAlertWallFullscreen && (
-              <div className={`appTabsBar flex items-center border-b border-outline-variant/10 shrink-0 ${isNarrow ? '' : 'px-6 gap-4'}`}>
+              <div className={`appTabsBar flex items-center border-b border-outline-variant/10 shrink-0 ${isNarrow ? '' : 'px-6 gap-2'}`}>
                 {/* Nút chuyển sang màn hình Bản đồ số (EMap) */}
                 <button
-                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'emap' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  className={`emap flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'emap' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('emap')}
                 >
                   <MapPinned className={`w-5 h-5 ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.emap')}</h2>
                 </button>
+                {/* Nút chuyển sang màn hình New Dashboard */}
+                <button
+                  className={`newDashboard flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'newDashboard' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('newDashboard')}
+                >
+                  <Tv className={`w-5 h-5 ${mainTab === 'newDashboard' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'newDashboard' ? 'text-primary' : 'text-on-surface'}`}>New Dashboard</h2>
+                </button>
                 {/* Nhóm nút Giám sát sự kiện và Live Wall*/}
                 <button
-                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'alert' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  className={`alert flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'alert' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('alert')}
                 >
                   <Monitor className={`w-5 h-5 ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.alert_wall')}</h2>
                 </button>
+                {/* Nút chuyển sang màn hình Xem trực tiếp (Live Wall) */}
                 {/* <button
-                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'livewall' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  className={`livewall flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'livewall' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('livewall')}
                 >
                   <Tv className={`w-5 h-5 ${mainTab === 'livewall' ? 'text-primary' : 'text-on-surface'}`} />
-                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'livewall' ? 'text-primary' : 'text-on-surface'}`}>Live Wall</h2>
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'livewall' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.livewall')}</h2>
                 </button> */}
-                {/* Nút chuyển sang màn hình Quản lý giao thông (Traffic Manager) */}
+                {/* Nút chuyển sang màn hình Quản lý giao thông (Traffic Management) */}
                 <button
-                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'traffic' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
-                  onClick={() => setMainTab('traffic')}
+                  className={`traffic_management flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'traffic_management' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('traffic_management')}
                 >
-                  <Car className={`w-5 h-5 ${mainTab === 'traffic' ? 'text-primary' : 'text-on-surface'}`} />
-                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'traffic' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.traffic', { defaultValue: 'Quản lý giao thông' })}</h2>
+                  <Car className={`w-5 h-5 ${mainTab === 'traffic_management' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'traffic_management' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.traffic_management')}</h2>
                 </button>
-                {/* Nút chuyển sang màn hình Quản lý Thiết bị (Devices Manager) */}
+                {/* Nút chuyển sang màn hình Quản lý Thiết bị (Devices Management) */}
                 <button
-                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
-                  onClick={() => setMainTab('devices')}
+                  className={`devices_management flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices_management' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('devices_management')}
                 >
-                  <Cpu className={`w-5 h-5 ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`} />
-                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'devices' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.devices')}</h2>
+                  <Cpu className={`w-5 h-5 ${mainTab === 'devices_management' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'devices_management' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.devices_management')}</h2>
                 </button>
-                {/* Nút chuyển sang màn hình Theo dõi Kết nối (Connections Monitor) */}
-                {/* <button
-                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'connections' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
-                  onClick={() => setMainTab('connections')}
+                {/* Nút chuyển sang màn hình Quản lý Khu vực (Area Management) */}
+                <button
+                  className={`area_management flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'area_management' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('area_management')}
                 >
-                  <Network className={`w-5 h-5 ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`} />
-                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'connections' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.connections_monitor')}</h2>
-                </button> */}
+                  <Layers className={`w-5 h-5 ${mainTab === 'area_management' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'area_management' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.area_management', 'Quản lý khu vực')}</h2>
+                </button>
+                {/* Nút chuyển sang màn hình Giám sát sự kiện (Event Statistic) */}
+                <button
+                  className={`event_statistic flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'event_statistic' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('event_statistic')}
+                >
+                  <Network className={`w-5 h-5 ${mainTab === 'event_statistic' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'event_statistic' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.event_statistic')}</h2>
+                </button>
               </div>
             )}
             {/* <button onClick={() => console.log(servers)}>CLick</button> */}
@@ -968,8 +1041,8 @@ export function Dashboard() {
                 setIsFullscreen={setIsAlertWallFullscreen}
               />
             )}
-            {mainTab === 'connections' && (
-              <ConnectionsMonitor
+            {mainTab === 'event_statistic' && (
+              <EventStatistic
                 socket={socket}
                 isConnected={isConnected}
                 systemConfig={systemConfig}
@@ -999,8 +1072,8 @@ export function Dashboard() {
                 onSaveLayout={saveEMapLayout}
               />
             )}
-            {mainTab === 'devices' && (
-              <DevicesManager
+            {mainTab === 'devices_management' && (
+              <DevicesManagement
                 servers={servers}
                 devices={devices}
                 mqttServers={mqttServers}
@@ -1025,8 +1098,8 @@ export function Dashboard() {
                 sunellKnownEvents={sunellKnownEvents}
               />
             )}
-            {mainTab === 'traffic' && (
-              <TrafficManager
+            {mainTab === 'traffic_management' && (
+              <TrafficManagement
                 trafficHistory={trafficHistory}
                 trafficCatalog={trafficCatalog}
                 blacklistPlates={blacklistPlates}
@@ -1035,6 +1108,46 @@ export function Dashboard() {
                 setBlacklistMechanism={setBlacklistMechanism}
                 eMapLayout={eMapLayout}
                 eMapKnownDevices={eMapKnownDevices}
+              />
+            )}
+            {mainTab === 'area_management' && (
+              <AreaManagement
+                servers={servers}
+                devices={devices}
+                mqttServers={mqttServers}
+                mqttGroups={mqttGroups}
+                mqttDevicesByServer={mqttDevicesByServer}
+                cameraDevices={cameraDevices}
+              />
+            )}
+            {mainTab === 'newDashboard' && (
+              <NewDashboard
+                logs={logs}
+                displayLogs={displayLogs}
+                visibleAlerts={visibleAlerts}
+                setVisibleAlerts={setVisibleAlerts}
+                selectedLog={selectedLog}
+                setSelectedLog={setSelectedLog}
+                servers={servers}
+                devices={devices}
+                mqttServers={mqttServers}
+                mqttGroups={mqttGroups}
+                mqttDevicesByServer={mqttDevicesByServer}
+                cameraDevices={cameraDevices}
+                deviceCameraLinks={deviceCameraLinks}
+                eventTypes={eventTypes}
+                excludedServers={excludedServers}
+                setExcludedServers={setExcludedServers}
+                excludedDevices={excludedDevices}
+                setExcludedDevices={setExcludedDevices}
+                excludedEventTypes={excludedEventTypes}
+                setExcludedEventTypes={setExcludedEventTypes}
+                toggleServer={toggleServer}
+                toggleDevice={toggleDevice}
+                pins={eMapLayout.pins}
+                tileProviderId={eMapLayout.tileProviderId}
+                knownDevices={eMapKnownDevices}
+                onSaveLayout={saveEMapLayout}
               />
             )}
           </div>
@@ -1157,35 +1270,50 @@ export function Dashboard() {
                     mqttDevicesByServer={mqttDevicesByServer}
                     cameraDevices={cameraDevices}
                     eventTypes={eventTypes}
-                    selectedServers={selectedServers}
-                    selectedDevices={selectedDevices}
-                    selectedEventTypes={selectedEventTypes}
+                    selectedServers={new Set(serverList.map(srv => srv.id).filter(id => !excludedServers.has(id)))}
+                    selectedDevices={new Set(deviceList.map(dev => `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`).filter(key => !excludedDevices.has(key)))}
+                    selectedEventTypes={eventTypes.map(item => item.event_type).filter(type => !excludedEventTypes.has(type))}
                     onToggleServer={toggleServer}
                     onToggleDevice={toggleDevice}
                     onToggleEventType={(typeOrTypes) => {
-                      setSelectedEventTypes(prev => {
+                      setExcludedEventTypes(prev => {
+                        const next = new Set(prev);
                         const types = Array.isArray(typeOrTypes) ? typeOrTypes : [typeOrTypes];
-                        const allExist = types.every(t => prev.includes(t));
-                        if (allExist) {
-                          return prev.filter(t => !types.includes(t));
+                        const allExcluded = types.every(t => prev.has(t));
+                        if (allExcluded) {
+                          types.forEach(t => next.delete(t));
                         } else {
-                          const next = new Set([...prev, ...types]);
-                          return Array.from(next);
+                          types.forEach(t => next.add(t));
                         }
+                        return next;
                       });
                     }}
                     onToggleAllEventTypes={(checked) => {
                       if (checked) {
-                        setSelectedEventTypes(eventTypes.map(item => item.event_type));
+                        setExcludedEventTypes(new Set());
                       } else {
-                        setSelectedEventTypes([]);
+                        setExcludedEventTypes(new Set(eventTypes.map(item => item.event_type)));
                       }
                     }}
                     onToggleAllServers={(ids) => {
-                      setSelectedServers(new Set(ids));
+                      if (ids.length === 0) {
+                        setExcludedServers(new Set(serverList.map(srv => srv.id)));
+                        const allDeviceKeys = deviceList.map(dev => `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`);
+                        setExcludedDevices(new Set(allDeviceKeys));
+                      } else {
+                        setExcludedServers(new Set());
+                        setExcludedDevices(new Set());
+                      }
                     }}
                     onToggleAllDevices={(keys) => {
-                      setSelectedDevices(new Set(keys));
+                      if (keys.length === 0) {
+                        const allDeviceKeys = deviceList.map(dev => `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`);
+                        setExcludedDevices(new Set(allDeviceKeys));
+                        setExcludedServers(new Set(serverList.map(srv => srv.id)));
+                      } else {
+                        setExcludedDevices(new Set());
+                        setExcludedServers(new Set());
+                      }
                     }}
                   />
                 </div>
@@ -1224,325 +1352,81 @@ export function Dashboard() {
                 title={t('app.emap.drag_to_pin')}
               />
             ) : (
-              <div className="device-draggable-container flex-1 overflow-y-auto custom-scrollbar p-3 bg-surface-container-low/10 flex flex-col gap-2 relative">
-                <div className="flex items-center justify-between sticky top-0 py-1 z-10 backdrop-blur-md mb-2 rounded-md px-1">
-                  <span className="text-[9px] uppercase tracking-widest text-on-surface-variant opacity-70 font-bold">{t('app.alert_wall.drag_to_assign')}</span>
-                  <button
-                    onClick={() => {
-                      console.log(devices);
-                      const svmsDevices = Object.values(devices).flatMap(server => {
-                        if (!server.server) return [];
-                        return (server.devices || []).map(dev => ({
-                          server_serial: server.server.serial,
-                          server_id: server.server.server_id,
-                          device_ip: dev.ip,
-                          device_name: dev.name,
-                          device_type: dev.type || 'vms'
-                        }));
-                      });
-
-                      const mqttDevices = mqttGroups.flatMap(ms => {
-                        const mqttDevs = mqttDevicesByServer[ms.id] || [];
-                        return mqttDevs.map(dev => ({
-                          server_serial: ms.id,
-                          server_id: ms.id,
-                          device_ip: dev.devEui,
-                          device_name: dev.deviceName,
-                          device_type: 'mqtt-sensor',
-                          mqtt_device_id: (dev as any).id
-                        }));
-                      });
-
-                      const sunellDevices = cameraDevices.filter(cam => cam.type === 'sunell').map(cam => ({
-                        server_serial: 'SUNELL',
-                        server_id: 'SUNELL-LOCAL',
-                        device_ip: cam.id,
-                        device_name: cam.name || cam.cameraIp,
-                        device_type: 'sunell'
-                      }));
-
-                      const allDevices = [...svmsDevices, ...mqttDevices, ...sunellDevices];
-                      console.log('allDevices', allDevices);
-
-                      // Calculate required columns to fit all devices
-                      let newGridCols = gridCols;
-                      const requiredCols = Math.ceil(Math.sqrt(allDevices.length));
-                      if (requiredCols > newGridCols) {
-                        newGridCols = requiredCols;
-                      }
-
-                      const maxGrids = Math.pow(newGridCols, 2);
-                      const newGrids = [...grids];
-
-                      for (const dev of allDevices) {
-                        const isAssigned = newGrids.some(g => gridHasDevice(g, dev));
-                        if (isAssigned) continue;
-
-                        let emptyGridID = -1;
-                        for (let i = 0; i < maxGrids; i++) {
-                          if (!newGrids[i]) {
-                            emptyGridID = i;
-                            break;
-                          }
-                        }
-                        console.log('emptyGridID', emptyGridID);
-                        if (emptyGridID === -1) break;
-
-                        newGrids[emptyGridID] = {
-                          gridID: emptyGridID,
-                          device: dev,
-                          devices: [dev]
-                        };
-                      }
-                      console.log('newGrids', newGrids, 'newGridCols', newGridCols);
-                      saveGridLayout(newGrids, newGridCols);
-                    }}
-                    className="text-[9px] font-bold uppercase tracking-widest bg-primary/20 hover:bg-primary/30 text-primary px-3 py-1.5 rounded transition-all active:scale-95 cursor-pointer shadow-sm"
-                  >
-                    {t('app.alert_wall.auto_config')}
-                  </button>
-                </div>
-
-                {/* Server & Group Section */}
-                <div className="flex items-center gap-2 mb-1 px-1">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/80">Server & Group</span>
-                  <div className="flex-1 h-px bg-outline-variant/10"></div>
-                </div>
-
-                {Object.values(devices).flatMap(server => {
-                  if (!server.server || !server.devices?.length) return [];
-                  const groupDevices = server.devices.map(dev => ({
-                    server_serial: server.server.serial,
-                    server_id: server.server.server_id,
-                    device_ip: dev.ip,
-                    device_name: dev.name,
-                    device_type: dev.type || 'vms'
-                  }));
-                  const assignedGrids = grids.filter((g: any) => groupDevices.some(dev => gridHasDevice(g, dev)));
-                  return (
-                    <div
-                      key={`svms-group-${server.server.server_id}`}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('application/json', JSON.stringify({
-                          server_serial: server.server.serial,
-                          server_id: server.server.server_id,
-                          device_ip: server.server.server_id,
-                          device_name: server.server.server_name || server.server.server_id,
-                          device_type: 'svms-server',
-                          devices: groupDevices,
-                        }));
-                      }}
-                      className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-primary/5 border-primary/20' : 'bg-surface-container border-outline-variant/10'}`}
-                    >
-                      <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-primary transition-colors truncate">
-                        {server.server.server_name || server.server.server_id}
-                      </span>
-                      <span className="text-[9px] text-on-surface-variant/70 font-mono">{groupDevices.length} devices</span>
-                    </div>
-                  );
-                })}
-
-                {mqttGroups.map(group => {
-                  const groupDevices = (mqttDevicesByServer[group.id] || []).map((dev: any) => ({
-                    server_serial: group.id,
-                    server_id: group.id,
-                    device_ip: dev.devEui,
-                    device_name: dev.deviceName,
-                    device_type: 'mqtt-sensor',
-                    mqtt_device_id: dev.id
-                  }));
-                  if (groupDevices.length === 0) return null;
-                  const assignedGrids = grids.filter((g: any) => groupDevices.some(dev => gridHasDevice(g, dev)));
-                  return (
-                    <div
-                      key={`mqtt-group-${group.id}`}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('application/json', JSON.stringify({
-                          server_serial: group.id,
-                          server_id: group.id,
-                          device_ip: group.id,
-                          device_name: group.name,
-                          device_type: 'mqtt-group',
-                          devices: groupDevices,
-                        }));
-                      }}
-                      className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-amber-400/5 border-amber-400/20' : 'bg-surface-container border-outline-variant/10'}`}
-                    >
-                      <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-amber-400 transition-colors truncate">
-                        {group.name}
-                      </span>
-                      <span className="text-[9px] text-on-surface-variant/70 font-mono">{groupDevices.length} devices</span>
-                    </div>
-                  );
-                })}
-
-                {/* SVMS Camera Devices Section */}
-                <div className="flex items-center gap-2 mb-1 px-1">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">{t('app.alert_wall.svms_camera_devices')}</span>
-                  <div className="flex-1 h-px bg-primary/10"></div>
-                </div>
-
-                {Object.values(devices).flatMap(server => {
-                  if (!server.server) return [];
-                  return (server.devices || []).map(dev => {
-                    const dragDevice = {
+              <DeviceDraggablePanel
+                devices={devices}
+                mqttGroups={mqttGroups}
+                mqttDevicesByServer={mqttDevicesByServer}
+                cameraDevices={cameraDevices}
+                deviceCameraLinks={deviceCameraLinks}
+                grids={grids}
+                gridHasDevice={gridHasDevice}
+                title={t('app.alert_wall.drag_to_assign')}
+                onAutoConfig={() => {
+                  const svmsDevices = Object.values(devices).flatMap(server => {
+                    if (!server.server) return [];
+                    return (server.devices || []).map(dev => ({
                       server_serial: server.server.serial,
                       server_id: server.server.server_id,
                       device_ip: dev.ip,
                       device_name: dev.name,
                       device_type: dev.type || 'vms'
-                    };
-                    const assignedGrids = grids.filter(g => gridHasDevice(g, dragDevice));
-                    const assignedText = assignedGrids.map(g => g.gridID + 1).join(', ');
-                    return (
-                      <div
-                        key={`${server.server.server_id}-${dev.ip}-${dev.name}`}
-                        draggable
-                        title={assignedGrids.length > 0 ? `${t('app.alert_wall.assigned_to_grid')}${assignedText}` : undefined}
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData('application/json', JSON.stringify({
-                            ...dragDevice
-                          }));
-                        }}
-                        className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-primary/5 border-primary/20' : 'bg-surface-container border-outline-variant/10'}`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex flex-col">
-                            <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-primary transition-colors truncate">{dev.name}</span>
-                            <div className="flex gap-0.5 overflow-hidden">
-                              <span className="text-[9px] text-on-surface-variant/70 font-mono">
-                                {server.server.server_id} - {dev.ip}</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-1 shrink-0">
-                            <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium">{dev.type || 'vms'}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
+                    }));
                   });
-                })}
 
-                {!Object.values(devices).some(s => s.devices?.length > 0) && (
-                  <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
-                    <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.alert_wall.no_svms_devices')}</span>
-                  </div>
-                )}
+                  const mqttDevices = mqttGroups.flatMap(ms => {
+                    const mqttDevs = mqttDevicesByServer[ms.id] || [];
+                    return mqttDevs.map(dev => ({
+                      server_serial: ms.id,
+                      server_id: ms.id,
+                      device_ip: dev.devEui,
+                      device_name: dev.deviceName,
+                      device_type: 'mqtt-sensor',
+                      mqtt_device_id: (dev as any).id
+                    }));
+                  });
 
-                {/* MQTT Sensor Devices Section */}
-                <div className="flex items-center gap-2 mt-4 mb-1 px-1">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/80">
-                    {t('app.alert_wall.lora_devices')}
-                  </span>
-                </div>
-
-                {mqttGroups.map(ms => {
-                  const mqttDevs = mqttDevicesByServer[ms.id] || [];
-                  if (mqttDevs.length === 0) return null;
-                  return (
-                    <div key={ms.id} className="flex flex-col gap-1 mb-2">
-                      <div className="text-[8px] font-bold uppercase tracking-widest text-on-surface-variant/50 px-1">
-                        {ms.name}
-                      </div>
-                      {mqttDevs.map(dev => {
-                        const dragDevice = {
-                          server_serial: ms.id,
-                          server_id: ms.id,
-                          device_ip: dev.devEui,
-                          device_name: dev.deviceName,
-                          device_type: 'mqtt-sensor',
-                          mqtt_device_id: (dev as any).id
-                        };
-                        const assignedGrids = grids.filter((g: any) => gridHasDevice(g, dragDevice));
-                        const assignedText = assignedGrids.map((g: any) => g.gridID + 1).join(', ');
-                        const link = deviceCameraLinks.find(l => l.mqttDeviceId === (dev as any).id || (l.devEui === dev.devEui && l.groupId === ms.id));
-                        return (
-                          <div
-                            key={`${ms.id}-${dev.devEui}`}
-                            draggable
-                            title={assignedGrids.length > 0 ? `${t('app.alert_wall.assigned_to_grid')}${assignedText}` : undefined}
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('application/json', JSON.stringify({
-                                ...dragDevice
-                              }));
-                            }}
-                            className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-amber-400/5 border-amber-400/20' : 'bg-surface-container border-outline-variant/10'}`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex flex-col">
-                                <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-amber-400 transition-colors truncate">{dev.deviceName}</span>
-                              </div>
-                              <div className="flex flex-col items-end gap-1 shrink-0">
-                                {link && (() => {
-                                  const linkedCam = cameraDevices.find(c => c.id === link.cameraId);
-                                  const camLabel = linkedCam?.name || linkedCam?.cameraIp || (link.cameraId ? link.cameraId.slice(-6) : 'Default');
-                                  return <span className="text-[8px] px-1 py-0.5 rounded uppercase font-bold bg-cyan-500/20 text-cyan-500">📷 {camLabel}</span>;
-                                })()}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-
-                {!mqttGroups.some(ms => (mqttDevicesByServer[ms.id] || []).length > 0) && (
-                  <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
-                    <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.alert_wall.no_mqtt_devices')}</span>
-                  </div>
-                )}
-
-                {/* Sunell Cameras Section */}
-                <div className="flex items-center gap-2 mt-4 mb-1 px-1">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-secondary/80">Sunell Camera</span>
-                  <div className="flex-1 h-px bg-secondary/10"></div>
-                </div>
-                {cameraDevices.filter(cam => cam.type === 'sunell').map(cam => {
-                  const dragDevice = {
+                  const sunellDevices = cameraDevices.filter(cam => cam.type === 'sunell').map(cam => ({
                     server_serial: 'SUNELL',
                     server_id: 'SUNELL-LOCAL',
                     device_ip: cam.id,
                     device_name: cam.name || cam.cameraIp,
                     device_type: 'sunell'
-                  };
-                  const assignedGrids = grids.filter((g: any) => gridHasDevice(g, dragDevice));
-                  const assignedText = assignedGrids.map((g: any) => g.gridID + 1).join(', ');
-                  return (
-                    <div
-                      key={cam.id}
-                      draggable
-                      title={assignedGrids.length > 0 ? `${t('app.alert_wall.assigned_to_grid')}${assignedText}` : undefined}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('application/json', JSON.stringify({
-                          ...dragDevice
-                        }));
-                      }}
-                      className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-secondary/5 border-secondary/20' : 'bg-surface-container border-outline-variant/10'}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex flex-col">
-                          <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-secondary transition-colors truncate">{cam.name || cam.cameraIp}</span>
-                          <div className="flex gap-0.5 overflow-hidden">
-                            <span className="text-[9px] text-on-surface-variant/70 font-mono">
-                              {cam.cameraIp}:{cam.cameraPort}</span>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium">sunell</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {cameraDevices.filter(cam => cam.type === 'sunell').length === 0 && (
-                  <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
-                    <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.devices.no_sunell_cameras')}</span>
-                  </div>
-                )}
-              </div>
+                  }));
+
+                  const allDevices = [...svmsDevices, ...mqttDevices, ...sunellDevices];
+
+                  // Calculate required columns to fit all devices
+                  let newGridCols = gridCols;
+                  const requiredCols = Math.ceil(Math.sqrt(allDevices.length));
+                  if (requiredCols > newGridCols) {
+                    newGridCols = requiredCols;
+                  }
+
+                  const maxGrids = Math.pow(newGridCols, 2);
+                  const newGrids = [...grids];
+
+                  for (const dev of allDevices) {
+                    const isAssigned = newGrids.some(g => gridHasDevice(g, dev));
+                    if (isAssigned) continue;
+
+                    let emptyGridID = -1;
+                    for (let i = 0; i < maxGrids; i++) {
+                      if (!newGrids[i]) {
+                        emptyGridID = i;
+                        break;
+                      }
+                    }
+                    if (emptyGridID === -1) break;
+
+                    newGrids[emptyGridID] = {
+                      gridID: emptyGridID,
+                      device: dev,
+                      devices: [dev]
+                    };
+                  }
+                  saveGridLayout(newGrids, newGridCols);
+                }}
+              />
             )}
           </aside>
         )}

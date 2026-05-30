@@ -74,17 +74,23 @@ try {
   console.error('[allLogs] Loi khi khoi phuc allLogs:', err.message);
 }
 
-// Lưu allLogs ra file mỗi 1 phút
+// Lưu allLogs ra file mỗi 1 phút (chỉ lưu 100 log mới nhất)
 let _lastSavedLogCount = 0;
+let _lastSavedLogKey = '';
 setInterval(() => {
   try {
     const { allLogs } = socketState;
-    // Chỉ ghi file khi có thay đổi (tránh ghi liên tục không cần thiết)
-    if (allLogs.length === _lastSavedLogCount) return;
+    const lastLog = allLogs[allLogs.length - 1];
+    const lastLogKey = lastLog ? `${lastLog.id || ''}-${lastLog.time || ''}` : '';
 
-    fs.writeFileSync(_allLogsFilePath, JSON.stringify(allLogs), 'utf8');
+    // Chỉ ghi file khi có thay đổi thực sự
+    if (allLogs.length === _lastSavedLogCount && lastLogKey === _lastSavedLogKey) return;
+
+    const logsToSave = allLogs.slice(-100);
+    fs.writeFileSync(_allLogsFilePath, JSON.stringify(logsToSave), 'utf8');
     _lastSavedLogCount = allLogs.length;
-    console.log(`[allLogs] Da luu ${allLogs.length} logs ra ${_allLogsFilePath}`);
+    _lastSavedLogKey = lastLogKey;
+    console.log(`[allLogs] Da luu ${logsToSave.length} logs moi nhat ra ${_allLogsFilePath}`);
   } catch (err) {
     console.error('[allLogs] Loi khi luu allLogs:', err.message);
   }

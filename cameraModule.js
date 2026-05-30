@@ -510,7 +510,7 @@ class CameraDevice {
      * @param {number} timeoutMs - Thời gian tối đa chờ kết nối (mặc định 5000ms)
      * @returns {Promise<{online: boolean, error?: string}>}
      */
-    probeRtsp(timeoutMs = 5000) {
+    probeRtsp(timeoutMs ) {
         const url = this.rtspUrl;
         if (!url) {
             return Promise.resolve({ online: false, error: 'RTSP URL chưa được cấu hình' });

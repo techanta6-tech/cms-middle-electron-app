@@ -68,7 +68,7 @@ const LoginPage: React.FC = () => {
       if (socket.connected) {
         socket.emit('request-sync');
       }
-      navigate('/dashboard');
+      navigate(`/dashboard${window.location.search}`);
     } else {
       setError(result.message || t('app.login.error'));
     }

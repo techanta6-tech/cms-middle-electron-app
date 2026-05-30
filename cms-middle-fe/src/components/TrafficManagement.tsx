@@ -106,7 +106,7 @@ function MapRef({ onReady }: { onReady: (map: LeafletMap) => void }) {
   return null;
 }
 
-interface TrafficManagerProps {
+interface TrafficManagementProps {
   trafficHistory: any[];
   trafficCatalog: Record<string, any>;
   blacklistPlates: string[];
@@ -118,7 +118,7 @@ interface TrafficManagerProps {
   saveEMapLayout?: (pins: any[], tileProviderId?: string) => void;
 }
 
-export function TrafficManager({
+export function TrafficManagement({
   trafficHistory,
   trafficCatalog,
   blacklistPlates,
@@ -127,7 +127,7 @@ export function TrafficManager({
   setBlacklistMechanism,
   eMapLayout,
   eMapKnownDevices,
-}: TrafficManagerProps) {
+}: TrafficManagementProps) {
   const { t } = useTranslation();
   const mapRef = useRef<LeafletMap | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -221,72 +221,10 @@ export function TrafficManager({
       const bounds = L.latLngBounds(enrichedPath.map(p => [p.lat, p.lng]));
       mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
     }
-    return;
-    const history = trafficHistory
-      .filter(h => h.plate_num.toUpperCase() === plate.toUpperCase())
-      .sort((a, b) => a.receive_time - b.receive_time);
+  };
 
-    if (history.length === 0) {
-      alert(`Không tìm thấy lịch sử di chuyển cho biển số ${plate}`);
-      return;
-    }
-
-    const path = history.map((item, index) => {
-      const locations: Array<{ lat: number; lng: number; label: string }> = [];
-      (eMapLayout?.pins || []).forEach(pin => {
-        const hasDev = (pin.devices || []).some((dev: any) =>
-          dev.device_name === item.camera_name ||
-          dev.device_name?.includes(item.camera_name) ||
-          dev.mqtt_device_id === item.camera_id ||
-          dev.server_id === item.camera_id
-        );
-        if (hasDev) {
-          locations.push({
-            lat: pin.lat,
-            lng: pin.lng,
-            label: pin.label || 'Vị trí camera'
-          });
-        }
-      });
-
-      let selectedLoc = null;
-      if (locations.length > 0) {
-        selectedLoc = locations[Math.floor(Math.random() * locations.length)];
-      } else {
-        // Deterministic mock hash to keep locations consistent for same camera in demo
-        const hashCode = (str: string) => {
-          let hash = 0;
-          for (let i = 0; i < str.length; i++) {
-            hash = str.charCodeAt(i) + ((hash << 5) - hash);
-          }
-          return hash;
-        };
-        const idx = Math.abs(hashCode(item.camera_name || 'Sunell'));
-        const mockLat = HCM_CENTER[0] + (Math.sin(idx + index * 1.5) * 0.015);
-        const mockLng = HCM_CENTER[1] + (Math.cos(idx + index * 1.5) * 0.015);
-        selectedLoc = {
-          lat: mockLat,
-          lng: mockLng,
-          label: `Chốt giám sát ${item.camera_name || 'Sunell'}`
-        };
-      }
-
-      return {
-        lat: selectedLoc.lat,
-        lng: selectedLoc.lng,
-        label: selectedLoc.label,
-        time: item.receive_time,
-        camera: item.camera_name || 'Sunell Camera',
-      };
-    });
-
-    setActiveTraceRoute({ plate, path });
-
-    // Smoothly pan and zoom Leaflet map to fit all path bounds
-    if (mapRef.current && path.length > 0) {
-      const bounds = L.latLngBounds(path.map(p => [p.lat, p.lng]));
-      mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
-    }
+  const handleRemoveBlacklist = (plate: string) => {
+    setBlacklistPlates(prev => prev.filter(p => p !== plate));
   };
 
   // Auto-detect when new LPR logs arrive and trigger map flashing
@@ -354,19 +292,6 @@ export function TrafficManager({
     });
   }, [trafficHistory, cameraFilter, typeFilter, searchQuery, blacklistPlates, appliedTimeFilterFrom, appliedTimeFilterTo]);
 
-  const handleAddBlacklist = (e: React.FormEvent) => {
-    e.preventDefault();
-    const plate = newBlacklistInput.toUpperCase().trim();
-    if (plate && !blacklistPlates.includes(plate)) {
-      setBlacklistPlates(prev => [...prev, plate]);
-      setNewBlacklistInput('');
-    }
-  };
-
-  const handleRemoveBlacklist = (plate: string) => {
-    setBlacklistPlates(prev => prev.filter(p => p !== plate));
-  };
-
   // Filter pins from layout
   const mapPins = useMemo(() => {
     return (eMapLayout?.pins || [])
@@ -411,7 +336,7 @@ export function TrafficManager({
   );
 
   return (
-    <div className="TrafficManager flex flex-col h-full bg-background overflow-hidden p-3 gap-4">
+    <div className="TrafficManagement flex flex-col h-full bg-background overflow-hidden p-3 gap-4">
       {/* Dynamic Keyframes injected safely */}
       <style>{`
         .lpr-pin-flash-normal {
@@ -729,53 +654,6 @@ export function TrafficManager({
             {/* Blacklist Tab Content */}
             {listTab === 'blacklist' && (
               <div className="traffic-mini-scrollbar flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-                {/* Blacklist Mechanism Configuration Panel */}
-                <div className="hidden bg-surface-container-high/50 p-3 rounded-2xl border border-outline-variant/10 flex flex-col gap-2 mb-1">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-black text-on-surface flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-error" />
-                      Cấu hình cơ chế xử lý danh sách đen
-                    </span>
-                    <span className="text-[10px] text-on-surface-variant leading-tight">
-                      Chọn cách thức hệ thống ghi nhận nhật ký khi phát hiện biển số xe thuộc danh sách đen.
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-1">
-                    <button
-                      type="button"
-                      onClick={() => setBlacklistMechanism(2)}
-                      className={`flex flex-col items-start gap-1 p-2.5 rounded-xl border text-left transition-all ${blacklistMechanism === 2
-                        ? 'bg-error/10 border-error/50 text-error shadow-sm shadow-error/5'
-                        : 'bg-surface border-outline-variant/20 hover:border-outline-variant/40 text-on-surface/80'
-                        }`}
-                    >
-                      <span className="text-xs font-bold flex items-center gap-1.5">
-                        Cơ chế 2 (Mặc định)
-                        {blacklistMechanism === 2 && <span className="w-1.5 h-1.5 rounded-full bg-error animate-ping" />}
-                      </span>
-                      <span className="text-[9px] leading-tight opacity-75">
-                        THAY THẾ log_type thành lpr_blacklist (chỉ hiển thị bản ghi an ninh).
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBlacklistMechanism(1)}
-                      className={`flex flex-col items-start gap-1 p-2.5 rounded-xl border text-left transition-all ${blacklistMechanism === 1
-                        ? 'bg-error/10 border-error/50 text-error shadow-sm shadow-error/5'
-                        : 'bg-surface border-outline-variant/20 hover:border-outline-variant/40 text-on-surface/80'
-                        }`}
-                    >
-                      <span className="text-xs font-bold flex items-center gap-1.5">
-                        Cơ chế 1
-                        {blacklistMechanism === 1 && <span className="w-1.5 h-1.5 rounded-full bg-error animate-ping" />}
-                      </span>
-                      <span className="text-[9px] leading-tight opacity-75">
-                        Tạo THÊM 1 log mới lpr_blacklist (vừa giữ log thường vừa có log blacklist).
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
                 {filteredBlacklist.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center opacity-40 py-10 gap-2">
                     <Shield className="w-10 h-10 text-error/60" />
@@ -940,20 +818,6 @@ export function TrafficManager({
                   </div>
                 </div>
 
-                {/* Blacklist Quick Input Form */}
-                {/* <form onSubmit={handleAddBlacklist} className="flex gap-2 px-3 py-2 bg-surface-container-high/10 border-b border-outline-variant/10">
-                  <input
-                    type="text"
-                    value={newBlacklistInput}
-                    onChange={e => setNewBlacklistInput(e.target.value)}
-                    placeholder="Nhập biển số để thêm blacklist..."
-                    className="flex-1 bg-surface-container border border-outline-variant/30 rounded-lg px-2.5 py-1 text-xs text-on-surface focus:outline-none"
-                  />
-                  <button type="submit" className="px-3 py-1 bg-error/90 hover:bg-error text-on-error rounded-lg text-xs font-bold transition-all shadow-sm">
-                    Thêm Blacklist
-                  </button>
-                </form> */}
-
                 {/* Security events list */}
                 <div className="traffic-mini-scrollbar flex-1 overflow-y-auto p-3 flex flex-col gap-2">
                   {filteredSecurity.length === 0 ? (
@@ -1002,12 +866,10 @@ export function TrafficManager({
                           <div>
                             {isBlackAlarm ? (
                               <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-error text-[8px] text-on-error font-black uppercase tracking-wider animate-pulse shadow">
-                                {/* <ShieldAlert className="w-3.5 h-3.5" /> */}
                                 BLACKLIST ALARM
                               </span>
                             ) : (
                               <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container-high border border-outline-variant/30 text-[8px] text-on-surface/60 font-bold uppercase tracking-wider">
-                                {/* <Camera className="w-3.5 h-3.5" /> */}
                                 LPR Detect
                               </span>
                             )}
@@ -1022,7 +884,7 @@ export function TrafficManager({
           </div>
 
           {/* IMAGE PREVIEW AREA */}
-          <div className="bg-surface-container-low  border border-outline-variant/20 rounded-2xl overflow-hidden flex flex-col shadow-xl flex-[2] min-h-0">
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl overflow-hidden flex flex-col shadow-xl flex-[2] min-h-0">
 
             <div className="flex-1 flex flex-col p-0.5 overflow-hidden">
               {/* Left box: Image */}
@@ -1046,57 +908,6 @@ export function TrafficManager({
                   </div>
                 )}
               </div>
-
-              {/* Right box: Metadata Card */}
-              <div className="hidden w-full md:w-56 shrink-0 flex-col gap-3 justify-center">
-                {selectedItem ? (
-                  <div className="flex flex-col gap-3.5">
-                    <div className="plate-container-vietnam px-4 py-2 flex flex-col items-center justify-center border-3">
-                      <div className="text-[10px] opacity-60 tracking-wider">VIỆT NAM</div>
-                      <div className="text-lg font-black">{selectedItem.plate_num}</div>
-                    </div>
-
-                    <div className="flex flex-col gap-2.5 bg-surface-container px-3 py-3 rounded-xl border border-outline-variant/10 text-xs">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] text-on-surface/40 uppercase font-black tracking-widest">Thời gian</span>
-                        <span className="font-mono text-on-surface">{new Date(selectedItem.receive_time).toLocaleString('vi-VN')}</span>
-                      </div>
-
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] text-on-surface/40 uppercase font-black tracking-widest">Thiết bị Camera</span>
-                        <span className="font-bold text-primary flex items-center gap-1">
-                          <Camera className="w-3.5 h-3.5" />
-                          {selectedItem.camera_name || 'Sunell Camera'}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] text-on-surface/40 uppercase font-black tracking-widest">Độ tin cậy (Confidence)</span>
-                        <span className="font-bold text-secondary">{selectedItem.confidence || 95}%</span>
-                      </div>
-
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] text-on-surface/40 uppercase font-black tracking-widest">Loại Sự kiện</span>
-                        {blacklistPlates.includes(selectedItem.plate_num) ? (
-                          <span className="text-error font-black uppercase flex items-center gap-1">
-                            <ShieldAlert className="w-3.5 h-3.5" />
-                            BLACKLIST ALARM
-                          </span>
-                        ) : (
-                          <span className="text-success font-bold uppercase flex items-center gap-1">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            Phát hiện thường
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center text-xs opacity-30 py-6 border border-dashed border-outline-variant/40 rounded-xl">
-                    Chưa có dữ liệu chi tiết
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -1112,20 +923,6 @@ export function TrafficManager({
                 <MapPin className="w-3.5 h-3.5 text-primary" />
                 Bản đồ định vị giao thông
               </span>
-              {/* <div className="flex gap-4 border-l border-outline-variant/20 pl-3">
-                <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-on-surface/60">
-                  <div className="w-2.5 h-2.5 rounded-full bg-primary border border-on-surface/10"></div>
-                  Thông thường
-                </div>
-                <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-on-surface/60">
-                  <div className="w-2.5 h-2.5 rounded-full bg-warning border border-on-surface/10 animate-pulse"></div>
-                  Nhận diện LPR
-                </div>
-                <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-on-surface/60">
-                  <div className="w-2.5 h-2.5 rounded-full bg-error border border-on-surface/10 animate-pulse"></div>
-                  Cảnh báo danh sách đen
-                </div>
-              </div> */}
               {activeTraceRoute && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setActiveTraceRoute(null); }}
@@ -1170,72 +967,6 @@ export function TrafficManager({
               ? <Minimize className="w-4 h-4 text-on-surface/70 group-hover:scale-110 transition-transform" />
               : <Maximize className="w-4 h-4 text-on-surface/70 group-hover:scale-110 transition-transform" />}
           </button>
-
-          {/* Floating Trace Route Timeline Panel */}
-          {showLegacyTraceTimeline && activeTraceRoute && (
-            <div
-              onMouseEnter={() => undefined}
-              onMouseLeave={() => undefined}
-              className={`absolute top-3 left-12 z-[1001] bg-surface-container-high/95 backdrop-blur border border-outline-variant/30 rounded-2xl p-4 shadow-2xl w-96 flex flex-col gap-3 transition-all duration-300 pointer-events-auto ${'opacity-0 scale-95 pointer-events-none'
-                }`}
-            >
-              {/* Title Header */}
-              <div className="flex items-center justify-between border-b border-outline-variant/20 pb-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="plate-container-vietnam px-3 py-1 border-2 text-[10px] font-black text-center flex flex-col justify-center min-w-[90px] shadow-sm">
-                    <div className="text-[7px] opacity-60 leading-none">VIỆT NAM</div>
-                    <div className="text-xs leading-tight font-black">{activeTraceRoute.plate}</div>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-black uppercase text-primary tracking-wider">Tuyến đường di chuyển</span>
-                    <span className="text-[9px] text-on-surface-variant font-bold">Lịch sử: {activeTraceRoute.path.length} điểm ghi nhận</span>
-                  </div>
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setActiveTraceRoute(null); }}
-                  className="p-1 rounded-lg hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface transition-all"
-                  title="Đóng chế độ theo dõi"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Timeline Steps */}
-              <div className="flex-1 overflow-y-auto max-h-48 pr-1 flex flex-col gap-3 scrollbar-thin">
-                {activeTraceRoute.path.map((step, idx) => (
-                  <div key={idx} className="flex gap-3 relative group">
-                    {/* Vertical connecting line */}
-                    {idx < activeTraceRoute.path.length - 1 && (
-                      <div className="absolute left-[11px] top-6 bottom-[-16px] w-[1.5px] bg-primary/20 group-hover:bg-primary/50 transition-colors"></div>
-                    )}
-
-                    {/* Number Node */}
-                    <div className="w-6 h-6 rounded-full bg-primary/10 border border-primary/50 text-[10px] font-black flex items-center justify-center text-primary shrink-0 relative z-10 shadow-sm">
-                      {idx + 1}
-                    </div>
-
-                    {/* Step Metadata Card */}
-                    <div className="flex flex-col gap-0.5 leading-tight">
-                      <span className="text-[11px] font-black text-on-surface">{step.label}</span>
-                      <span className="text-[10px] text-primary/90 font-bold flex items-center gap-1">
-                        <Camera className="w-3 h-3" />
-                        {step.camera}
-                      </span>
-                      <span className="text-[9px] text-on-surface-variant font-mono">
-                        {new Date(step.time).toLocaleString('vi-VN')}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Help / Micro-copy Footer */}
-              <div className="border-t border-outline-variant/10 pt-2 flex items-center justify-between text-[9px] text-on-surface-variant/60 font-bold italic">
-                <span>💡 Rê chuột vào đây để xem chú thích bản đồ</span>
-                <span className="text-primary font-black uppercase tracking-wider">Demo Mode</span>
-              </div>
-            </div>
-          )}
 
           {/* Map Container */}
           <LeafletMapContainer
@@ -1301,7 +1032,7 @@ export function TrafficManager({
                   const nodeIcon = L.divIcon({
                     html: `
                     <div class="traffic-trace-node-wrap">
-                      <div class="traffic-trace-dialog">
+                       <div class="traffic-trace-dialog">
                         ${step.snapshotUrl
                         ? `<img class="traffic-trace-dialog-img" src="${escapeHtml(step.snapshotUrl)}" alt="snapshot" onerror="this.style.display='none';this.nextSibling.style.display='flex'" /><div class="traffic-trace-dialog-img-placeholder" style="display:none">No image</div>`
                         : `<div class="traffic-trace-dialog-img-placeholder">No image</div>`
@@ -1322,18 +1053,7 @@ export function TrafficManager({
                       key={`path-node-${idx}`}
                       position={[step.lat, step.lng]}
                       icon={nodeIcon}
-                    >
-                      {showLegacyTraceTimeline && (
-                        <LeafletPopup closeButton={false}>
-                          <div className="p-2 flex flex-col gap-1 text-on-surface bg-surface-container font-mono text-[10px]">
-                            <span className="text-xs font-black text-blue-500 uppercase">Chặng ${idx + 1}</span>
-                            <span className="font-bold">{step.label}</span>
-                            <span className="text-[9px] text-on-surface-variant">{step.camera}</span>
-                            <span className="text-[8px] opacity-75">{new Date(step.time).toLocaleString('vi-VN')}</span>
-                          </div>
-                        </LeafletPopup>
-                      )}
-                    </LeafletMarker>
+                    />
                   );
                 })}
               </>
@@ -1411,7 +1131,7 @@ export function TrafficManager({
             <button
               onClick={() => {
                 if (blacklistPlates.includes(contextMenu.plate)) {
-                  handleRemoveBlacklist(contextMenu.plate);
+                  setBlacklistPlates(prev => prev.filter(p => p !== contextMenu.plate));
                 } else {
                   setBlacklistPlates(prev => [...prev, contextMenu.plate]);
                 }
