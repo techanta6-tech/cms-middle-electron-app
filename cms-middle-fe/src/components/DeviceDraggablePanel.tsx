@@ -157,7 +157,7 @@ export function DeviceDraggablePanel({
         </div>
       )}
 
-      <div className="flex items-center gap-2 mt-4 mb-1 px-1">
+      <div className="flex items-center gap-2 mt-1 mb-1 px-1">
         <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/80">{t('app.alert_wall.lora_devices')}</span>
       </div>
 

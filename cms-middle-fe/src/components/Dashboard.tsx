@@ -921,13 +921,13 @@ export function Dashboard() {
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'livewall' ? 'text-primary' : 'text-on-surface'}`}>Live Wall</h2>
                 </button> */}
                 {/* Nút chuyển sang màn hình Quản lý giao thông (Traffic Manager) */}
-                <button
+                {/* <button
                   className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'traffic' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('traffic')}
                 >
                   <Car className={`w-5 h-5 ${mainTab === 'traffic' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'traffic' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.traffic', { defaultValue: 'Quản lý giao thông' })}</h2>
-                </button>
+                </button> */}
                 {/* Nút chuyển sang màn hình Quản lý Thiết bị (Devices Manager) */}
                 <button
                   className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
@@ -1379,7 +1379,7 @@ export function Dashboard() {
                 })}
 
                 {/* SVMS Camera Devices Section */}
-                <div className="flex items-center gap-2 mb-1 px-1">
+                {/* <div className="flex items-center gap-2 mb-1 px-1">
                   <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">{t('app.alert_wall.svms_camera_devices')}</span>
                   <div className="flex-1 h-px bg-primary/10"></div>
                 </div>
@@ -1429,10 +1429,10 @@ export function Dashboard() {
                   <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
                     <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.alert_wall.no_svms_devices')}</span>
                   </div>
-                )}
+                )} */}
 
                 {/* MQTT Sensor Devices Section */}
-                <div className="flex items-center gap-2 mt-4 mb-1 px-1">
+                <div className="flex items-center gap-2 mt-1 mb-1 px-1">
                   <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/80">
                     {t('app.alert_wall.lora_devices')}
                   </span>
@@ -1496,7 +1496,7 @@ export function Dashboard() {
                 )}
 
                 {/* Sunell Cameras Section */}
-                <div className="flex items-center gap-2 mt-4 mb-1 px-1">
+                {/* <div className="flex items-center gap-2 mt-4 mb-1 px-1">
                   <span className="text-[10px] font-black uppercase tracking-widest text-secondary/80">Sunell Camera</span>
                   <div className="flex-1 h-px bg-secondary/10"></div>
                 </div>
@@ -1541,7 +1541,7 @@ export function Dashboard() {
                   <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
                     <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.devices.no_sunell_cameras')}</span>
                   </div>
-                )}
+                )} */}
               </div>
             )}
           </aside>
@@ -1577,7 +1577,7 @@ export function Dashboard() {
           <div className="w-px h-3 bg-outline-variant/15" />
 
           {/* Save logs toggle */}
-          <div className="flex items-center gap-1.5">
+          {/* <div className="flex items-center gap-1.5">
             <span className="text-on-surface-variant/60 uppercase tracking-widest font-bold text-[8px]">{t('app.footer.save_logs')}</span>
             <div
               onClick={toggleLogSaving}
@@ -1588,10 +1588,10 @@ export function Dashboard() {
             <span className={`font-bold text-[8px] uppercase tracking-widest ${isLogSaving ? 'text-secondary' : 'text-on-surface-variant/40'}`}>{isLogSaving ? t('app.footer.on') : t('app.footer.off')}</span>
           </div>
 
-          <div className="w-px h-3 bg-outline-variant/15" />
+          <div className="w-px h-3 bg-outline-variant/15" /> */}
 
           {/* View System Data */}
-          <div className="ViewSystemData flex items-center gap-1.5">
+          {/* <div className="ViewSystemData flex items-center gap-1.5">
             <button
               onClick={async () => {
                 console.log("=== FRONTEND STATE (NEW ARCH) ===");
@@ -1677,7 +1677,7 @@ export function Dashboard() {
             >
               {t('app.footer.view_system_data')}
             </button>
-          </div>
+          </div> */}
 
           <div className="flex-1" />
 

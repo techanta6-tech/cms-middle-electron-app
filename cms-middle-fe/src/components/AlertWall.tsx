@@ -308,7 +308,7 @@ export function AlertWall({
           );
         })}
 
-        <div className="absolute bottom-4 right-4 opacity-25 hover:opacity-100 transition-all duration-300 z-10 flex flex-col gap-2">
+        <div className="gridSettingsButton absolute bottom-4 right-4 opacity-25 hover:opacity-100 transition-all duration-300 z-10 flex flex-col gap-2">
           {!showGridSettings ? (
             <button
               onClick={() => setShowGridSettings(true)}

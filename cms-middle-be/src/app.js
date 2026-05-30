@@ -170,6 +170,12 @@ app.use(eMapLayoutRoutes);
 app.use(trafficRoutes);
 app.use(i3AiRoutes);
 app.use(createRtspSnapshotRouter({ authMiddleware }));
+
+// Expose Map background static path
+const mapBgDir = process.env.USER_DATA_PATH
+  ? path.join(process.env.USER_DATA_PATH, 'layout')
+  : path.join(__dirname, '..', 'data');
+app.use('/api/v1/emap-bg-static', express.static(mapBgDir));
 // ─── Debug: dump toàn bộ in-memory state ─────────────────────────────────────
 const socketState = require('./socketState');
 

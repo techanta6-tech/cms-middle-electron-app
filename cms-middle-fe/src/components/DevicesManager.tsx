@@ -317,68 +317,6 @@ export function DevicesManager({
         {/* ── LEFT: Tree ────────────────────────────────────────────────── */}
         <div className="overflow-y-auto custom-scrollbar border-r border-outline-variant/10 bg-surface-container-lowest p-3 flex flex-col gap-1">
 
-          {/* SVMS Servers */}
-          <GroupHeader icon={<Cpu className="w-3.5 h-3.5" />} label={t('app.devices.svms_servers')} color="text-secondary" count={svmsServers.length}
-            expanded={!!expandedGroups.svms} onToggle={() => toggleGroup('svms')}
-          // onAdd={() => setAddingForm('svms')}
-          />
-          {expandedGroups.svms && (
-            <div className="flex flex-col gap-2 ml-2 border-l-2 border-secondary/10 pl-2">
-              {svmsServers.length === 0 && <EmptyHint text={t('app.devices.no_svms')} />}
-              {svmsServers.map(srv => {
-                const sId = srv.id || srv.serial;
-                const matchDev = devices[sId] || devices[srv.id] || devices[srv.serial];
-                const expanded = !!expandedServers[`svms-${sId}`];
-                return (
-                  <div key={sId} className='flex flex-col gap-0.5'>
-                    <TreeItem
-                      label={srv.server_name || sId}
-                      sublabel={srv.svms_ipv4_ip || srv.server_ip}
-                      hasChildren={!!matchDev?.devices?.length}
-                      expanded={expanded}
-                      onToggle={() => toggleServer(`svms-${sId}`)}
-                      onClick={() => setSelected({ kind: 'svms-server', data: srv, devices: matchDev })}
-                      isSelected={selected?.kind === 'svms-server' && (selected.data as ServerData).id === srv.id}
-                      status={srv.connectionStatus}
-                    />
-                    {expanded && matchDev?.devices?.map((dev, i) => (
-                      <TreeItem key={i}
-                        label={dev.name} sublabel={dev.ip} indent
-                        icon={<Camera className="w-3 h-3 text-on-surface-variant/60" />}
-                        onClick={() => setSelected({ kind: 'svms-device', data: dev, server: srv })}
-                        isSelected={selected?.kind === 'svms-device' && (selected.data as any).ip === dev.ip && (selected.data as any).name === dev.name}
-                        status={dev.connectionStatus}
-                      />
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* i3AI Servers */}
-          <GroupHeader icon={<Server className="w-3.5 h-3.5" />} label="i3AI Servers" color="text-fuchsia-400" count={i3AiServers.length}
-            expanded={!!expandedGroups.i3ai} onToggle={() => toggleGroup('i3ai')}
-          />
-          {expandedGroups.i3ai && (
-            <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-fuchsia-400/10 pl-2">
-              {i3AiServers.length === 0 && <EmptyHint text="Chưa có i3AI server" />}
-              {i3AiServers.map(srv => (
-                <TreeItem
-                  key={srv.id}
-                  label={srv.custom_server_name || srv.server_name || srv.server_ip || srv.id}
-                  sublabel={srv.server_ip || srv.sender_ip || srv.server_id}
-                  icon={<Server className="w-3 h-3 text-fuchsia-400/70" />}
-                  onClick={() => setSelected({ kind: 'i3ai-server', data: srv })}
-                  isSelected={selected?.kind === 'i3ai-server' && (selected.data as ServerData).id === srv.id}
-                  status={srv.connectionStatus}
-                  onEdit={() => handleEditI3AiServer(srv)}
-                  onDelete={() => handleDeleteI3AiServer(srv.id)}
-                />
-              ))}
-            </div>
-          )}
-
           {/* MQTT Groups */}
           <GroupHeader icon={<Radio className="w-3.5 h-3.5" />} label="GROUP" color="text-amber-400" count={mqttGroups.length}
             expanded={!!expandedGroups.mqtt} onToggle={() => toggleGroup('mqtt')}
@@ -416,30 +354,6 @@ export function DevicesManager({
                   </div>
                 );
               })}
-            </div>
-          )}
-
-          {/* Sunell Cameras */}
-          <GroupHeader icon={<Camera className="w-3.5 h-3.5" />} label={t('app.devices.sunell_cameras')} color="text-green-500" count={sunellCameras.length}
-            expanded={!!expandedGroups.sunell} onToggle={() => toggleGroup('sunell')}
-            onAdd={() => setAddingForm('sunell_camera')}
-          />
-          {expandedGroups.sunell && (
-            <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-green-500/10 pl-2">
-              {sunellCameras.length === 0 && <EmptyHint text={t('app.devices.no_sunell_cameras')} />}
-              {sunellCameras.map(cam => (
-                <TreeItem key={cam.id}
-                  label={(cam as any).name || `Camera Sunell: ${cam.cameraIp}`}
-                  sublabel={`${cam.cameraIp}:${cam.cameraPort}`}
-                  onClick={() => setSelected({ kind: 'camera', data: cam })}
-                  isSelected={selected?.kind === 'camera' && (selected.data as MqttDeviceConfig).id === cam.id}
-                  status={cam.status || 'error'}
-                  onEdit={() => setEditingCamera(cam)}
-                  onDelete={() => handleDeleteCamera(cam.id)}
-                  draggable
-                  dragData={cam.id}
-                />
-              ))}
             </div>
           )}
 
@@ -1245,10 +1159,10 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
       <InfoRow label="Snapshot URL" value={(cam as any).snapshotUrl || '(none)'} mono />
       {cam.rtspUrl && (
         <>
-          <InfoRow 
-            label="RTSP Stream Status" 
-            value={(cam as any).rtspStreamStatus === 'running' ? '🟢 Đang chạy ngầm' : ((cam as any).rtspStreamStatus === 'error' ? '🔴 Lỗi' : (cam as any).rtspStreamStatus || '(none)')} 
-            mono 
+          <InfoRow
+            label="RTSP Stream Status"
+            value={(cam as any).rtspStreamStatus === 'running' ? '🟢 Đang chạy ngầm' : ((cam as any).rtspStreamStatus === 'error' ? '🔴 Lỗi' : (cam as any).rtspStreamStatus || '(none)')}
+            mono
           />
           {(cam as any).rtspStreamError && (
             <InfoRow label="RTSP Stream Error" value={(cam as any).rtspStreamError} mono />
@@ -1265,9 +1179,8 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
             <button
               onClick={handleActiveSnapshot}
               disabled={snapshotLoading || cam.status !== 'connected'}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-secondary border border-secondary/20 hover:border-secondary/50 bg-secondary/5 hover:bg-secondary/10 rounded-md transition-all cursor-pointer ${
-                (snapshotLoading || cam.status !== 'connected') ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-secondary border border-secondary/20 hover:border-secondary/50 bg-secondary/5 hover:bg-secondary/10 rounded-md transition-all cursor-pointer ${(snapshotLoading || cam.status !== 'connected') ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
             >
               {snapshotLoading ? (
                 <span className="w-3.5 h-3.5 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
@@ -1277,7 +1190,7 @@ function CameraDetail({ cam, sunellKnownEvents, onEdit }: { cam: MqttDeviceConfi
               {snapshotLoading ? 'Đang chụp...' : 'Chủ động Snapshot'}
             </button>
           </div>
-          
+
           {cam.status !== 'connected' && (
             <p className="text-[9px] text-red-500/70 italic mt-1">
               * Vui lòng kết nối camera trước khi thực hiện snapshot

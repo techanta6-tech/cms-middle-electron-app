@@ -1,71 +1,21 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, Marker, TileLayer, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
-
-type LeafletMap = any;
-const LeafletMarker = Marker as any;
-const LeafletPopup = Popup as any;
-const LeafletTileLayer = TileLayer as any;
-const LeafletMapContainer = MapContainer as any;
-import { Move, Trash2, X } from 'lucide-react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Move, Trash2, X, Upload, Image as ImageIcon, CameraOff, ChevronDown, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import apiClient from '../api/apiClient';
 import type { LogData } from '../types';
 import type { GridDevice } from './AlertWall';
-import 'leaflet/dist/leaflet.css';
 
 export type EMapPin = {
   id: string;
-  lat: number;
-  lng: number;
+  lat: number; // Used for Top percentage (0 - 100)
+  lng: number; // Used for Left percentage (0 - 100)
   label: string;
   devices: GridDevice[];
   createdAt?: string;
   updatedAt?: string;
 };
 
-type TileProvider = {
-  id: string;
-  url: string;
-  attribution: string;
-};
-
-const TILE_PROVIDERS: Record<string, TileProvider> = {
-  openstreetmap: {
-    id: 'openstreetmap',
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; OpenStreetMap contributors',
-  },
-};
-
-const HCM_CENTER: [number, number] = [10.7769, 106.7009];
-
 const normalizeAddress = (value?: string) => String(value || '').split(':')[0];
-
-const makePinIcon = (alerting: boolean) => {
-  const cctvIcon = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M16.75 12h3.632a1 1 0 0 1 .894 1.447l-2.034 4.069a1 1 0 0 1-1.708.134l-2.124-2.97"/>
-      <path d="M17.106 9.053a1 1 0 0 1 .447 1.341l-3.106 6.211a1 1 0 0 1-1.342.447L3.61 12.3a2.92 2.92 0 0 1-1.3-3.91L3.69 5.6a2.92 2.92 0 0 1 3.92-1.3z"/>
-      <path d="M2 19h3.76a2 2 0 0 0 1.8-1.1L9 15"/>
-      <path d="M2 21v-4"/>
-      <path d="M7 9h.01"/>
-    </svg>
-  `;
-  return L.divIcon({
-    className: '',
-    html: `<div class="emap-pin ${alerting ? 'emap-pin-alert' : 'emap-pin-normal'}">${cctvIcon}</div>`,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-  });
-};
-
-function MapRef({ onReady }: { onReady: (map: LeafletMap) => void }) {
-  const map = useMap();
-  useEffect(() => {
-    onReady(map);
-  }, [map, onReady]);
-  return null;
-}
 
 function parseDroppedDevices(raw: string): GridDevice[] {
   const parsed = JSON.parse(raw);
@@ -128,22 +78,34 @@ function isKnownDevice(device: GridDevice, knownDevices: GridDevice[]) {
   );
 }
 
+const CCTV_ICON = (
+  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" className="shrink-0">
+    <path d="M16.75 12h3.632a1 1 0 0 1 .894 1.447l-2.034 4.069a1 1 0 0 1-1.708.134l-2.124-2.97"/>
+    <path d="M17.106 9.053a1 1 0 0 1 .447 1.341l-3.106 6.211a1 1 0 0 1-1.342.447L3.61 12.3a2.92 2.92 0 0 1-1.3-3.91L3.69 5.6a2.92 2.92 0 0 1 3.92-1.3z"/>
+    <path d="M2 19h3.76a2 2 0 0 0 1.8-1.1L9 15"/>
+    <path d="M2 21v-4"/>
+    <path d="M7 9h.01"/>
+  </svg>
+);
+
 const EMapPinMarker = memo(function EMapPinMarker({
   pin,
   latestLog,
   moving,
   interactionsDisabled,
   onOpenContextMenu,
-  onMoveEnd,
-  closeAllPopups,
+  onMouseDown,
+  hoveredPinId,
+  setHoveredPinId,
 }: {
   pin: EMapPin;
   latestLog?: LogData;
   moving: boolean;
   interactionsDisabled: boolean;
-  onOpenContextMenu: (point: { x: number; y: number }, pinId: string) => void;
-  onMoveEnd: (pinId: string, marker: any) => void;
-  closeAllPopups: () => void;
+  onOpenContextMenu: (e: React.MouseEvent, pinId: string) => void;
+  onMouseDown: (pinId: string, event: React.MouseEvent) => void;
+  hoveredPinId: string | null;
+  setHoveredPinId: (id: string | null) => void;
 }) {
   const { t } = useTranslation();
   const [alerting, setAlerting] = useState(false);
@@ -159,39 +121,43 @@ const EMapPinMarker = memo(function EMapPinMarker({
   const descKey = latestLog?.log_description?.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
   const description = descKey ? t(`app.logtype.${descKey}`, { defaultValue: latestLog?.log_description }) : t('app.emap.waiting_event');
 
+  const isHovered = hoveredPinId === pin.id;
+
   return (
-    <LeafletMarker
-      key={`${pin.id}-${moving ? 'moving' : 'fixed'}`}
-      position={[pin.lat, pin.lng]}
-      icon={makePinIcon(alerting)}
-      draggable={moving}
-      eventHandlers={{
-        mouseover: (event: any) => {
-          if (interactionsDisabled) return;
-          (event.target as any).openPopup();
-        },
-        mouseout: (event: any) => {
-          (event.target as any).closePopup();
-        },
-        click: (event: any) => {
-          (event.originalEvent as MouseEvent | undefined)?.preventDefault();
-          closeAllPopups();
-        },
-        popupopen: (event: any) => {
-          if (interactionsDisabled) {
-            (event.target as any).closePopup();
-          }
-        },
-        contextmenu: (event: any) => {
-          closeAllPopups();
-          onOpenContextMenu({ x: event.containerPoint.x, y: event.containerPoint.y }, pin.id);
-        },
-        dragend: (event: any) => onMoveEnd(pin.id, event.target as any),
+    <div
+      style={{
+        left: `${pin.lng}%`,
+        top: `${pin.lat}%`,
+      }}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 transition-transform ${moving ? 'scale-110 cursor-grabbing' : 'cursor-grab'}`}
+      onMouseDown={(e) => onMouseDown(pin.id, e)}
+      onMouseEnter={() => !interactionsDisabled && setHoveredPinId(pin.id)}
+      onMouseLeave={() => setHoveredPinId(null)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onOpenContextMenu(e, pin.id);
       }}
     >
-      <LeafletPopup closeButton={false} autoPan={false}>
-        <div className="w-[300px] h-auto overflow-hidden flex flex-col bg-surface-container-low text-on-surface">
-          <div className="h-[190px] bg-black flex items-center justify-center overflow-hidden">
+      {/* Blinking Pin Icon */}
+      <div 
+        className={`emap-pin relative w-5 h-5 rounded-full border-2 border-white/95 flex items-center justify-center text-white shadow-xl transition-all duration-300 ${
+          alerting ? 'bg-error scale-110' : 'bg-primary'
+        }`}
+      >
+        {CCTV_ICON}
+        {alerting && (
+          <div className="absolute inset-0 rounded-full bg-error animate-ping opacity-75 z-[-1]" />
+        )}
+      </div>
+
+      {/* Glassmorphic native React popup tooltip on hover */}
+      {isHovered && (
+        <div 
+          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-[999] pointer-events-none w-[260px] bg-surface-container-high/95 backdrop-blur-xl border border-outline-variant/30 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+          onMouseEnter={(e) => e.stopPropagation()}
+        >
+          <div className="h-[130px] bg-black/40 flex items-center justify-center overflow-hidden border-b border-outline-variant/10">
             {snapshot ? (
               <img
                 src={snapshot.startsWith('data:image') ? snapshot : `data:image/jpeg;base64,${snapshot}`}
@@ -199,19 +165,23 @@ const EMapPinMarker = memo(function EMapPinMarker({
                 alt={pin.label}
               />
             ) : (
-              <span className="text-[10px] uppercase tracking-widest text-on-surface-variant/50 font-bold">{t('app.alert_wall.waiting_data')}</span>
+              <div className="flex flex-col items-center justify-center opacity-30 gap-1.5">
+                <CameraOff className="w-6 h-6 text-on-surface" />
+                <span className="text-[8px] uppercase tracking-widest font-bold">{t('app.alert_wall.waiting_data', 'Chờ dữ liệu...')}</span>
+              </div>
             )}
           </div>
-          <div className="p-3 flex-1 flex flex-col gap-2">
-            <div className="text-[12px] font-black uppercase tracking-widest text-primary line-clamp-2">{pin.label}</div>
-            <div className="text-[12px] leading-relaxed text-on-surface">{description}</div>
-            <div className="mt-auto text-[10px] font-mono text-on-surface-variant/70">
-              {latestLog ? new Date(logTime(latestLog)).toLocaleString() : `${pin.devices.length} devices`}
+          <div className="p-2.5 flex flex-col gap-1 bg-surface-container-lowest/80">
+            <div className="text-[10px] font-black uppercase tracking-widest text-primary truncate">{pin.label}</div>
+            <div className="text-[10px] leading-tight text-on-surface line-clamp-2">{description}</div>
+            <div className="text-[8px] font-mono text-on-surface-variant/60 mt-1 flex items-center justify-between">
+              <span>{latestLog ? new Date(logTime(latestLog)).toLocaleTimeString() : `${pin.devices.length} thiết bị`}</span>
+              {latestLog && <span>{new Date(logTime(latestLog)).toLocaleDateString()}</span>}
             </div>
           </div>
         </div>
-      </LeafletPopup>
-    </LeafletMarker>
+      )}
+    </div>
   );
 });
 
@@ -229,13 +199,22 @@ export function EMap({
   onSaveLayout: (pins: EMapPin[], tileProviderId?: string) => void;
 }) {
   const { t } = useTranslation();
-  const mapRef = useRef<LeafletMap | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const processedLogCountRef = useRef(0);
+
+  const [bgTimestamp, setBgTimestamp] = useState<number>(Date.now());
   const [movingPinId, setMovingPinId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; pinId: string } | null>(null);
   const [latestLogsByPin, setLatestLogsByPin] = useState<Record<string, LogData | undefined>>({});
+  const [hoveredPinId, setHoveredPinId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  const tileProvider = TILE_PROVIDERS[tileProviderId] || TILE_PROVIDERS.openstreetmap;
+  // Dynamic baseURL from apiClient default settings
+  const mapBgUrl = useMemo(() => {
+    const baseURL = String(apiClient.defaults.baseURL || '').replace(/\/$/, '');
+    return `${baseURL}/api/v1/emap-bg-static/emap-bg.jpg?t=${bgTimestamp}`;
+  }, [bgTimestamp]);
 
   const visiblePins = useMemo(() => (
     pins
@@ -260,7 +239,7 @@ export function EMap({
     });
     setLatestLogsByPin(next);
     processedLogCountRef.current = logs.length;
-  }, [visiblePinSignature]);
+  }, [visiblePinSignature, logs]);
 
   useEffect(() => {
     if (logs.length < processedLogCountRef.current) {
@@ -290,47 +269,101 @@ export function EMap({
     onSaveLayout(nextPins, tileProviderId);
   }, [onSaveLayout, tileProviderId]);
 
-  const closeAllPopups = useCallback(() => {
-    mapRef.current?.closePopup();
-  }, []);
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target?.result as string;
+      if (!base64) {
+        setUploading(false);
+        return;
+      }
+      try {
+        await apiClient.post('/api/v1/emap-layout/background', { image: base64 });
+        setBgTimestamp(Date.now());
+      } catch (err) {
+        console.error('Failed to upload background image:', err);
+      } finally {
+        setUploading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const innerRef = useRef<HTMLDivElement>(null);
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const map = mapRef.current;
     const data = event.dataTransfer.getData('application/json');
-    if (!map || !data) return;
+    const targetRef = innerRef.current || containerRef.current;
+    if (!targetRef || !data) return;
+
     try {
       const devices = parseDroppedDevices(data).filter(device => isKnownDevice(device, knownDevices));
       if (devices.length === 0) return;
-      const latLng = map.mouseEventToLatLng(event.nativeEvent);
+
+      const rect = targetRef.getBoundingClientRect();
+      const leftPercent = ((event.clientX - rect.left) / rect.width) * 100;
+      const topPercent = ((event.clientY - rect.top) / rect.height) * 100;
+
       const now = new Date().toISOString();
       const label = devices.length > 1 ? `${devices[0].server_id} (${devices.length})` : devices[0].device_name;
+
       const nextPin: EMapPin = {
         id: `emap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        lat: latLng.lat,
-        lng: latLng.lng,
+        lat: Math.max(0, Math.min(100, topPercent)),
+        lng: Math.max(0, Math.min(100, leftPercent)),
         label,
         devices,
         createdAt: now,
         updatedAt: now,
       };
+
       savePins([...pins, nextPin]);
-    } catch {
-      // Ignore invalid drag payload.
+    } catch (err) {
+      console.error('[EMap] Failed to drop device:', err);
     }
   };
 
-  const handleMoveEnd = useCallback((pinId: string, marker: any) => {
-    const latLng = marker.getLatLng();
-    setMovingPinId(null);
-    savePins(pins.map(pin => pin.id === pinId
-      ? { ...pin, lat: latLng.lat, lng: latLng.lng, updatedAt: new Date().toISOString() }
+  const handleContainerMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    // Left empty since positioning is committed on mouseUp, keeping render fluid and simple
+  };
+
+  const handlePinMouseDown = useCallback((pinId: string, event: React.MouseEvent) => {
+    if (event.button !== 0) return; // Left button only
+    event.stopPropagation();
+    setMovingPinId(pinId);
+  }, []);
+
+  const handleContainerMouseUp = (event: React.MouseEvent) => {
+    const targetRef = innerRef.current || containerRef.current;
+    if (!movingPinId || !targetRef) return;
+
+    const rect = targetRef.getBoundingClientRect();
+    let leftPercent = ((event.clientX - rect.left) / rect.width) * 100;
+    let topPercent = ((event.clientY - rect.top) / rect.height) * 100;
+
+    leftPercent = Math.max(0, Math.min(100, leftPercent));
+    topPercent = Math.max(0, Math.min(100, topPercent));
+
+    savePins(pins.map(pin => pin.id === movingPinId
+      ? { ...pin, lat: topPercent, lng: leftPercent, updatedAt: new Date().toISOString() }
       : pin
     ));
-  }, [pins, savePins]);
 
-  const handleOpenContextMenu = useCallback((point: { x: number; y: number }, pinId: string) => {
-    setContextMenu({ x: point.x, y: point.y, pinId });
+    setMovingPinId(null);
+  };
+
+  const handleOpenContextMenu = useCallback((e: React.MouseEvent, pinId: string) => {
+    e.preventDefault();
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setContextMenu({ x, y, pinId });
   }, []);
 
   const deletePin = (pinId: string) => {
@@ -340,45 +373,36 @@ export function EMap({
 
   return (
     <div
-      className="relative h-full w-full overflow-hidden bg-surface-container-low"
+      ref={containerRef}
+      className={`relative h-full w-full overflow-hidden bg-slate-950/40 select-none flex items-center justify-center ${
+        movingPinId ? 'cursor-grabbing' : 'cursor-default'
+      }`}
       onDragOver={(event) => event.preventDefault()}
       onDrop={handleDrop}
+      onMouseMove={handleContainerMouseMove}
+      onMouseUp={handleContainerMouseUp}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <style>{`
-        .emap-pin {
-          width: 22px;
-          height: 22px;
-          border-radius: 999px;
-          border: 3px solid rgba(255,255,255,0.92);
-          box-shadow: 0 10px 24px rgba(0,0,0,0.35);
-          color: white;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .emap-pin-normal { background: #2563eb; }
-        .emap-pin-alert {
-          background: #ef4444;
-          animation: emap-pulse 0.9s ease-in-out infinite;
-        }
-        @keyframes emap-pulse {
-          0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239,68,68,0.65); }
-          50% { transform: scale(1.18); box-shadow: 0 0 0 10px rgba(239,68,68,0); }
-        }
-        .leaflet-popup-content-wrapper {
-          background: rgba(18,18,26,0.96);
-          color: white;
-          border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 6px;
-        }
-        .leaflet-popup-tip { background: rgba(18,18,26,0.96); }
-        .leaflet-popup-content { margin: 0; }
-      `}</style>
+      {/* Sơ đồ Nền Inner Contain Wrapper */}
+      <div 
+        ref={innerRef}
+        className="relative max-w-full max-h-full flex items-center justify-center"
+      >
+        {/* Background Map Sơ đồ Image - object-contain fits beautifully in wrapper boundary */}
+        <img
+          src={mapBgUrl}
+          className="max-w-full max-h-full object-contain pointer-events-none select-none"
+          alt="Sơ đồ khu vực"
+          onError={(e) => {
+            // Fallback image source if static file endpoint hasn't been initialized yet
+            e.currentTarget.src = 'https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=1000';
+          }}
+        />
 
-      <LeafletMapContainer center={HCM_CENTER} zoom={12} minZoom={3} className="h-full w-full z-0">
-        <MapRef onReady={(map) => { mapRef.current = map; }} />
-        <LeafletTileLayer attribution={tileProvider.attribution} url={tileProvider.url} />
+        {/* Dark overlay for rich aesthetics */}
+        <div className="absolute inset-0 bg-black/5 pointer-events-none" />
+
+        {/* Render Camera/Device Pins placed exactly relative to the sơ đồ image boundaries */}
         {visiblePins.map(pin => (
           <EMapPinMarker
             key={`${pin.id}-${movingPinId === pin.id ? 'moving' : 'fixed'}`}
@@ -387,47 +411,74 @@ export function EMap({
             moving={movingPinId === pin.id}
             interactionsDisabled={!!contextMenu || !!movingPinId}
             onOpenContextMenu={handleOpenContextMenu}
-            onMoveEnd={handleMoveEnd}
-            closeAllPopups={closeAllPopups}
+            onMouseDown={handlePinMouseDown}
+            hoveredPinId={hoveredPinId}
+            setHoveredPinId={setHoveredPinId}
           />
         ))}
-      </LeafletMapContainer>
+      </div>
 
+      {/* Floating interactive context menu */}
       {contextMenu && (
         <div
-          className="absolute z-[1000] w-44 bg-surface-container-high border border-outline-variant/20 rounded-sm shadow-2xl overflow-hidden"
+          className="absolute z-[1000] w-44 bg-surface-container-high/95 backdrop-blur-xl border border-outline-variant/30 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
-            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-widest hover:bg-primary/20 text-on-surface"
+            className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-black uppercase tracking-wider hover:bg-primary/20 text-on-surface transition-colors cursor-pointer text-left"
             onClick={() => {
-              closeAllPopups();
               setMovingPinId(contextMenu.pinId);
               setContextMenu(null);
             }}
           >
-            <Move className="w-4 h-4" /> {t('app.emap.move')}
+            <Move className="w-3.5 h-3.5 text-primary" /> {t('app.emap.move', 'Di chuyển')}
           </button>
           <button
-            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-widest hover:bg-error/20 text-error"
+            className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-black uppercase tracking-wider hover:bg-error/20 text-error transition-colors cursor-pointer text-left"
             onClick={() => deletePin(contextMenu.pinId)}
           >
-            <Trash2 className="w-4 h-4" /> {t('app.emap.delete')}
+            <Trash2 className="w-3.5 h-3.5 text-error" /> {t('app.emap.delete', 'Xóa Ghim')}
           </button>
           <button
-            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-widest hover:bg-surface-container-highest text-on-surface-variant"
+            className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-black uppercase tracking-wider hover:bg-surface-container-highest text-on-surface-variant transition-colors cursor-pointer text-left"
             onClick={() => setContextMenu(null)}
           >
-            <X className="w-4 h-4" /> {t('app.emap.close')}
+            <X className="w-3.5 h-3.5" /> {t('app.emap.close', 'Đóng')}
           </button>
         </div>
       )}
 
+      {/* Hints for dragging pin movement */}
       {movingPinId && (
-        <div className="absolute left-4 top-4 z-[900] bg-surface-container-high/90 border border-primary/30 text-primary px-3 py-2 rounded-sm text-[11px] font-bold uppercase tracking-widest shadow-xl">
-          {t('app.emap.move_hint')}
+        <div className="absolute left-4 top-4 z-[900] bg-surface-container-high/90 backdrop-blur border border-primary/30 text-primary px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-2xl animate-pulse">
+          {t('app.emap.move_hint', 'Kéo để định vị lại thiết bị trên sơ đồ')}
         </div>
       )}
+
+      {/* Floating purple upload photo button - Styled exactly like gridSettingsButton */}
+      <div className="absolute bottom-4 right-4 opacity-30 hover:opacity-100 transition-all duration-300 z-30 flex flex-col gap-2">
+        <button
+          onClick={() => !uploading && fileInputRef.current?.click()}
+          className={`p-2.5 text-on-surface hover:text-white border border-outline-variant/30 rounded-full shadow-lg transition-all duration-300 group backdrop-blur-md cursor-pointer ${
+            uploading ? 'bg-surface-container-high/50' : 'bg-surface-container-high/90 hover:bg-primary/95'
+          }`}
+          title="Tải ảnh sơ đồ nền mới"
+          disabled={uploading}
+        >
+          {uploading ? (
+            <div className="w-5 h-5 border-2 border-t-transparent border-primary rounded-full animate-spin" />
+          ) : (
+            <Upload className="w-5 h-5 group-hover:scale-110 transition-transform duration-300" />
+          )}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleImageUpload}
+        />
+      </div>
     </div>
   );
 }

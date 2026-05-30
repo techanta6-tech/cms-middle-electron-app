@@ -21,3 +21,5 @@ scripts/update-map.js
 /snapshots
 /docs
 /build-be
+/cms-middle-be/data copy
+/cms-middle-be/rtsp_streams

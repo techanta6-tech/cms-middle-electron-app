@@ -237,7 +237,7 @@ const resources = {
           target_ip: 'Địa chỉ IP đích',
           access_port: 'Cổng truy cập',
           protocol: 'Giao thức',
-          broker_host: 'Máy chủ Broker',
+          broker_host: 'IP máy chủ Broker',
           port: 'Cổng',
           sub_topic: 'Topic đăng ký',
           use_default: 'Dùng Template Mặc định',
