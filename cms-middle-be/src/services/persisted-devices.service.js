@@ -187,8 +187,13 @@ function persistMqttDevice(deviceConfig) {
     protocol: deviceConfig.protocol || 'mqtt',
     cameraId: deviceConfig.cameraId || null,
     features: deviceConfig.features || {},
+    deviceNickname: deviceConfig.deviceNickname || deviceConfig.deviceInfo?.deviceNickname || undefined,
     recordedAt: new Date().toISOString(),
   };
+
+  if (entry.deviceNickname && entry.deviceInfo) {
+    entry.deviceInfo.deviceNickname = entry.deviceNickname;
+  }
 
   upsertBy(state.mqttDevices, item => item.id === entry.id, entry);
   writeState(state);
@@ -379,8 +384,12 @@ async function bootstrapPersistedDevices() {
       deviceInfo: persisted.deviceInfo || parseDeviceInfoFromTopic(persisted.topic),
       cameraId: persisted.cameraId || null,
       features: persisted.features || {},
+      deviceNickname: persisted.deviceNickname || persisted.deviceInfo?.deviceNickname || undefined,
       status: 'connecting',
     };
+    if (serverConfig.deviceNickname && serverConfig.deviceInfo) {
+      serverConfig.deviceInfo.deviceNickname = serverConfig.deviceNickname;
+    }
     if (!serverConfig.brokerHost || !serverConfig.brokerPort) continue;
 
     mqttServers.push(serverConfig);

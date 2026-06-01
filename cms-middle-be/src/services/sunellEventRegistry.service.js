@@ -13,11 +13,11 @@ const FILE_NAME = 'sunell_events.json';
 let sunellEvents = [];
 
 const SEED_EVENTS = [
-  { event_type: 'motion_event',          event_description: 'sunell_motion_event_description',          default_enabled: true  },
-  { event_type: 'lpr_event',             event_description: 'sunell_lpr_event_description',             default_enabled: true  },
-  { event_type: 'face_event',            event_description: 'sunell_face_event_description',            default_enabled: true  },
-  { event_type: 'iva_trip_wire',         event_description: 'sunell_iva_trip_wire_description',         default_enabled: true  },
-  { event_type: 'iva_perimeter_intrusion',event_description: 'sunell_iva_perimeter_intrusion_description',default_enabled: true  },
+  // { event_type: 'motion_event',          event_description: 'sunell_motion_event_description',          default_enabled: true  },
+  // { event_type: 'lpr_event',             event_description: 'sunell_lpr_event_description',             default_enabled: true  },
+  // { event_type: 'face_event',            event_description: 'sunell_face_event_description',            default_enabled: true  },
+  // { event_type: 'iva_trip_wire',         event_description: 'sunell_iva_trip_wire_description',         default_enabled: true  },
+  // { event_type: 'iva_perimeter_intrusion',event_description: 'sunell_iva_perimeter_intrusion_description',default_enabled: true  },
 ];
 
 function loadRegistry() {

@@ -330,7 +330,7 @@ const resources = {
           milesight_button: 'Nút bấm khẩn cấp',
           milesight_radar: 'Cảm biến té ngã',
           milesight_button_pressed: 'Nút bấm khẩn cấp',
-          milesight_button_pressed_description: 'Có người nhấn nút khẩn cấp',
+          // milesight_button_pressed_description: 'Có người nhấn nút khẩn cấp',
           button_pressed: 'Nút bấm khẩn cấp',
           short_press: 'Có người nhấn nút khẩn cấp',
           double_press: 'Có người nhấn nút khẩn cấp hai lần',
@@ -349,6 +349,14 @@ const resources = {
           milesight_out_of_bed_description: 'Có người rời khỏi giường quá lâu',
           milesight_bradynea_description: 'Có người hô hấp chậm bất thường',
           milesight_tachypnea_description: 'Có người hô hấp nhanh bất thường',
+          milesight_short_press_description: 'Có người nhấn nút khẩn cấp',
+          milesight_double_press_description: 'Có người nhấn nút khẩn cấp hai lần',
+          milesight_long_press_description: 'Có người nhấn giữ nút khẩn cấp',
+          milesight_hold_press_description: 'Có người nhấn giữ nút khẩn cấp',
+          milesight_very_long_press_description: 'Có người nhấn giữ nút khẩn cấp rất lâu',
+          milesight_button_pressed_description: 'Có người nhấn nút khẩn cấp',
+          milesight_event_other: 'Sự kiện khác (MQTT)',
+          milesight_event_other_description: 'Sự kiện MQTT không xác định',
 
           // Sunell event 
           sunell_motion_event: 'Sự kiện chuyển động',
@@ -937,6 +945,8 @@ const resources = {
           milesight_out_of_bed_description: 'Out of bed too long',
           milesight_bradynea_description: 'Abnormal bradynea detected',
           milesight_tachypnea_description: 'Abnormal tachypnea detected',
+          milesight_event_other: 'Other Event (MQTT)',
+          milesight_event_other_description: 'Unknown MQTT event',
 
           // Sunell (display names)
           sunell_motion_event: 'Motion Event',

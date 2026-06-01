@@ -188,10 +188,26 @@ export function useSocketManager() {
 
   const [eventTypes, setEventTypes] = useState<EventTypeItem[]>([]);
 
+  const seenEventTypesRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
-    if (eventTypes.length > 0 && !hasInitializedSelected) {
-      setSelectedEventTypes(eventTypes.map(item => item.event_type));
-      setHasInitializedSelected(true);
+    if (eventTypes.length > 0) {
+      const newTypes = eventTypes.filter(item => !seenEventTypesRef.current.has(item.event_type));
+      if (newTypes.length > 0) {
+        setSelectedEventTypes(prev => {
+          const next = [...prev];
+          newTypes.forEach(item => {
+            if (!next.includes(item.event_type)) {
+              next.push(item.event_type);
+            }
+            seenEventTypesRef.current.add(item.event_type);
+          });
+          return next;
+        });
+        if (!hasInitializedSelected) {
+          setHasInitializedSelected(true);
+        }
+      }
     }
   }, [eventTypes, hasInitializedSelected]);
 

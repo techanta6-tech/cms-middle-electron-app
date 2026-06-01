@@ -41,14 +41,16 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
       const normalizedType = log.log_type.replace(/\./g, '_');
       const descKey = log.log_description?.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
       displayType = t(`app.logtype.${normalizedType.startsWith('milesight_') ? normalizedType : `milesight_${normalizedType}`}`);
-      displayDesc = descKey ? t(`app.logtype.${descKey}`, { defaultValue: log.log_description }) : t(`app.logtype.milesight_${normalizedType}_description`);
+      const formattedKey = descKey?.startsWith('milesight_') ? descKey : `milesight_${descKey}`;
+      displayDesc = descKey ? t(`app.logtype.${formattedKey}_description`, { defaultValue: log.log_description }) : t(`app.logtype.milesight_${normalizedType}_description`);
       break;
     }
     case 'milesight-button': {
       const normalizedType = log.log_type.replace(/\./g, '_');
       const descKey = log.log_description?.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
       displayType = t(`app.logtype.${normalizedType.startsWith('milesight_') ? normalizedType : `milesight_${normalizedType}`}`);
-      displayDesc = descKey ? t(`app.logtype.${descKey}`, { defaultValue: log.log_description }) : undefined;
+      const formattedKey = descKey?.startsWith('milesight_') ? descKey : `milesight_${descKey}`;
+      displayDesc = descKey ? t(`app.logtype.${formattedKey}_description`, { defaultValue: log.log_description }) : undefined;
       break;
     }
     case 'sunell-camera': {

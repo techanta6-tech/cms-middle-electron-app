@@ -56,7 +56,6 @@ function isDeviceLog(device: GridDevice, log: LogData) {
     const rawServerSerial = log.raw?.server?.serial;
     const rawDeviceIp = log.raw?.device_ip;
     return (
-      rawDeviceName === device.device_name &&
       (rawServerSerial === device.server_serial || rawServerSerial === device.server_id) &&
       normalizeAddress(rawDeviceIp) === normalizeAddress(device.device_ip)
     );
@@ -64,7 +63,6 @@ function isDeviceLog(device: GridDevice, log: LogData) {
 
   return (
     normalizeAddress(log.device_info?.id) === normalizeAddress(device.device_ip) &&
-    log.device_info?.name === device.device_name &&
     (log.server_unique_id === device.server_id || log.server_unique_id === device.server_serial)
   );
 }
@@ -73,13 +71,12 @@ function isKnownDevice(device: GridDevice, knownDevices: GridDevice[]) {
   return knownDevices.some(known =>
     known.server_id === device.server_id &&
     normalizeAddress(known.device_ip) === normalizeAddress(device.device_ip) &&
-    known.device_name === device.device_name &&
     known.device_type === device.device_type
   );
 }
 
 const CCTV_ICON = (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" className="shrink-0">
+  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
     <path d="M16.75 12h3.632a1 1 0 0 1 .894 1.447l-2.034 4.069a1 1 0 0 1-1.708.134l-2.124-2.97"/>
     <path d="M17.106 9.053a1 1 0 0 1 .447 1.341l-3.106 6.211a1 1 0 0 1-1.342.447L3.61 12.3a2.92 2.92 0 0 1-1.3-3.91L3.69 5.6a2.92 2.92 0 0 1 3.92-1.3z"/>
     <path d="M2 19h3.76a2 2 0 0 0 1.8-1.1L9 15"/>
@@ -119,7 +116,15 @@ const EMapPinMarker = memo(function EMapPinMarker({
 
   const snapshot = latestLog?.snapshot;
   const descKey = latestLog?.log_description?.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
-  const description = descKey ? t(`app.logtype.${descKey}`, { defaultValue: latestLog?.log_description }) : t('app.emap.waiting_event');
+  let description = t('app.emap.waiting_event');
+  if (descKey) {
+    if (latestLog?.log_source === 'milesight-radar' || latestLog?.log_source === 'milesight-button') {
+      const formattedKey = descKey.startsWith('milesight_') ? descKey : `milesight_${descKey}`;
+      description = t(`app.logtype.${formattedKey}_description`, { defaultValue: latestLog?.log_description });
+    } else {
+      description = t(`app.logtype.${descKey}`, { defaultValue: latestLog?.log_description });
+    }
+  }
 
   const isHovered = hoveredPinId === pin.id;
 
@@ -129,7 +134,7 @@ const EMapPinMarker = memo(function EMapPinMarker({
         left: `${pin.lng}%`,
         top: `${pin.lat}%`,
       }}
-      className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 transition-transform ${moving ? 'scale-110 cursor-grabbing' : 'cursor-grab'}`}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 transition-transform ${moving ? 'scale-110 pointer-events-none' : 'cursor-pointer hover:scale-110'}`}
       onMouseDown={(e) => onMouseDown(pin.id, e)}
       onMouseEnter={() => !interactionsDisabled && setHoveredPinId(pin.id)}
       onMouseLeave={() => setHoveredPinId(null)}
@@ -205,6 +210,7 @@ export function EMap({
 
   const [bgTimestamp, setBgTimestamp] = useState<number>(Date.now());
   const [movingPinId, setMovingPinId] = useState<string | null>(null);
+  const [movingPinPos, setMovingPinPos] = useState<{lat: number, lng: number} | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; pinId: string } | null>(null);
   const [latestLogsByPin, setLatestLogsByPin] = useState<Record<string, LogData | undefined>>({});
   const [hoveredPinId, setHoveredPinId] = useState<string | null>(null);
@@ -329,32 +335,30 @@ export function EMap({
   };
 
   const handleContainerMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    // Left empty since positioning is committed on mouseUp, keeping render fluid and simple
-  };
-
-  const handlePinMouseDown = useCallback((pinId: string, event: React.MouseEvent) => {
-    if (event.button !== 0) return; // Left button only
-    event.stopPropagation();
-    setMovingPinId(pinId);
-  }, []);
-
-  const handleContainerMouseUp = (event: React.MouseEvent) => {
-    const targetRef = innerRef.current || containerRef.current;
-    if (!movingPinId || !targetRef) return;
-
-    const rect = targetRef.getBoundingClientRect();
+    if (!movingPinId || !innerRef.current) return;
+    const rect = innerRef.current.getBoundingClientRect();
     let leftPercent = ((event.clientX - rect.left) / rect.width) * 100;
     let topPercent = ((event.clientY - rect.top) / rect.height) * 100;
 
     leftPercent = Math.max(0, Math.min(100, leftPercent));
     topPercent = Math.max(0, Math.min(100, topPercent));
 
-    savePins(pins.map(pin => pin.id === movingPinId
-      ? { ...pin, lat: topPercent, lng: leftPercent, updatedAt: new Date().toISOString() }
-      : pin
-    ));
+    setMovingPinPos({ lat: topPercent, lng: leftPercent });
+  };
 
-    setMovingPinId(null);
+  const handlePinMouseDown = useCallback((pinId: string, event: React.MouseEvent) => {
+    // Disabled drag and drop
+  }, []);
+
+  const handleContainerMouseUp = (event: React.MouseEvent) => {
+    if (movingPinId && movingPinPos && event.button === 0) {
+      savePins(pins.map(pin => pin.id === movingPinId
+        ? { ...pin, lat: movingPinPos.lat, lng: movingPinPos.lng, updatedAt: new Date().toISOString() }
+        : pin
+      ));
+      setMovingPinId(null);
+      setMovingPinPos(null);
+    }
   };
 
   const handleOpenContextMenu = useCallback((e: React.MouseEvent, pinId: string) => {
@@ -381,7 +385,13 @@ export function EMap({
       onDrop={handleDrop}
       onMouseMove={handleContainerMouseMove}
       onMouseUp={handleContainerMouseUp}
-      onContextMenu={(event) => event.preventDefault()}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        if (movingPinId) {
+          setMovingPinId(null);
+          setMovingPinPos(null);
+        }
+      }}
     >
       {/* Sơ đồ Nền Inner Contain Wrapper */}
       <div 
@@ -403,19 +413,24 @@ export function EMap({
         <div className="absolute inset-0 bg-black/5 pointer-events-none" />
 
         {/* Render Camera/Device Pins placed exactly relative to the sơ đồ image boundaries */}
-        {visiblePins.map(pin => (
+        {visiblePins.map(pin => {
+          const isMovingThis = movingPinId === pin.id;
+          const displayPin = isMovingThis && movingPinPos 
+            ? { ...pin, lat: movingPinPos.lat, lng: movingPinPos.lng }
+            : pin;
+          return (
           <EMapPinMarker
-            key={`${pin.id}-${movingPinId === pin.id ? 'moving' : 'fixed'}`}
-            pin={pin}
+            key={`${pin.id}-${isMovingThis ? 'moving' : 'fixed'}`}
+            pin={displayPin}
             latestLog={latestLogsByPin[pin.id]}
-            moving={movingPinId === pin.id}
+            moving={isMovingThis}
             interactionsDisabled={!!contextMenu || !!movingPinId}
             onOpenContextMenu={handleOpenContextMenu}
             onMouseDown={handlePinMouseDown}
             hoveredPinId={hoveredPinId}
             setHoveredPinId={setHoveredPinId}
           />
-        ))}
+        )})}
       </div>
 
       {/* Floating interactive context menu */}
@@ -451,7 +466,7 @@ export function EMap({
       {/* Hints for dragging pin movement */}
       {movingPinId && (
         <div className="absolute left-4 top-4 z-[900] bg-surface-container-high/90 backdrop-blur border border-primary/30 text-primary px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-2xl animate-pulse">
-          {t('app.emap.move_hint', 'Kéo để định vị lại thiết bị trên sơ đồ')}
+          {t('app.emap.moving_hint', 'Chuột trái: Lưu vị trí | Chuột phải: Hủy bỏ')}
         </div>
       )}
 

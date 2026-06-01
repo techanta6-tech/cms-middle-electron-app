@@ -91,7 +91,7 @@ router.post('/api/v1/mqtt-groups/:groupId/devices', (req, res) => {
   const group = mqttGroups.find(g => g.id === req.params.groupId);
   if (!group) return res.status(404).json({ success: false, message: 'MQTT group not found' });
 
-  const { brokerHost, brokerPort, protocol, topic, deviceInfo, cameraId } = req.body;
+  const { brokerHost, brokerPort, protocol, topic, deviceInfo, cameraId, name } = req.body;
   if (!brokerHost || !brokerPort || !topic) {
     return res.status(400).json({ success: false, message: 'Missing brokerHost, brokerPort or topic' });
   }
@@ -101,6 +101,11 @@ router.post('/api/v1/mqtt-groups/:groupId/devices', (req, res) => {
     return res.status(409).json({ success: false, message: 'MQTT device with same group/topic already exists', existingId: exists.id });
   }
 
+  const parsedInfo = deviceInfo || parseDeviceInfoFromTopic(topic);
+  if (name || req.body.name) {
+    parsedInfo.deviceNickname = String(name || req.body.name).trim();
+  }
+
   const device = {
     id: crypto.randomUUID().slice(0, 8),
     groupId: group.id,
@@ -108,10 +113,11 @@ router.post('/api/v1/mqtt-groups/:groupId/devices', (req, res) => {
     brokerPort: String(brokerPort).trim(),
     protocol: protocol || 'mqtt',
     topic: String(topic).trim(),
-    deviceInfo: deviceInfo || parseDeviceInfoFromTopic(topic),
+    deviceInfo: parsedInfo,
     cameraId: cameraId || null,
     status: 'connecting',
     features: {},
+    deviceNickname: (name || req.body.name) ? String(name || req.body.name).trim() : undefined,
   };
 
   connectMqttDevice(device);
@@ -123,6 +129,15 @@ router.put('/api/v1/mqtt-devices/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ success: false, message: 'MQTT device not found' });
   const current = mqttDeviceList[idx];
   disconnectMqttDevice(current.id);
+
+  const newNickname = req.body.name !== undefined ? req.body.name : (req.body.deviceNickname !== undefined ? req.body.deviceNickname : current.deviceNickname);
+  const updatedDeviceInfo = {
+    ...(req.body.deviceInfo || current.deviceInfo || {}),
+  };
+  if (newNickname !== undefined) {
+    updatedDeviceInfo.deviceNickname = newNickname ? String(newNickname).trim() : undefined;
+  }
+
   const updated = {
     ...current,
     ...req.body,
@@ -132,6 +147,8 @@ router.put('/api/v1/mqtt-devices/:id', (req, res) => {
     brokerPort: req.body.brokerPort ? String(req.body.brokerPort).trim() : current.brokerPort,
     topic: req.body.topic ? String(req.body.topic).trim() : current.topic,
     protocol: req.body.protocol || current.protocol,
+    deviceInfo: updatedDeviceInfo,
+    deviceNickname: newNickname ? String(newNickname).trim() : undefined,
     status: 'connecting',
   };
   mqttDeviceList[idx] = updated;
@@ -184,10 +201,16 @@ router.post('/api/v1/mqtt-servers', (req, res) => {
     mqttGroups.push(group);
     persistedDevices.persistMqttGroup(group);
   }
-  const { brokerHost, brokerPort, protocol, topic, deviceInfo, cameraId } = req.body;
+  const { brokerHost, brokerPort, protocol, topic, deviceInfo, cameraId, name } = req.body;
   if (!brokerHost || !brokerPort || !topic) {
     return res.status(400).json({ success: false, message: 'Missing brokerHost, brokerPort or topic' });
   }
+
+  const parsedInfo = deviceInfo || parseDeviceInfoFromTopic(topic);
+  if (name || req.body.name) {
+    parsedInfo.deviceNickname = String(name || req.body.name).trim();
+  }
+
   const device = {
     id: crypto.randomUUID().slice(0, 8),
     groupId: group.id,
@@ -195,10 +218,11 @@ router.post('/api/v1/mqtt-servers', (req, res) => {
     brokerPort: String(brokerPort).trim(),
     protocol: protocol || 'mqtt',
     topic: String(topic).trim(),
-    deviceInfo: deviceInfo || parseDeviceInfoFromTopic(topic),
+    deviceInfo: parsedInfo,
     cameraId: cameraId || null,
     status: 'connecting',
     features: {},
+    deviceNickname: (name || req.body.name) ? String(name || req.body.name).trim() : undefined,
   };
   connectMqttDevice(device);
   return res.status(201).json({ success: true, message: `MQTT device '${device.id}' created and connecting`, server: device, device });
@@ -209,7 +233,23 @@ router.put('/api/v1/mqtt-servers/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ success: false, message: 'MQTT device not found' });
   const current = mqttDeviceList[idx];
   disconnectMqttDevice(current.id);
-  const updated = { ...current, ...req.body, id: current.id, status: 'connecting' };
+
+  const newNickname = req.body.name !== undefined ? req.body.name : (req.body.deviceNickname !== undefined ? req.body.deviceNickname : current.deviceNickname);
+  const updatedDeviceInfo = {
+    ...(req.body.deviceInfo || current.deviceInfo || {}),
+  };
+  if (newNickname !== undefined) {
+    updatedDeviceInfo.deviceNickname = newNickname ? String(newNickname).trim() : undefined;
+  }
+
+  const updated = {
+    ...current,
+    ...req.body,
+    id: current.id,
+    deviceInfo: updatedDeviceInfo,
+    deviceNickname: newNickname ? String(newNickname).trim() : undefined,
+    status: 'connecting',
+  };
   mqttDeviceList[idx] = updated;
   connectMqttDevice(updated);
   res.json({ success: true, server: updated, device: updated });

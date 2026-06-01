@@ -343,7 +343,7 @@ export function DevicesManager({
                     />
                     {expanded && mqttDevs.map(d => (
                       <TreeItem key={d.id}
-                        label={d.deviceInfo?.deviceName || 'MQTT Device'} sublabel={d.topic} indent
+                        label={d.deviceNickname || d.deviceInfo?.deviceNickname || d.deviceInfo?.deviceName || 'MQTT Device'} sublabel={d.topic} indent
                         icon={<MonitorSmartphone className="w-3 h-3 text-on-surface-variant/60" />}
                         onClick={() => setSelected({ kind: 'mqtt-device', data: d, group })}
                         isSelected={selected?.kind === 'mqtt-device' && (selected.data as MqttDevice).id === d.id}
@@ -935,7 +935,9 @@ function MqttDeviceDetail({ dev, group, allCameras, deviceCameraLinks, onLinkDev
 
   return (
     <div className="flex flex-col gap-1">
-      <h3 className="text-lg font-black text-on-surface mb-2">{deviceInfo.deviceName || 'MQTT Device'}</h3>
+      <h3 className="text-lg font-black text-on-surface mb-2">
+        {dev.deviceNickname || deviceInfo.deviceNickname ? `${dev.deviceNickname || deviceInfo.deviceNickname} (${deviceInfo.deviceName || 'MQTT Device'})` : (deviceInfo.deviceName || 'MQTT Device')}
+      </h3>
       <InfoRow label={t('app.monitor.dev_eui')} value={devEui} mono />
       <InfoRow label={t('app.monitor.profile')} value={deviceInfo.deviceProfileName || ''} />
       <InfoRow label={t('app.monitor.alarm_count')} value={dev.logCount || 0} />

@@ -42,7 +42,6 @@ const isKnownDevice = (device: GridDevice, knownDevices: GridDevice[]) => (
   knownDevices.some(known =>
     known.server_id === device.server_id &&
     normalizeAddress(known.device_ip) === normalizeAddress(device.device_ip) &&
-    known.device_name === device.device_name &&
     known.device_type === device.device_type
   )
 );

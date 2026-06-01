@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  cms-middle-be:
+    build:
+      context: ./cms-middle-be
+      dockerfile: Dockerfile
+    container_name: cms-middle-be
+    restart: always
+    ports:
+      - "5050:5050"
+    environment:
+      - NODE_ENV=production
+      - BE_PORT=5050
+      - USER_DATA_PATH=/app
+      
+      # Cấu hình danh sách cổng SVMS để kiểm tra trạng thái kết nối (TCP ping)
+      - SVMS_PORT_LIST=17221 17222 7500 48021
+      
+      # Cấu hình MQTT Broker & Devices kết nối tới Middle BE
+      - MQTT_BROKER_URL=mqtt://192.168.1.93:1883
+      - MQTT_APPLICATION_ID=32dc910f-33ae-4526-ac0b-6344e378f00f
+      - MQTT_DEVICE_EUI=24e124806e515126
+
+      # Khai báo địa chỉ và cổng của CMS Backend cấp cao hơn (nếu có)
+      # - BE_CMS_IP=192.168.1.100
+      # - BE_CMS_PORT=8080
+    volumes:
+      # Ánh xạ phân vùng Docker Volume để bảo vệ và đồng bộ hóa các file cấu hình, logs, bản đồ, thiết bị
+      - cms_be_data:/app/data
+
+volumes:
+  cms_be_data:
+    name: cms_middle_be_persistent_data
+    driver: local

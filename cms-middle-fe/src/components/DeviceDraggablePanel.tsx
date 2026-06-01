@@ -114,12 +114,12 @@ export function DeviceDraggablePanel({
         );
       })}
 
-      <div className="flex items-center gap-2 mb-1 px-1">
+      {/* <div className="flex items-center gap-2 mb-1 px-1">
         <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">{t('app.alert_wall.svms_camera_devices')}</span>
         <div className="flex-1 h-px bg-primary/10" />
-      </div>
+      </div> */}
 
-      {Object.values(devices).flatMap((server: any) => {
+      {/* {Object.values(devices).flatMap((server: any) => {
         if (!server.server) return [];
         return (server.devices || []).map((dev: any) => {
           const dragDevice = {
@@ -148,14 +148,14 @@ export function DeviceDraggablePanel({
             </div>
           );
         });
-      })}
+      })} */}
 
-      {!Object.values(devices).some((s: any) => s.devices?.length > 0) && (
+      {/* {!Object.values(devices).some((s: any) => s.devices?.length > 0) && (
         <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
           <Terminal className="w-4 h-4" />
           <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.alert_wall.no_svms_devices')}</span>
         </div>
-      )}
+      )} */}
 
       <div className="flex items-center gap-2 mt-1 mb-1 px-1">
         <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/80">{t('app.alert_wall.lora_devices')}</span>
@@ -203,12 +203,12 @@ export function DeviceDraggablePanel({
         </div>
       )}
 
-      <div className="flex items-center gap-2 mt-4 mb-1 px-1">
+      {/* <div className="flex items-center gap-2 mt-4 mb-1 px-1">
         <span className="text-[10px] font-black uppercase tracking-widest text-secondary/80">Sunell Camera</span>
         <div className="flex-1 h-px bg-secondary/10" />
-      </div>
+      </div> */}
 
-      {cameraDevices.filter((cam: any) => cam.type === 'sunell').map((cam: any) => {
+      {/* {cameraDevices.filter((cam: any) => cam.type === 'sunell').map((cam: any) => {
         const dragDevice = {
           server_serial: 'SUNELL',
           server_id: 'SUNELL-LOCAL',
@@ -234,7 +234,7 @@ export function DeviceDraggablePanel({
             </div>
           </div>
         );
-      })}
+      })} */}
     </div>
   );
 }

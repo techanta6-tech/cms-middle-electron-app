@@ -50,7 +50,12 @@ function ensureDeviceEntry(deviceConfig) {
     cameraId: deviceConfig.cameraId || null,
     features: deviceConfig.features || {},
     lastSeen: deviceConfig.lastSeen || new Date().toISOString(),
+    deviceNickname: deviceConfig.deviceNickname || deviceConfig.name || undefined,
   };
+
+  if (entry.deviceNickname && entry.deviceInfo) {
+    entry.deviceInfo.deviceNickname = entry.deviceNickname;
+  }
 
   const idx = mqttDeviceList.findIndex(d => d.id === id);
   if (idx === -1) mqttDeviceList.push(entry);
@@ -233,12 +238,15 @@ async function _appendEventLogs(entry, parsedBody, payload, events, log_source =
     const isKnownEvent = knownTypesSet.has(alarmType);
     let feat = { enabled: true, cameraId: linkFeatures[alarmType]?.cameraId || null };
 
-    if (isKnownEvent) {
+    if (isKnownEvent && alarmType !== 'event_other') {
       const defaultEnabled = milesightEventRegistry.getDefaultEnabled(alarmType);
       feat = normalizeFeature(linkFeatures[alarmType], alarmType);
       if (linkFeatures[alarmType] === undefined) feat.enabled = defaultEnabled;
     } else {
+      // Unknown event → check event_other setting from device link or registry default
+      const eventOtherDefault = milesightEventRegistry.getDefaultEnabled('event_other');
       const otherFeat = normalizeFeature(linkFeatures.__other_events__, '__other_events__');
+      if (linkFeatures.__other_events__ === undefined) otherFeat.enabled = eventOtherDefault;
       if (!otherFeat.enabled) continue;
       feat = { enabled: true, cameraId: otherFeat.cameraId };
     }
@@ -269,15 +277,15 @@ async function _appendEventLogs(entry, parsedBody, payload, events, log_source =
     switch (log_source) {
       case 'milesight-radar':
         log_type = 'milesight_radar';
-        log_description = event.alarm_status || event.alarm_type || 'log_description'
+        log_description = event.alarm_type || event.alarm_status || 'log_description'
         break;
       case 'milesight-button':
         log_type = 'milesight_button';
-        log_description = event.status || 'log_description'
+        log_description = event.alarm_type || event.status || 'log_description'
         break;
       default:
         log_type = event.alarm_type || 'mqtt_event';
-        log_description = event.alarm_status || event.alarm_type || 'log_description'
+        log_description = event.alarm_type || event.alarm_status || 'log_description'
         break;
     }
 
@@ -324,6 +332,7 @@ function getMqttServersList() {
     id: device.id,
     groupId: device.groupId,
     name: device.deviceInfo?.deviceName || '',
+    deviceNickname: device.deviceNickname || device.deviceInfo?.deviceNickname || undefined,
     brokerHost: device.brokerHost,
     brokerPort: device.brokerPort,
     protocol: device.protocol,

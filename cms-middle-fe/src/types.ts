@@ -273,6 +273,7 @@ export interface MqttServerConfig {
   id: string;
   groupId?: string;
   name?: string;
+  deviceNickname?: string;  // Nickname do người dùng đặt (Tên gợi nhớ)
   brokerHost: string;
   brokerPort: string;
   protocol: 'mqtt' | 'mqtts';
@@ -306,6 +307,7 @@ export interface MqttDevice {
   cameraId?: string | null;
   features?: Record<string, boolean | { enabled: boolean; cameraId?: string | null }>;
   lastSeen?: string;
+  deviceNickname?: string;  // Nickname do người dùng đặt (Tên gợi nhớ)
 }
 
 export interface CameraFeatures {
@@ -375,6 +377,7 @@ export interface MQTT_Milesight_DeviceInfo {
   devEui: string;            // Unique device ID — dùng để đối chiếu
   deviceClassEnabled: string;
   tags: Record<string, string>;
+  deviceNickname?: string;   // Nickname do người dùng đặt (Tên gợi nhớ)
 }
 
 /** Toàn bộ raw payload nhận từ MQTT (ChirpStack uplink format) */

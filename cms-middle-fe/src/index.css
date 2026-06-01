@@ -8,6 +8,8 @@
   --secondary: #2dd4bf;
   --secondary-container: #134e4a;
   --tertiary: #fb7185;
+  --error: #ef4444;
+  --on-error: #ffffff;
   --background: #16171d;
   --on-background: #f3f4f6;
   --surface: #1f2028;
@@ -56,6 +58,8 @@
   --color-secondary: var(--secondary);
   --color-secondary-container: var(--secondary-container);
   --color-tertiary: var(--tertiary);
+  --color-error: var(--error);
+  --color-on-error: var(--on-error);
   --color-background: var(--background);
   --color-on-background: var(--on-background);
   --color-surface-container-lowest: var(--surface-container-lowest);

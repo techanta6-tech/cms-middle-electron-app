@@ -233,7 +233,7 @@ function LogFilter({
 
     const mqttDevs = Object.entries(mqttDevicesByServer || {}).flatMap(([serverId, devs]) => {
       return devs.map(d => ({
-        name: d.deviceName || d.deviceProfileName || d.devEui,
+        name: d.deviceNickname || d.deviceInfo?.deviceNickname || d.deviceName || d.deviceProfileName || d.devEui,
         ip: d.devEui,
         type: 'radar',
         index: 0,
@@ -680,7 +680,7 @@ export function Dashboard() {
 
     const mqttDevs = Object.entries(mqttDevicesByServer || {}).flatMap(([serverId, devs]) => {
       return devs.map(d => ({
-        name: d.deviceName || d.deviceProfileName || d.devEui,
+        name: d.deviceNickname || d.deviceInfo?.deviceNickname || d.deviceName || d.deviceProfileName || d.devEui,
         ip: d.devEui,
         type: 'radar',
         index: 0,
@@ -697,22 +697,44 @@ export function Dashboard() {
     return [...svmsDevs, ...indepCams, ...mqttDevs];
   }, [devices, cameraDevices, mqttDevicesByServer, mqttServers]);
 
-  const [hasInitializedServers, setHasInitializedServers] = useState(false);
-  const [hasInitializedDevices, setHasInitializedDevices] = useState(false);
+  const seenServersRef = useRef<Set<string>>(new Set());
+  const seenDevicesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (serverList.length > 0 && !hasInitializedServers) {
-      setSelectedServers(new Set(serverList.map(srv => srv.id)));
-      setHasInitializedServers(true);
+    if (serverList.length > 0) {
+      const newServers = serverList.filter(srv => !seenServersRef.current.has(srv.id));
+      if (newServers.length > 0) {
+        setSelectedServers(prev => {
+          const next = new Set(prev);
+          newServers.forEach(srv => {
+            next.add(srv.id);
+            seenServersRef.current.add(srv.id);
+          });
+          return next;
+        });
+      }
     }
-  }, [serverList, hasInitializedServers]);
+  }, [serverList]);
 
   useEffect(() => {
-    if (deviceList.length > 0 && !hasInitializedDevices) {
-      setSelectedDevices(new Set(deviceList.map(dev => `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`)));
-      setHasInitializedDevices(true);
+    if (deviceList.length > 0) {
+      const newDevices = deviceList.filter(dev => {
+        const key = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
+        return !seenDevicesRef.current.has(key);
+      });
+      if (newDevices.length > 0) {
+        setSelectedDevices(prev => {
+          const next = new Set(prev);
+          newDevices.forEach(dev => {
+            const key = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
+            next.add(key);
+            seenDevicesRef.current.add(key);
+          });
+          return next;
+        });
+      }
     }
-  }, [deviceList, hasInitializedDevices]);
+  }, [deviceList]);
   const [rightTab, setRightTab] = useState<'logs' | 'devices'>('logs');
   const [mainTab, setMainTab] = useState<'alert' | 'emap' | 'connections' | 'devices' | 'traffic' | 'livewall'>('emap');
   const [visibleAlerts, setVisibleAlerts] = useState<number>(30);
@@ -906,13 +928,13 @@ export function Dashboard() {
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.emap')}</h2>
                 </button>
                 {/* Nhóm nút Giám sát sự kiện và Live Wall*/}
-                <button
+                {/* <button
                   className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'alert' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('alert')}
                 >
                   <Monitor className={`w-5 h-5 ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.alert_wall')}</h2>
-                </button>
+                </button> */}
                 {/* <button
                   className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'livewall' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
                   onClick={() => setMainTab('livewall')}

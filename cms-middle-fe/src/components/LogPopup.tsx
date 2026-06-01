@@ -108,7 +108,8 @@ export function LogPopup({ log, onClose, mqttServers, servers }: { log: LogData,
     if (source === 'milesight-radar' || source === 'milesight-button') {
       if (!rawDescription) return undefined;
       const descKey = rawDescription.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
-      return t(`app.logtype.${descKey}`, { defaultValue: rawDescription });
+      const formattedKey = descKey.startsWith('milesight_') ? descKey : `milesight_${descKey}`;
+      return t(`app.logtype.${formattedKey}_description`, { defaultValue: rawDescription });
     }
     if (source === 'svms' && rawType) {
       const normalizedType = rawType.replace(/\./g, '_');
