@@ -341,16 +341,28 @@ export function DevicesManager({
                       onAdd={() => { setTargetMqttGroupId(group.id); setAddingForm('mqtt_device'); }}
                       onDelete={() => handleDeleteMqttGroup(group.id)}
                     />
-                    {expanded && mqttDevs.map(d => (
-                      <TreeItem key={d.id}
-                        label={d.deviceNickname || d.deviceInfo?.deviceNickname || d.deviceInfo?.deviceName || 'MQTT Device'} sublabel={d.topic} indent
-                        icon={<MonitorSmartphone className="w-3 h-3 text-on-surface-variant/60" />}
-                        onClick={() => setSelected({ kind: 'mqtt-device', data: d, group })}
-                        isSelected={selected?.kind === 'mqtt-device' && (selected.data as MqttDevice).id === d.id}
-                        status={d.status === 'error' ? 'disconnected' : d.status}
-                        onDelete={() => handleDeleteMqttDevice(d.id)}
-                      />
-                    ))}
+                    {expanded && mqttDevs.map(d => {
+                      // Derive dot status: when MQTT client is connected, show heartbeat online/offline.
+                      // When not yet tracked (no connectionStatus) keep showing 'connected' dot.
+                      let dotStatus: string;
+                      if (d.status === 'connected') {
+                        dotStatus = d.connectionStatus === 'offline' ? 'disconnected'
+                          : d.connectionStatus === 'online' ? 'connected'
+                          : 'connected'; // default: treat as online until first check
+                      } else {
+                        dotStatus = d.status === 'error' ? 'disconnected' : (d.status ?? 'disconnected');
+                      }
+                      return (
+                        <TreeItem key={d.id}
+                          label={d.deviceNickname || d.deviceInfo?.deviceNickname || d.deviceInfo?.deviceName || 'MQTT Device'} sublabel={d.topic} indent
+                          icon={<MonitorSmartphone className="w-3 h-3 text-on-surface-variant/60" />}
+                          onClick={() => setSelected({ kind: 'mqtt-device', data: d, group })}
+                          isSelected={selected?.kind === 'mqtt-device' && (selected.data as MqttDevice).id === d.id}
+                          status={dotStatus}
+                          onDelete={() => handleDeleteMqttDevice(d.id)}
+                        />
+                      );
+                    })}
                   </div>
                 );
               })}
@@ -938,6 +950,20 @@ function MqttDeviceDetail({ dev, group, allCameras, deviceCameraLinks, onLinkDev
       <h3 className="text-lg font-black text-on-surface mb-2">
         {dev.deviceNickname || deviceInfo.deviceNickname ? `${dev.deviceNickname || deviceInfo.deviceNickname} (${deviceInfo.deviceName || 'MQTT Device'})` : (deviceInfo.deviceName || 'MQTT Device')}
       </h3>
+      {dev.status === 'connected' && (
+        <div className="mb-1">
+          <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${
+            dev.connectionStatus === 'offline'
+              ? 'text-tertiary bg-tertiary/10 border-tertiary/20'
+              : 'text-secondary bg-secondary/10 border-secondary/20'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              dev.connectionStatus === 'offline' ? 'bg-tertiary animate-pulse' : 'bg-secondary'
+            }`} />
+            {dev.connectionStatus === 'offline' ? 'OFFLINE' : 'ONLINE'}
+          </span>
+        </div>
+      )}
       <InfoRow label={t('app.monitor.dev_eui')} value={devEui} mono />
       <InfoRow label={t('app.monitor.profile')} value={deviceInfo.deviceProfileName || ''} />
       <InfoRow label={t('app.monitor.alarm_count')} value={dev.logCount || 0} />

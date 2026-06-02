@@ -31,8 +31,8 @@
     "wait-on": "^8.0.2"
   },
   "build": {
-    "appId": "com.cms.middle",
-    "productName": "CMS Middle",
+    "appId": "com.lcms.demo",
+    "productName": "CMS DEMO",
     "directories": {
       "output": "dist"
     },

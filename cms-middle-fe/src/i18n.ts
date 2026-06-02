@@ -28,6 +28,8 @@ const resources = {
         filter: {
           servers: "Servers",
           no_servers: "Chưa có server nào",
+          groups: "Nhóm Thiết Bị",
+          no_groups: "Chưa có nhóm nào",
           devices: "Thiết Bị",
           no_devices: "Chưa có thiết bị nào",
           event_types: "Loại Sự Kiện",
@@ -620,6 +622,8 @@ const resources = {
         filter: {
           servers: "Servers",
           no_servers: "No servers",
+          groups: "Device Groups",
+          no_groups: "No groups",
           devices: "Devices",
           no_devices: "No devices",
           event_types: "Event Types",

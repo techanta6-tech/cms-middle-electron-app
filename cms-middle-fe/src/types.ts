@@ -303,6 +303,8 @@ export interface MqttDevice {
   brokerPort: string;
   protocol: 'mqtt' | 'mqtts';
   status?: 'connecting' | 'connected' | 'disconnected' | 'error';
+  /** Heartbeat status: whether device is actively sending data. Separate from MQTT client connection state. */
+  connectionStatus?: 'online' | 'offline';
   logCount?: number;
   cameraId?: string | null;
   features?: Record<string, boolean | { enabled: boolean; cameraId?: string | null }>;

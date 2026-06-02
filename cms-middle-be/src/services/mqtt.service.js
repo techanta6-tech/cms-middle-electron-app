@@ -5,6 +5,7 @@ const { normalizeFeature } = require('../helpers/featureNormalizer');
 const milesightEventRegistry = require('./milesightEventRegistry.service');
 const { appendLog } = require('./system-state.service');
 const persistedDevices = require('./persisted-devices.service');
+const milesightHeartbeat = require('./milesight-heartbeat.service');
 
 const mqttClients = new Map();
 
@@ -123,6 +124,8 @@ function connectMqttDevice(deviceConfig, options = {}) {
         entry.deviceInfo = { ...entry.deviceInfo, ...deviceInfo };
         entry.topic = msgTopic || entry.topic;
         entry.lastSeen = new Date().toISOString();
+        // Mark device as online in heartbeat monitor on every received message
+        milesightHeartbeat.markDeviceOnline(id);
         upsertMqttDevice(entry);
 
         const milesightEvents = payload?.object?.events;
@@ -191,6 +194,7 @@ function removeMqttDevice(id) {
   for (let i = deviceCameraLinks.length - 1; i >= 0; i -= 1) {
     if (deviceCameraLinks[i].mqttDeviceId === id) deviceCameraLinks.splice(i, 1);
   }
+  milesightHeartbeat.removeDevice(id);
   persistedDevices.removeMqttDevice(id);
   _emitMqttStateUpdate();
 }

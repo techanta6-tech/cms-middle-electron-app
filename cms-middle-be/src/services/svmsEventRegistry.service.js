@@ -38,11 +38,11 @@ let svmsEvents = [];
  * event_description = i18n key theo chuẩn: replace . → _, thêm _description.
  */
 const SEED_EVENTS = [
-  { event_type: 'motion', event_description: 'motion_description', default_enabled: true },
-  { event_type: 'ai.alarm.crosswire.all', event_description: 'ai_alarm_crosswire_all_description', default_enabled: false },
-  { event_type: 'ai.alarm.direction.all', event_description: 'ai_alarm_direction_all_description', default_enabled: false },
-  { event_type: 'ai.alarm.missing.all', event_description: 'ai_alarm_missing_all_description', default_enabled: false },
-  { event_type: 'videoloss', event_description: 'videoloss_description', default_enabled: false },
+  // { event_type: 'motion', event_description: 'motion_description', default_enabled: true },
+  // { event_type: 'ai.alarm.crosswire.all', event_description: 'ai_alarm_crosswire_all_description', default_enabled: false },
+  // { event_type: 'ai.alarm.direction.all', event_description: 'ai_alarm_direction_all_description', default_enabled: false },
+  // { event_type: 'ai.alarm.missing.all', event_description: 'ai_alarm_missing_all_description', default_enabled: false },
+  // { event_type: 'videoloss', event_description: 'videoloss_description', default_enabled: false },
 ];
 
 // ─── Public API ───────────────────────────────────────────────────────────────

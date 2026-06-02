@@ -24,15 +24,18 @@ function LogFilter({
   mqttDevicesByServer,
   cameraDevices,
   eventTypes,
-  selectedServers,
+  selectedGroups,
   selectedDevices,
   selectedEventTypes,
-  onToggleServer,
+  onToggleGroup,
   onToggleDevice,
   onToggleEventType,
   onToggleAllEventTypes,
-  onToggleAllServers,
+  onToggleAllGroups,
   onToggleAllDevices,
+  allDevicesSelected,
+  allGroupsSelected,
+  mqttGroups,
 }: {
   logs: LogData[];
   servers: Record<string, ServerData>;
@@ -41,15 +44,18 @@ function LogFilter({
   mqttDevicesByServer?: Record<string, any[]>;
   cameraDevices?: any[];
   eventTypes: EventTypeItem[];
-  selectedServers: Set<string>;
+  selectedGroups: Set<string>;
   selectedDevices: Set<string>;
   selectedEventTypes: string[];
-  onToggleServer: (id: string) => void;
+  onToggleGroup: (id: string) => void;
   onToggleDevice: (ip: string) => void;
   onToggleEventType: (type: string | string[]) => void;
   onToggleAllEventTypes: (checked: boolean) => void;
-  onToggleAllServers: (ids: string[]) => void;
+  onToggleAllGroups: (ids: string[]) => void;
   onToggleAllDevices: (keys: string[]) => void;
+  allDevicesSelected: boolean;
+  allGroupsSelected: boolean;
+  mqttGroups?: MqttGroup[];
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -180,24 +186,6 @@ function LogFilter({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const serverList = useMemo(() => {
-    const svms = Object.values(servers)
-      .filter(srv => srv.type !== 'mqtt' && !srv.id?.toString().startsWith('mqtt-'))
-      .map(srv => ({
-        id: srv.id || srv.serial,
-        name: srv.server_name || srv.id || srv.serial,
-        ip: srv.svms_ipv4_ip || srv.server_ip,
-        type: 'SVMS',
-      }));
-    const mqtt = (mqttServers || []).map(m => ({
-      id: m.id,
-      name: m.brokerHost || m.id,
-      ip: `${m.brokerHost}:${m.brokerPort}`,
-      type: 'MQTT',
-    }));
-    return [...svms, ...mqtt];
-  }, [servers, mqttServers]);
-
   const deviceList = useMemo(() => {
     const seen = new Set<string>();
     const svmsDevs = Object.values(devices).flatMap(serverData =>
@@ -263,21 +251,52 @@ function LogFilter({
     return groups;
   }, [deviceList]);
 
-  const activeCount = selectedServers.size + selectedDevices.size + selectedEventTypes.length;
+  const getGroupLabel = useCallback((groupKey: string) => {
+    if (groupKey === 'SUNELL-LOCAL_sunell') {
+      return t('app.devices.sunell_cameras');
+    }
+    if (groupKey.startsWith('SUNELL-LOCAL_')) {
+      return t('app.devices.cameras');
+    }
+    const mqGrp = (mqttGroups || []).find(g => g.id === groupKey);
+    if (mqGrp) {
+      return mqGrp.name;
+    }
+    if (groupKey.startsWith('mqtt-')) {
+      const mqttId = groupKey.replace('mqtt-', '');
+      const mqttSrv = (mqttServers || []).find(s => s.id === mqttId);
+      return `MQTT Broker (${mqttSrv?.brokerHost || mqttId})`;
+    }
+    const srv = Object.values(servers).find(s => s.id === groupKey || s.serial === groupKey);
+    return `SVMS Server (${srv?.server_name || groupKey})`;
+  }, [mqttGroups, mqttServers, servers, t]);
 
-  const isAllServersChecked = serverList.length > 0 && serverList.every(srv => selectedServers.has(srv.id));
+  const groupList = useMemo(() => {
+    return Object.keys(groupedDevices).map(groupKey => {
+      let type = 'SVMS';
+      if (groupKey.startsWith('SUNELL-LOCAL')) {
+        type = 'SUNELL';
+      } else if ((mqttGroups || []).some(g => g.id === groupKey) || groupKey.startsWith('mqtt-')) {
+        type = 'MQTT';
+      }
+      return {
+        id: groupKey,
+        name: getGroupLabel(groupKey),
+        type,
+      };
+    });
+  }, [groupedDevices, getGroupLabel, mqttGroups]);
 
-  const isAllDevicesChecked = deviceList.length > 0 && deviceList.every(dev => {
-    const uniqueKey = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
-    return selectedDevices.has(uniqueKey);
-  });
+  const activeCount = selectedGroups.size + selectedDevices.size + selectedEventTypes.length;
 
-  const handleServerClick = (id: string) => {
-    onToggleServer(id);
+  const isAllServersChecked = allGroupsSelected;
+
+  const isAllDevicesChecked = allDevicesSelected;
+
+  const handleGroupClick = (id: string) => {
+    onToggleGroup(id);
     setTimeout(() => {
-      const el = document.getElementById(`device-group-${id}`) ||
-        document.getElementById(`device-group-mqtt-${id}`) ||
-        document.getElementById(`device-group-mqtt-mqtt-${id}`);
+      const el = document.getElementById(`device-group-${id}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
@@ -303,7 +322,7 @@ function LogFilter({
       </button>
       {open && (
         <div className="absolute right-3 top-[95%] z-50 bg-surface-container-high border border-outline-variant/90 shadow-lg rounded-md w-[90%] max-w-[230px] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-          {/* Servers */}
+          {/* Groups */}
           <div className="px-2 pt-2 pb-0.5">
             <button
               onClick={() => setShowServers(!showServers)}
@@ -311,21 +330,21 @@ function LogFilter({
             >
               <div className="flex items-center gap-1.5">
                 <Cpu className="w-3.5 h-3.5 text-secondary" />
-                <span className="text-[12px] font-black uppercase tracking-widest text-secondary">{t('app.filter.servers')}</span>
+                <span className="text-[12px] font-black uppercase tracking-widest text-secondary">{t('app.filter.groups') || 'NHÓM THIẾT BỊ'}</span>
               </div>
               <ChevronDown className={`w-3.5 h-3.5 text-secondary/50 transition-transform duration-300 ${showServers ? 'rotate-180' : ''}`} />
             </button>
             {showServers && (
-              serverList.length === 0 ? (
-                <p className="text-[11px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_servers')}</p>
+              groupList.length === 0 ? (
+                <p className="text-[11px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_groups') || 'Không có nhóm'}</p>
               ) : (
                 <div className="flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-200 cursor-pointer">
                   <button
                     onClick={() => {
                       if (isAllServersChecked) {
-                        onToggleAllServers([]);
+                        onToggleAllGroups([]);
                       } else {
-                        onToggleAllServers(serverList.map(srv => srv.id));
+                        onToggleAllGroups(groupList.map(g => g.id));
                       }
                     }}
                     className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1 pt-1 first:pt-0.5 shrink-0"
@@ -336,21 +355,21 @@ function LogFilter({
                     </div>
                     <span className="text-[10px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
                   </button>
-                  {serverList.map(srv => {
-                    const id = srv.id;
-                    const checked = selectedServers.has(id);
+                  {groupList.map(grp => {
+                    const id = grp.id;
+                    const checked = selectedGroups.has(id);
                     return (
                       <button
                         key={id}
-                        onClick={() => handleServerClick(id)}
+                        onClick={() => handleGroupClick(id)}
                         className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 first:pt-0.5 last:pb-0.5"
                       >
-                        <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-secondary border-secondary' : 'border-outline-variant'
+                        <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${allGroupsSelected || checked ? 'bg-secondary border-secondary' : 'border-outline-variant'
                           }`}>
-                          {checked && <Check className="w-2 h-2 text-white stroke-[3]" />}
+                          {(allGroupsSelected || checked) && <Check className="w-2 h-2 text-white stroke-[3]" />}
                         </div>
-                        <span className="text-[10px] font-semibold text-on-surface shrink-0">{srv.name}</span>
-                        <span className="text-[8px] font-mono text-on-surface-variant/75 ml-auto truncate">{srv.type} - {srv.ip}</span>
+                        <span className="text-[10px] font-semibold text-on-surface shrink-0">{grp.name}</span>
+                        <span className="text-[8px] font-mono text-on-surface-variant/75 ml-auto truncate">{grp.type}</span>
                       </button>
                     );
                   })}
@@ -397,19 +416,7 @@ function LogFilter({
                   </button>
                   {Object.entries(groupedDevices).map(([serverKey, devs]) => {
                     if (!devs || devs.length === 0) return null;
-                    let groupLabel = serverKey;
-                    if (serverKey === 'SUNELL-LOCAL_sunell') {
-                      groupLabel = t('app.devices.sunell_cameras');
-                    } else if (serverKey.startsWith('SUNELL-LOCAL_')) {
-                      groupLabel = t('app.devices.cameras');
-                    } else if (serverKey.startsWith('mqtt-')) {
-                      const mqttId = serverKey.replace('mqtt-', '');
-                      const mqttSrv = (mqttServers || []).find(s => s.id === mqttId);
-                      groupLabel = `MQTT RADAR (${mqttSrv?.brokerHost || mqttId})`;
-                    } else {
-                      const srv = Object.values(servers).find(s => s.id === serverKey || s.serial === serverKey);
-                      groupLabel = `SVMS SERVER (${srv?.server_name || serverKey})`;
-                    }
+                    const groupLabel = getGroupLabel(serverKey);
 
                     return (
                       <div key={serverKey} id={`device-group-${serverKey}`} className="flex flex-col gap-[1px] border-b border-outline-variant/5 pb-1 mb-0.5 last:border-0 last:pb-0 last:mb-0">
@@ -418,7 +425,7 @@ function LogFilter({
                         </div>
                         {devs.map(dev => {
                           const uniqueKey = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
-                          const checked = selectedDevices.has(uniqueKey);
+                          const checked = allDevicesSelected || selectedDevices.has(uniqueKey);
                           return (
                             <button
                               key={uniqueKey}
@@ -598,8 +605,10 @@ export function Dashboard() {
   const displayLogCount = KEEP_TOTAL_LOG_COUNT ? totalLogCount : logs.length;
 
   const [selectedLog, setSelectedLog] = useState<LogData | null>(null);
-  const [selectedServers, setSelectedServers] = useState<Set<string>>(new Set());
+  const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
+  const [allDevicesSelected, setAllDevicesSelected] = useState<boolean>(true);
+  const [allGroupsSelected, setAllGroupsSelected] = useState<boolean>(true);
 
   // MQTT devices come from BE snapshot; logs are only used for display/counting.
   const mqttDevicesByServer = useMemo(() => {
@@ -625,25 +634,6 @@ export function Dashboard() {
     });
     return map;
   }, [logs, mqttDevices]);
-
-  // Compute serverList and deviceList inside Dashboard to enable default-check-all on load
-  const serverList = useMemo(() => {
-    const svms = Object.values(servers)
-      .filter(srv => srv.type !== 'mqtt' && !srv.id?.toString().startsWith('mqtt-'))
-      .map(srv => ({
-        id: srv.id || srv.serial,
-        name: srv.server_name || srv.id || srv.serial,
-        ip: srv.svms_ipv4_ip || srv.server_ip,
-        type: 'SVMS',
-      }));
-    const mqtt = (mqttServers || []).map(m => ({
-      id: m.id,
-      name: m.brokerHost || m.id,
-      ip: `${m.brokerHost}:${m.brokerPort}`,
-      type: 'MQTT',
-    }));
-    return [...svms, ...mqtt];
-  }, [servers, mqttServers]);
 
   const deviceList = useMemo(() => {
     const seen = new Set<string>();
@@ -697,24 +687,73 @@ export function Dashboard() {
     return [...svmsDevs, ...indepCams, ...mqttDevs];
   }, [devices, cameraDevices, mqttDevicesByServer, mqttServers]);
 
-  const seenServersRef = useRef<Set<string>>(new Set());
+  const getGroupLabel = useCallback((groupKey: string) => {
+    if (groupKey === 'SUNELL-LOCAL_sunell') {
+      return t('app.devices.sunell_cameras');
+    }
+    if (groupKey.startsWith('SUNELL-LOCAL_')) {
+      return t('app.devices.cameras');
+    }
+    const mqGrp = (mqttGroups || []).find(g => g.id === groupKey);
+    if (mqGrp) {
+      return mqGrp.name;
+    }
+    if (groupKey.startsWith('mqtt-')) {
+      const mqttId = groupKey.replace('mqtt-', '');
+      const mqttSrv = (mqttServers || []).find(s => s.id === mqttId);
+      return `MQTT Broker (${mqttSrv?.brokerHost || mqttId})`;
+    }
+    const srv = Object.values(servers).find(s => s.id === groupKey || s.serial === groupKey);
+    return `SVMS Server (${srv?.server_name || groupKey})`;
+  }, [mqttGroups, mqttServers, servers, t]);
+
+  const groupedDevices = useMemo(() => {
+    const groups: Record<string, typeof deviceList> = {};
+    deviceList.forEach(dev => {
+      let groupKey = dev.serverId || 'UNKNOWN';
+      if (groupKey === 'SUNELL-LOCAL') {
+        groupKey = `SUNELL-LOCAL_${dev.type || 'sunell'}`;
+      }
+      if (!groups[groupKey]) groups[groupKey] = [];
+      groups[groupKey].push(dev);
+    });
+    return groups;
+  }, [deviceList]);
+
+  const groupList = useMemo(() => {
+    return Object.keys(groupedDevices).map(groupKey => {
+      let type = 'SVMS';
+      if (groupKey.startsWith('SUNELL-LOCAL')) {
+        type = 'SUNELL';
+      } else if ((mqttGroups || []).some(g => g.id === groupKey) || groupKey.startsWith('mqtt-')) {
+        type = 'MQTT';
+      }
+      return {
+        id: groupKey,
+        name: getGroupLabel(groupKey),
+        type,
+      };
+    });
+  }, [groupedDevices, getGroupLabel, mqttGroups]);
+
+  const seenGroupsRef = useRef<Set<string>>(new Set());
   const seenDevicesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (serverList.length > 0) {
-      const newServers = serverList.filter(srv => !seenServersRef.current.has(srv.id));
-      if (newServers.length > 0) {
-        setSelectedServers(prev => {
+    if (groupList.length > 0) {
+      const newGroups = groupList.filter(g => !seenGroupsRef.current.has(g.id));
+      if (newGroups.length > 0) {
+        setSelectedGroups(prev => {
           const next = new Set(prev);
-          newServers.forEach(srv => {
-            next.add(srv.id);
-            seenServersRef.current.add(srv.id);
+          newGroups.forEach(g => {
+            next.add(g.id);
+            seenGroupsRef.current.add(g.id);
           });
           return next;
         });
       }
     }
-  }, [serverList]);
+  }, [groupList]);
 
   useEffect(() => {
     if (deviceList.length > 0) {
@@ -795,77 +834,150 @@ export function Dashboard() {
     return [...svmsDevices, ...mqttKnownDevices, ...sunellDevices];
   }, [cameraDevices, devices, mqttDevicesByServer, mqttGroups]);
 
-  const toggleServer = useCallback((id: string) => {
-    const isSelecting = !selectedServers.has(id);
+  const filteredEMapKnownDevices = useMemo(() => {
+    const normalizeAddress = (value?: string) => String(value || '').split(':')[0];
+    return eMapKnownDevices.filter(device => {
+      const matched = deviceList.find(d =>
+        d.serverId === device.server_id &&
+        normalizeAddress(d.ip) === normalizeAddress(device.device_ip)
+      );
+      if (!matched) return false;
 
-    setSelectedServers(prev => {
-      const s = new Set(prev);
-      if (isSelecting) s.add(id); else s.delete(id);
-      return s;
+      const devKey = `${matched.serverId}_${matched.ip}_${matched.originalName || matched.name}`;
+      const devGroupId = matched.serverId === 'SUNELL-LOCAL' ? `SUNELL-LOCAL_${matched.type || 'sunell'}` : matched.serverId;
+
+      const matchGroup = allGroupsSelected || selectedGroups.has(devGroupId);
+      const matchDevice = allDevicesSelected || selectedDevices.has(devKey);
+
+      return matchGroup && matchDevice;
     });
+  }, [eMapKnownDevices, deviceList, selectedGroups, selectedDevices, allGroupsSelected, allDevicesSelected]);
 
-    setSelectedDevices(prevDevs => {
-      const d = new Set(prevDevs);
+  const toggleGroup = useCallback((id: string) => {
+    if (allGroupsSelected) {
+      const newSelectedGroups = new Set<string>();
+      groupList.forEach(grp => {
+        if (grp.id !== id) {
+          newSelectedGroups.add(grp.id);
+        }
+      });
+      setSelectedGroups(newSelectedGroups);
+      setAllGroupsSelected(false);
 
-      if (devices[id]) {
-        devices[id].devices?.forEach(dev => {
-          const devKey = `${devices[id].server.server_id}_${dev.ip}_${dev.name}`;
-          if (isSelecting) d.add(devKey);
-          else d.delete(devKey);
+      if (allDevicesSelected) {
+        const newSelectedDevices = new Set<string>();
+        deviceList.forEach(dev => {
+          const devGroupId = dev.serverId === 'SUNELL-LOCAL' ? `SUNELL-LOCAL_${dev.type || 'sunell'}` : dev.serverId;
+          if (devGroupId !== id) {
+            const key = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
+            newSelectedDevices.add(key);
+          }
         });
-      }
-
-      if (mqttDevicesByServer[id]) {
-        mqttDevicesByServer[id].forEach(dev => {
-          const devName = dev.deviceName || 'MQTT Device';
-          const devKey = `${id}_${dev.devEui}_${devName}`;
-          if (isSelecting) d.add(devKey);
-          else d.delete(devKey);
-        });
-      }
-
-      return d;
-    });
-  }, [selectedServers, devices, mqttDevicesByServer]);
-
-  const toggleDevice = (ip: string) =>
-    setSelectedDevices(prev => {
-      const s = new Set(prev);
-      if (s.has(ip)) {
-        s.delete(ip);
+        setSelectedDevices(newSelectedDevices);
+        setAllDevicesSelected(false);
       } else {
-        s.add(ip);
+        setSelectedDevices(prevDevs => {
+          const d = new Set(prevDevs);
+          deviceList.forEach(dev => {
+            const devGroupId = dev.serverId === 'SUNELL-LOCAL' ? `SUNELL-LOCAL_${dev.type || 'sunell'}` : dev.serverId;
+            if (devGroupId === id) {
+              const key = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
+              d.delete(key);
+            }
+          });
+          return d;
+        });
       }
-      return s;
-    });
+    } else {
+      const isSelecting = !selectedGroups.has(id);
+
+      setSelectedGroups(prev => {
+        const s = new Set(prev);
+        if (isSelecting) s.add(id); else s.delete(id);
+        return s;
+      });
+
+      if (allDevicesSelected) {
+        if (!isSelecting) {
+          const newSelectedDevices = new Set<string>();
+          deviceList.forEach(dev => {
+            const devGroupId = dev.serverId === 'SUNELL-LOCAL' ? `SUNELL-LOCAL_${dev.type || 'sunell'}` : dev.serverId;
+            if (devGroupId !== id) {
+              const key = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
+              newSelectedDevices.add(key);
+            }
+          });
+          setSelectedDevices(newSelectedDevices);
+          setAllDevicesSelected(false);
+        }
+      } else {
+        setSelectedDevices(prevDevs => {
+          const d = new Set(prevDevs);
+          deviceList.forEach(dev => {
+            const devGroupId = dev.serverId === 'SUNELL-LOCAL' ? `SUNELL-LOCAL_${dev.type || 'sunell'}` : dev.serverId;
+            if (devGroupId === id) {
+              const key = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
+              if (isSelecting) d.add(key);
+              else d.delete(key);
+            }
+          });
+          return d;
+        });
+      }
+    }
+  }, [allGroupsSelected, allDevicesSelected, groupList, deviceList, selectedGroups]);
+
+  const toggleDevice = (ip: string) => {
+    if (allDevicesSelected) {
+      const newSelected = new Set<string>();
+      deviceList.forEach(dev => {
+        const key = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
+        if (key !== ip) {
+          newSelected.add(key);
+        }
+      });
+      setSelectedDevices(newSelected);
+      setAllDevicesSelected(false);
+    } else {
+      setSelectedDevices(prev => {
+        const s = new Set(prev);
+        if (s.has(ip)) {
+          s.delete(ip);
+        } else {
+          s.add(ip);
+        }
+        return s;
+      });
+    }
+  };
 
   // Lọc logs theo server và device (event_type filter đã được xử lý bởi filteredLogs từ hook)
   const displayLogs = useMemo(() => {
-    if (selectedServers.size === 0 && selectedDevices.size === 0) return filteredLogs;
+    if ((!allGroupsSelected && selectedGroups.size === 0) || (!allDevicesSelected && selectedDevices.size === 0)) return [];
     return filteredLogs.filter(log => {
       // Chuẩn hóa serverId tùy theo log source để khớp với serverId dùng trong checkbox filter
-      let logServerId = log.server_unique_id;
+      let logGroupId = log.server_unique_id;
       if (log.log_source === 'sunell-camera') {
-        logServerId = 'SUNELL-LOCAL';
-      } else if (log.log_source === 'svms' && logServerId) {
-        const parts = logServerId.split('-');
-        logServerId = parts[parts.length - 1] || logServerId;
+        logGroupId = 'SUNELL-LOCAL_sunell';
+      } else if (log.log_source === 'svms' && logGroupId) {
+        const parts = logGroupId.split('-');
+        logGroupId = parts[parts.length - 1] || logGroupId;
       }
 
       // Chuẩn hóa devKey tương ứng với serverId đã chuẩn hóa
-      const devKey = `${logServerId}_${log.device_info.id}_${log.device_info.name}`;
+      const devKey = `${logGroupId}_${log.device_info.id}_${log.device_info.name}`;
 
-      let matchServer = selectedServers.size === 0 || selectedServers.has(logServerId);
-      let matchDevice = selectedDevices.size === 0 || selectedDevices.has(devKey);
+      let matchGroup = allGroupsSelected || selectedGroups.has(logGroupId);
+      let matchDevice = allDevicesSelected || selectedDevices.has(devKey);
 
       // Nếu thiết bị được tích chọn đích danh trong bộ lọc, tự động cho qua Server kiểm tra
       if (selectedDevices.has(devKey)) {
-        matchServer = true;
+        matchGroup = true;
       }
 
       // Nếu là camera log, kiểm tra xem có được liên kết với Radar hay Server đang được chọn hay không
       if (log.log_source === 'sunell-camera') {
-        const isLinkedToSelectedRadar = Array.from(selectedDevices).some(selectedKey => {
+        const isLinkedToSelectedRadar = allDevicesSelected || Array.from(selectedDevices).some(selectedKey => {
           return deviceCameraLinks.some(link => {
             if (link.cameraId !== log.device_info.id) return false;
             const groupId = link.groupId || link.mqttServerId || '';
@@ -878,19 +990,19 @@ export function Dashboard() {
           });
         });
 
-        const isLinkedToSelectedServer = Array.from(selectedServers).some(selectedServerId => {
+        const isLinkedToSelectedServer = allGroupsSelected || Array.from(selectedGroups).some(selectedGroupId => {
           return deviceCameraLinks.some(link => {
-            return link.cameraId === log.device_info.id && (link.groupId || link.mqttServerId) === selectedServerId;
+            return link.cameraId === log.device_info.id && (link.groupId || link.mqttServerId) === selectedGroupId;
           });
         });
 
         if (isLinkedToSelectedRadar) matchDevice = true;
-        if (isLinkedToSelectedServer) matchServer = true;
+        if (isLinkedToSelectedServer) matchGroup = true;
       }
 
-      return matchServer && matchDevice;
+      return matchGroup && matchDevice;
     });
-  }, [filteredLogs, selectedServers, selectedDevices, deviceCameraLinks, mqttServers, mqttDevicesByServer]);
+  }, [filteredLogs, selectedGroups, selectedDevices, allGroupsSelected, allDevicesSelected, deviceCameraLinks, mqttServers, mqttDevicesByServer]);
 
 
   // ESC key logout removed as requested
@@ -1017,8 +1129,9 @@ export function Dashboard() {
                 pins={eMapLayout.pins}
                 tileProviderId={eMapLayout.tileProviderId}
                 logs={displayLogs}
-                knownDevices={eMapKnownDevices}
+                knownDevices={filteredEMapKnownDevices}
                 onSaveLayout={saveEMapLayout}
+                mqttDevices={mqttDevices}
               />
             )}
             {mainTab === 'devices' && (
@@ -1179,10 +1292,10 @@ export function Dashboard() {
                     mqttDevicesByServer={mqttDevicesByServer}
                     cameraDevices={cameraDevices}
                     eventTypes={eventTypes}
-                    selectedServers={selectedServers}
+                    selectedGroups={selectedGroups}
                     selectedDevices={selectedDevices}
                     selectedEventTypes={selectedEventTypes}
-                    onToggleServer={toggleServer}
+                    onToggleGroup={toggleGroup}
                     onToggleDevice={toggleDevice}
                     onToggleEventType={(typeOrTypes) => {
                       setSelectedEventTypes(prev => {
@@ -1203,12 +1316,29 @@ export function Dashboard() {
                         setSelectedEventTypes([]);
                       }
                     }}
-                    onToggleAllServers={(ids) => {
-                      setSelectedServers(new Set(ids));
+                    onToggleAllGroups={(ids) => {
+                      if (ids.length === 0) {
+                        setAllGroupsSelected(false);
+                        setSelectedGroups(new Set());
+                        if (allDevicesSelected) {
+                          setAllDevicesSelected(false);
+                          setSelectedDevices(new Set());
+                        }
+                      } else {
+                        setAllGroupsSelected(true);
+                      }
                     }}
                     onToggleAllDevices={(keys) => {
-                      setSelectedDevices(new Set(keys));
+                      if (keys.length === 0) {
+                        setAllDevicesSelected(false);
+                        setSelectedDevices(new Set());
+                      } else {
+                        setAllDevicesSelected(true);
+                      }
                     }}
+                    allDevicesSelected={allDevicesSelected}
+                    allGroupsSelected={allGroupsSelected}
+                    mqttGroups={mqttGroups}
                   />
                 </div>
 

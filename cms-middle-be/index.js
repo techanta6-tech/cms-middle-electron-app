@@ -34,8 +34,36 @@ const sunellEventRegistry = require('./src/services/sunellEventRegistry.service'
 const { bootstrapPersistedDevices, getFilePath: getPersistedDevicesPath } = require('./src/services/persisted-devices.service');
 const trafficService = require('./src/services/traffic.service');
 const eventGroupService = require('./src/services/eventGroup.service');
+const milesightHeartbeat = require('./src/services/milesight-heartbeat.service');
 
 const fs = require('fs');
+
+/**
+ * Load Milesight-specific settings from data/milesightSettings.json.
+ * Falls back to defaults if the file is missing or malformed.
+ */
+function loadMilesightSettings() {
+  const defaults = {
+    heartbeat: {
+      offlineThresholdMinutes: 1,
+      checkIntervalSeconds: 15,
+    },
+  };
+  try {
+    const settingsPath = path.join(runtimeDir, 'data', 'milesightSettings.json');
+    if (fs.existsSync(settingsPath)) {
+      const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      return {
+        ...defaults,
+        ...parsed,
+        heartbeat: { ...defaults.heartbeat, ...(parsed.heartbeat || {}) },
+      };
+    }
+  } catch (err) {
+    console.warn('[MILESIGHT_SETTINGS] Cannot load milesightSettings.json:', err.message);
+  }
+  return defaults;
+}
 
 svmsEventRegistry.loadRegistry();
 milesightEventRegistry.loadRegistry();
@@ -107,7 +135,15 @@ httpServer.listen(port, '0.0.0.0', () => {
   console.log(`   SVMS Ports: ${SVMS_PORT_LIST.join(', ')}`);
   console.log(`   Timers: ${JSON.stringify(connectivityMonitor.getTimerStats())}\n`);
 
-  bootstrapPersistedDevices().catch((err) => {
-    console.error('[PERSISTED_DEVICES] Bootstrap failed:', err);
-  });
+  bootstrapPersistedDevices()
+    .then(() => {
+      const milesightSettings = loadMilesightSettings();
+      milesightHeartbeat.startHeartbeatMonitor(milesightSettings.heartbeat);
+    })
+    .catch((err) => {
+      console.error('[PERSISTED_DEVICES] Bootstrap failed:', err);
+      // Still start heartbeat monitor even if bootstrap had issues
+      const milesightSettings = loadMilesightSettings();
+      milesightHeartbeat.startHeartbeatMonitor(milesightSettings.heartbeat);
+    });
 });

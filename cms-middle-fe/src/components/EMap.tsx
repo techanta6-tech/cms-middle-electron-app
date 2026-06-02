@@ -1,8 +1,8 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Move, Trash2, X, Upload, Image as ImageIcon, CameraOff, ChevronDown, Check } from 'lucide-react';
+import { Move, Trash2, X, Upload, Image as ImageIcon, CameraOff, ChevronDown, Check, OctagonAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../api/apiClient';
-import type { LogData } from '../types';
+import type { LogData, MqttDevice } from '../types';
 import type { GridDevice } from './AlertWall';
 
 export type EMapPin = {
@@ -94,6 +94,7 @@ const EMapPinMarker = memo(function EMapPinMarker({
   onMouseDown,
   hoveredPinId,
   setHoveredPinId,
+  isOffline,
 }: {
   pin: EMapPin;
   latestLog?: LogData;
@@ -103,6 +104,8 @@ const EMapPinMarker = memo(function EMapPinMarker({
   onMouseDown: (pinId: string, event: React.MouseEvent) => void;
   hoveredPinId: string | null;
   setHoveredPinId: (id: string | null) => void;
+  /** True when all mqtt-sensor devices in this pin are offline/disconnected */
+  isOffline?: boolean;
 }) {
   const { t } = useTranslation();
   const [alerting, setAlerting] = useState(false);
@@ -134,7 +137,11 @@ const EMapPinMarker = memo(function EMapPinMarker({
         left: `${pin.lng}%`,
         top: `${pin.lat}%`,
       }}
-      className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 transition-transform ${moving ? 'scale-110 pointer-events-none' : 'cursor-pointer hover:scale-110'}`}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 transition-all duration-300 ${
+        moving ? 'scale-110 pointer-events-none' : 'cursor-pointer hover:scale-110'
+      } ${
+        alerting ? 'opacity-100' : 'opacity-50 hover:opacity-100'
+      }`}
       onMouseDown={(e) => onMouseDown(pin.id, e)}
       onMouseEnter={() => !interactionsDisabled && setHoveredPinId(pin.id)}
       onMouseLeave={() => setHoveredPinId(null)}
@@ -144,14 +151,22 @@ const EMapPinMarker = memo(function EMapPinMarker({
         onOpenContextMenu(e, pin.id);
       }}
     >
-      {/* Blinking Pin Icon */}
+      {/* Blinking / Offline Pin Icon */}
       <div 
         className={`emap-pin relative w-5 h-5 rounded-full border-2 border-white/95 flex items-center justify-center text-white shadow-xl transition-all duration-300 ${
-          alerting ? 'bg-error scale-110' : 'bg-primary'
+          isOffline 
+            ? 'bg-[#ef4444]' 
+            : alerting 
+              ? 'bg-error scale-110' 
+              : 'bg-primary'
         }`}
       >
-        {CCTV_ICON}
-        {alerting && (
+        {isOffline ? (
+          <OctagonAlert className="w-3 h-3 stroke-[2.5]" />
+        ) : (
+          CCTV_ICON
+        )}
+        {alerting && !isOffline && (
           <div className="absolute inset-0 rounded-full bg-error animate-ping opacity-75 z-[-1]" />
         )}
       </div>
@@ -196,12 +211,14 @@ export function EMap({
   logs,
   knownDevices,
   onSaveLayout,
+  mqttDevices,
 }: {
   pins: EMapPin[];
   tileProviderId: string;
   logs: LogData[];
   knownDevices: GridDevice[];
   onSaveLayout: (pins: EMapPin[], tileProviderId?: string) => void;
+  mqttDevices?: MqttDevice[];
 }) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -418,6 +435,23 @@ export function EMap({
           const displayPin = isMovingThis && movingPinPos 
             ? { ...pin, lat: movingPinPos.lat, lng: movingPinPos.lng }
             : pin;
+
+          // Determine offline status for this pin:
+          // A pin is "offline" if it has mqtt-sensor devices AND all of them are offline/disconnected.
+          const mqttSensorDevices = pin.devices.filter(d => d.device_type === 'mqtt-sensor');
+          const isOffline = mqttSensorDevices.length > 0 && mqttSensorDevices.every(d => {
+            if (!mqttDevices || mqttDevices.length === 0) return false;
+            const mqttDev = mqttDevices.find(m =>
+              m.id === d.mqtt_device_id ||
+              m.deviceInfo?.devEui === d.device_ip
+            );
+            if (!mqttDev) return false;
+            // If MQTT client is connected, use heartbeat connectionStatus
+            if (mqttDev.status === 'connected') return mqttDev.connectionStatus === 'offline';
+            // Otherwise (disconnected / error / connecting) → treat as offline
+            return true;
+          });
+
           return (
           <EMapPinMarker
             key={`${pin.id}-${isMovingThis ? 'moving' : 'fixed'}`}
@@ -429,6 +463,7 @@ export function EMap({
             onMouseDown={handlePinMouseDown}
             hoveredPinId={hoveredPinId}
             setHoveredPinId={setHoveredPinId}
+            isOffline={isOffline}
           />
         )})}
       </div>
