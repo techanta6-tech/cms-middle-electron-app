@@ -89,6 +89,8 @@ export interface Sunell_LogPayload {
   [key: string]: any;
 }
 
+
+
 export interface LogData {
   id?: string;
   receive_time: number;

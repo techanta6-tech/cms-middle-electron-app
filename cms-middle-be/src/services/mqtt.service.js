@@ -6,6 +6,7 @@ const milesightEventRegistry = require('./milesightEventRegistry.service');
 const { appendLog } = require('./system-state.service');
 const persistedDevices = require('./persisted-devices.service');
 const milesightHeartbeat = require('./milesight-heartbeat.service');
+const signalQualityService = require('./signalQualityMilesight.service');
 
 const mqttClients = new Map();
 
@@ -126,6 +127,17 @@ function connectMqttDevice(deviceConfig, options = {}) {
         entry.lastSeen = new Date().toISOString();
         // Mark device as online in heartbeat monitor on every received message
         milesightHeartbeat.markDeviceOnline(id);
+
+        let rssi = null;
+        let sf = null;
+        if (parsedBody.rxInfo && parsedBody.rxInfo.length > 0) {
+          rssi = parsedBody.rxInfo[0].rssi;
+        }
+        if (parsedBody.txInfo && parsedBody.txInfo.modulation && parsedBody.txInfo.modulation.lora) {
+          sf = parsedBody.txInfo.modulation.lora.spreadingFactor;
+        }
+        signalQualityService.processIncomingLog(entry.deviceInfo?.devEui || deviceInfo.devEui, rssi, sf, entry);
+
         upsertMqttDevice(entry);
 
         const milesightEvents = payload?.object?.events;

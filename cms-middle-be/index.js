@@ -35,6 +35,7 @@ const { bootstrapPersistedDevices, getFilePath: getPersistedDevicesPath } = requ
 const trafficService = require('./src/services/traffic.service');
 const eventGroupService = require('./src/services/eventGroup.service');
 const milesightHeartbeat = require('./src/services/milesight-heartbeat.service');
+const signalQualityService = require('./src/services/signalQualityMilesight.service');
 
 const fs = require('fs');
 
@@ -139,11 +140,13 @@ httpServer.listen(port, '0.0.0.0', () => {
     .then(() => {
       const milesightSettings = loadMilesightSettings();
       milesightHeartbeat.startHeartbeatMonitor(milesightSettings.heartbeat);
+      signalQualityService.startCron();
     })
     .catch((err) => {
       console.error('[PERSISTED_DEVICES] Bootstrap failed:', err);
       // Still start heartbeat monitor even if bootstrap had issues
       const milesightSettings = loadMilesightSettings();
       milesightHeartbeat.startHeartbeatMonitor(milesightSettings.heartbeat);
+      signalQualityService.startCron();
     });
 });
