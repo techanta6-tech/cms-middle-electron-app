@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Move, Trash2, X, Upload, Image as ImageIcon, CameraOff, ChevronDown, Check, OctagonAlert } from 'lucide-react';
+import { Move, Trash2, X, Upload, Image as ImageIcon, ChevronDown, Check, OctagonAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../api/apiClient';
 import type { LogData, MqttDevice } from '../types';
@@ -77,11 +77,11 @@ function isKnownDevice(device: GridDevice, knownDevices: GridDevice[]) {
 
 const CCTV_ICON = (
   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-    <path d="M16.75 12h3.632a1 1 0 0 1 .894 1.447l-2.034 4.069a1 1 0 0 1-1.708.134l-2.124-2.97"/>
-    <path d="M17.106 9.053a1 1 0 0 1 .447 1.341l-3.106 6.211a1 1 0 0 1-1.342.447L3.61 12.3a2.92 2.92 0 0 1-1.3-3.91L3.69 5.6a2.92 2.92 0 0 1 3.92-1.3z"/>
-    <path d="M2 19h3.76a2 2 0 0 0 1.8-1.1L9 15"/>
-    <path d="M2 21v-4"/>
-    <path d="M7 9h.01"/>
+    <path d="M16.75 12h3.632a1 1 0 0 1 .894 1.447l-2.034 4.069a1 1 0 0 1-1.708.134l-2.124-2.97" />
+    <path d="M17.106 9.053a1 1 0 0 1 .447 1.341l-3.106 6.211a1 1 0 0 1-1.342.447L3.61 12.3a2.92 2.92 0 0 1-1.3-3.91L3.69 5.6a2.92 2.92 0 0 1 3.92-1.3z" />
+    <path d="M2 19h3.76a2 2 0 0 0 1.8-1.1L9 15" />
+    <path d="M2 21v-4" />
+    <path d="M7 9h.01" />
   </svg>
 );
 
@@ -95,6 +95,7 @@ const EMapPinMarker = memo(function EMapPinMarker({
   hoveredPinId,
   setHoveredPinId,
   isOffline,
+  offlineDeviceNames = [],
 }: {
   pin: EMapPin;
   latestLog?: LogData;
@@ -106,18 +107,24 @@ const EMapPinMarker = memo(function EMapPinMarker({
   setHoveredPinId: (id: string | null) => void;
   /** True when all mqtt-sensor devices in this pin are offline/disconnected */
   isOffline?: boolean;
+  /** Names of offline devices for display in tooltip */
+  offlineDeviceNames?: string[];
 }) {
   const { t } = useTranslation();
   const [alerting, setAlerting] = useState(false);
+  // Track previous log ref: initialize with current value so remount doesn't trigger alert
+  const prevLogRef = useRef(latestLog);
 
   useEffect(() => {
+    // Only alert when log genuinely changes, not on initial mount or tab-switch remount
+    if (latestLog === prevLogRef.current) return;
+    prevLogRef.current = latestLog;
     if (!latestLog) return;
     setAlerting(true);
     const timer = window.setTimeout(() => setAlerting(false), 5000);
     return () => window.clearTimeout(timer);
   }, [latestLog]);
 
-  const snapshot = latestLog?.snapshot;
   const descKey = latestLog?.log_description?.toLowerCase().replace(/ /g, '_').replace(/\./g, '').replace(/-/g, '_');
   let description = t('app.emap.waiting_event');
   if (descKey) {
@@ -134,14 +141,13 @@ const EMapPinMarker = memo(function EMapPinMarker({
   return (
     <div
       style={{
+
         left: `${pin.lng}%`,
         top: `${pin.lat}%`,
       }}
-      className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 transition-all duration-300 ${
-        moving ? 'scale-110 pointer-events-none' : 'cursor-pointer hover:scale-110'
-      } ${
-        alerting ? 'opacity-100' : 'opacity-50 hover:opacity-100'
-      }`}
+      className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 transition-all duration-300 ${moving ? 'scale-110 pointer-events-none' : 'cursor-pointer hover:scale-110'
+        } ${alerting ? 'opacity-100' : 'opacity-50 hover:opacity-100'
+        }`}
       onMouseDown={(e) => onMouseDown(pin.id, e)}
       onMouseEnter={() => !interactionsDisabled && setHoveredPinId(pin.id)}
       onMouseLeave={() => setHoveredPinId(null)}
@@ -152,14 +158,13 @@ const EMapPinMarker = memo(function EMapPinMarker({
       }}
     >
       {/* Blinking / Offline Pin Icon */}
-      <div 
-        className={`emap-pin relative w-5 h-5 rounded-full border-2 border-white/95 flex items-center justify-center text-white shadow-xl transition-all duration-300 ${
-          isOffline 
-            ? 'bg-[#ef4444]' 
-            : alerting 
-              ? 'bg-error scale-110' 
-              : 'bg-primary'
-        }`}
+      <div
+        className={`emap-pin relative w-7 h-7 rounded-full border-2 border-white/95 flex items-center justify-center text-white shadow-xl transition-all duration-300 ${isOffline
+          ? 'bg-[#ef4444]'
+          : alerting
+            ? 'bg-error scale-110'
+            : 'bg-primary'
+          }`}
       >
         {isOffline ? (
           <OctagonAlert className="w-3 h-3 stroke-[2.5]" />
@@ -171,36 +176,59 @@ const EMapPinMarker = memo(function EMapPinMarker({
         )}
       </div>
 
-      {/* Glassmorphic native React popup tooltip on hover */}
+      {/* Stacked tooltip container: offline warning (top) + event dialog (bottom) */}
       {isHovered && (
-        <div 
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-[999] pointer-events-none w-[260px] bg-surface-container-high/95 backdrop-blur-xl border border-outline-variant/30 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-          onMouseEnter={(e) => e.stopPropagation()}
-        >
-          <div className="h-[130px] bg-black/40 flex items-center justify-center overflow-hidden border-b border-outline-variant/10">
-            {snapshot ? (
-              <img
-                src={snapshot.startsWith('data:image') ? snapshot : `data:image/jpeg;base64,${snapshot}`}
-                className="w-full h-full object-cover"
-                alt={pin.label}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center opacity-30 gap-1.5">
-                <CameraOff className="w-6 h-6 text-on-surface" />
-                <span className="text-[8px] uppercase tracking-widest font-bold">{t('app.alert_wall.waiting_data', 'Chờ dữ liệu...')}</span>
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-[999] pointer-events-none flex flex-col gap-1.5 items-center animate-in fade-in zoom-in-95 duration-200">
+          {/* Offline warning dialog - sits on top */}
+          {offlineDeviceNames.length > 0 && (
+            <div className="w-[260px] bg-[#1a0a0a]/95 backdrop-blur-xl border border-[#ef4444]/40 rounded-xl shadow-2xl overflow-hidden">
+              <div className="px-3 py-2 flex flex-col gap-0.5">
+                {offlineDeviceNames.map((name, i) => (
+                  <div key={i} className="leading-[1.3]">
+                    <span className="text-[11px] font-bold text-[#ef4444]">
+                      Thiết bị &apos;{name}&apos; mất tín hiệu
+                    </span>
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
-          <div className="p-2.5 flex flex-col gap-1 bg-surface-container-lowest/80">
-            <div className="text-[10px] font-black uppercase tracking-widest text-primary truncate">{pin.label}</div>
-            <div className="text-[10px] leading-tight text-on-surface line-clamp-2">{description}</div>
-            <div className="text-[8px] font-mono text-on-surface-variant/60 mt-1 flex items-center justify-between">
-              <span>{latestLog ? new Date(logTime(latestLog)).toLocaleTimeString() : `${pin.devices.length} thiết bị`}</span>
-              {latestLog && <span>{new Date(logTime(latestLog)).toLocaleDateString()}</span>}
+            </div>
+          )}
+
+          {/* Event info dialog - sits on bottom */}
+          <div className="w-[260px] bg-surface-container-high/95 backdrop-blur-xl border border-outline-variant/30 rounded-xl shadow-2xl overflow-hidden">
+            <div className="px-3 py-2.5 flex flex-col gap-1 bg-surface-container-lowest/80">
+              <div className="text-[11px] font-black uppercase tracking-widest text-primary truncate leading-none">{pin.label}</div>
+              <div className="text-[11px] leading-[1.35] text-on-surface line-clamp-2">{description}</div>
+              <div className="text-[9px] font-mono text-on-surface-variant/60 flex items-center justify-between mt-0.5">
+                <div className="flex gap-1.5">
+                  {latestLog ? (
+                    <span>
+                      {new Date(logTime(latestLog)).toLocaleTimeString()} {new Date(logTime(latestLog)).toLocaleDateString()}
+                    </span>
+                  ) : (
+                    <span>{pin.devices.length} thiết bị</span>
+                  )}
+                </div>
+                {latestLog?.raw?.signalQuality && (
+                  <span
+                    className={`px-1.5 py-0.5 rounded font-bold tracking-widest uppercase border ${latestLog.raw.signalQuality.level === 'STRONG' ? 'text-secondary bg-secondary/10 border-secondary/20' :
+                      latestLog.raw.signalQuality.level === 'MEDIUM' ? 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20' :
+                        latestLog.raw.signalQuality.level === 'WEAK' ? 'text-amber-400 bg-amber-400/10 border-amber-400/20' :
+                          latestLog.raw.signalQuality.level === 'ABNORMAL' ? 'text-tertiary bg-tertiary/10 border-tertiary/20' :
+                            'text-on-surface-variant bg-surface-container border-outline-variant/20'
+                      }`}
+                    title={latestLog.raw.signalQuality.reason}
+                  >
+                    SIGNAL: {latestLog.raw.signalQuality.level}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
+
+
     </div>
   );
 });
@@ -227,7 +255,7 @@ export function EMap({
 
   const [bgTimestamp, setBgTimestamp] = useState<number>(Date.now());
   const [movingPinId, setMovingPinId] = useState<string | null>(null);
-  const [movingPinPos, setMovingPinPos] = useState<{lat: number, lng: number} | null>(null);
+  const [movingPinPos, setMovingPinPos] = useState<{ lat: number, lng: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; pinId: string } | null>(null);
   const [latestLogsByPin, setLatestLogsByPin] = useState<Record<string, LogData | undefined>>({});
   const [hoveredPinId, setHoveredPinId] = useState<string | null>(null);
@@ -395,9 +423,8 @@ export function EMap({
   return (
     <div
       ref={containerRef}
-      className={`relative h-full w-full overflow-hidden bg-slate-950/40 select-none flex items-center justify-center ${
-        movingPinId ? 'cursor-grabbing' : 'cursor-default'
-      }`}
+      className={`relative h-full w-full overflow-hidden bg-slate-950/40 select-none flex items-center justify-center ${movingPinId ? 'cursor-grabbing' : 'cursor-default'
+        }`}
       onDragOver={(event) => event.preventDefault()}
       onDrop={handleDrop}
       onMouseMove={handleContainerMouseMove}
@@ -411,7 +438,7 @@ export function EMap({
       }}
     >
       {/* Sơ đồ Nền Inner Contain Wrapper */}
-      <div 
+      <div
         ref={innerRef}
         className="relative max-w-full max-h-full flex items-center justify-center"
       >
@@ -432,40 +459,42 @@ export function EMap({
         {/* Render Camera/Device Pins placed exactly relative to the sơ đồ image boundaries */}
         {visiblePins.map(pin => {
           const isMovingThis = movingPinId === pin.id;
-          const displayPin = isMovingThis && movingPinPos 
+          const displayPin = isMovingThis && movingPinPos
             ? { ...pin, lat: movingPinPos.lat, lng: movingPinPos.lng }
             : pin;
 
-          // Determine offline status for this pin:
-          // A pin is "offline" if it has mqtt-sensor devices AND all of them are offline/disconnected.
+          // Determine offline status and collect offline device names
           const mqttSensorDevices = pin.devices.filter(d => d.device_type === 'mqtt-sensor');
-          const isOffline = mqttSensorDevices.length > 0 && mqttSensorDevices.every(d => {
-            if (!mqttDevices || mqttDevices.length === 0) return false;
+          const offlineDeviceNames: string[] = [];
+          mqttSensorDevices.forEach(d => {
+            if (!mqttDevices || mqttDevices.length === 0) return;
             const mqttDev = mqttDevices.find(m =>
               m.id === d.mqtt_device_id ||
               m.deviceInfo?.devEui === d.device_ip
             );
-            if (!mqttDev) return false;
-            // If MQTT client is connected, use heartbeat connectionStatus
-            if (mqttDev.status === 'connected') return mqttDev.connectionStatus === 'offline';
-            // Otherwise (disconnected / error / connecting) → treat as offline
-            return true;
+            if (mqttDev && mqttDev.connectionStatus === 'offline') {
+              const name = mqttDev.deviceNickname || mqttDev.deviceInfo?.deviceName || d.device_name || mqttDev.id;
+              offlineDeviceNames.push(name);
+            }
           });
+          const isOffline = mqttSensorDevices.length > 0 && offlineDeviceNames.length === mqttSensorDevices.length;
 
           return (
-          <EMapPinMarker
-            key={`${pin.id}-${isMovingThis ? 'moving' : 'fixed'}`}
-            pin={displayPin}
-            latestLog={latestLogsByPin[pin.id]}
-            moving={isMovingThis}
-            interactionsDisabled={!!contextMenu || !!movingPinId}
-            onOpenContextMenu={handleOpenContextMenu}
-            onMouseDown={handlePinMouseDown}
-            hoveredPinId={hoveredPinId}
-            setHoveredPinId={setHoveredPinId}
-            isOffline={isOffline}
-          />
-        )})}
+            <EMapPinMarker
+              key={`${pin.id}-${isMovingThis ? 'moving' : 'fixed'}`}
+              pin={displayPin}
+              latestLog={latestLogsByPin[pin.id]}
+              moving={isMovingThis}
+              interactionsDisabled={!!contextMenu || !!movingPinId}
+              onOpenContextMenu={handleOpenContextMenu}
+              onMouseDown={handlePinMouseDown}
+              hoveredPinId={hoveredPinId}
+              setHoveredPinId={setHoveredPinId}
+              isOffline={isOffline}
+              offlineDeviceNames={offlineDeviceNames}
+            />
+          )
+        })}
       </div>
 
       {/* Floating interactive context menu */}
@@ -509,9 +538,8 @@ export function EMap({
       <div className="absolute bottom-4 right-4 opacity-30 hover:opacity-100 transition-all duration-300 z-30 flex flex-col gap-2">
         <button
           onClick={() => !uploading && fileInputRef.current?.click()}
-          className={`p-2.5 text-on-surface hover:text-white border border-outline-variant/30 rounded-full shadow-lg transition-all duration-300 group backdrop-blur-md cursor-pointer ${
-            uploading ? 'bg-surface-container-high/50' : 'bg-surface-container-high/90 hover:bg-primary/95'
-          }`}
+          className={`p-2.5 text-on-surface hover:text-white border border-outline-variant/30 rounded-full shadow-lg transition-all duration-300 group backdrop-blur-md cursor-pointer ${uploading ? 'bg-surface-container-high/50' : 'bg-surface-container-high/90 hover:bg-primary/95'
+            }`}
           title="Tải ảnh sơ đồ nền mới"
           disabled={uploading}
         >

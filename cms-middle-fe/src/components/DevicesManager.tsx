@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ServerData, DeviceData, MqttServerConfig, MQTT_Milesight_LogEntry, MqttDeviceConfig, DeviceCameraLink, MqttGroup, MqttDevice } from '../types';
 import type { SvmsKnownEvent } from '../hooks/useSocketManager';
@@ -79,7 +79,7 @@ export function DevicesManager({
   const toggleGroup = (key: string) =>
     setExpandedGroups(p => ({ ...p, [key]: !p[key] }));
   const toggleServer = (key: string) =>
-    setExpandedServers(p => ({ ...p, [key]: !p[key] }));
+    setExpandedServers(p => ({ ...p, [key]: p[key] === false ? true : false }));
 
   const mqttDevicesByGroup = useMemo(() => {
     const map: Record<string, MqttDevice[]> = {};
@@ -326,13 +326,12 @@ export function DevicesManager({
             <div className="flex flex-col gap-0.5 ml-2 border-l-2 border-amber-400/10 pl-2">
               {mqttGroups.length === 0 && <EmptyHint text={t('app.devices.no_lora')} />}
               {mqttGroups.map(group => {
-                const expanded = !!expandedServers[`mqtt-group-${group.id}`];
+                const expanded = expandedServers[`mqtt-group-${group.id}`] !== false;
                 const mqttDevs = mqttDevicesByGroup[group.id] || [];
                 return (
                   <div className='flex flex-col gap-1' key={group.id}>
                     <TreeItem
                       label={group.name}
-                      sublabel={group.id}
                       hasChildren={mqttDevs.length > 0}
                       expanded={expanded}
                       onToggle={() => toggleServer(`mqtt-group-${group.id}`)}
@@ -342,27 +341,41 @@ export function DevicesManager({
                       onDelete={() => handleDeleteMqttGroup(group.id)}
                     />
                     {expanded && mqttDevs.map(d => {
-                      // Derive dot status: when MQTT client is connected, show heartbeat online/offline.
-                      // When not yet tracked (no connectionStatus) keep showing 'connected' dot.
-                      let dotStatus: string;
+                      // Derive icon color from connection status
+                      let iconColor: string;
                       if (d.status === 'connected') {
-                        dotStatus = d.connectionStatus === 'offline' ? 'disconnected'
-                          : d.connectionStatus === 'online' ? 'connected'
-                          : 'connected'; // default: treat as online until first check
+                        iconColor = d.connectionStatus === 'offline'
+                          ? 'text-red-400'
+                          : 'text-secondary';
+                      } else if (d.status === 'error') {
+                        iconColor = 'text-red-500';
+                      } else if (d.status === 'connecting') {
+                        iconColor = 'text-amber-400';
                       } else {
-                        dotStatus = d.status === 'error' ? 'disconnected' : (d.status ?? 'disconnected');
+                        iconColor = 'text-on-surface-variant/40';
                       }
+
+                      // Battery/power sublabel
+                      const isDisconnected = d.status !== 'connected' || d.connectionStatus === 'offline';
+                      const batteryLabel = isDisconnected
+                        ? 'Mất kết nối'
+                        : typeof d.batteryLevel === 'number'
+                          ? `Pin còn lại: ${d.batteryLevel}%`
+                          : 'Nguồn điện trực tiếp';
+
                       return (
                         <TreeItem key={d.id}
-                          label={d.deviceNickname || d.deviceInfo?.deviceNickname || d.deviceInfo?.deviceName || 'MQTT Device'} sublabel={d.topic} indent
-                          icon={<MonitorSmartphone className="w-3 h-3 text-on-surface-variant/60" />}
+                          label={d.deviceNickname || d.deviceInfo?.deviceNickname || d.deviceInfo?.deviceName || 'MQTT Device'}
+                          sublabel={batteryLabel}
+                          indent
+                          icon={<MonitorSmartphone className={`w-3 h-3 ${iconColor}`} />}
                           onClick={() => setSelected({ kind: 'mqtt-device', data: d, group })}
                           isSelected={selected?.kind === 'mqtt-device' && (selected.data as MqttDevice).id === d.id}
-                          status={dotStatus}
                           onDelete={() => handleDeleteMqttDevice(d.id)}
                         />
                       );
                     })}
+
                   </div>
                 );
               })}
@@ -407,6 +420,7 @@ export function DevicesManager({
               onClose={() => setSelected(null)}
               cameraDevices={cameraDevices}
               mqttServers={mqttServers}
+              mqttDevices={mqttDevices}
               deviceCameraLinks={deviceCameraLinks}
               onLinkDeviceCamera={onLinkDeviceCamera}
               onLinkMqttServerCamera={onLinkMqttServerCamera}
@@ -540,11 +554,12 @@ function EmptyHint({ text }: { text: string }) {
 }
 
 // ── Detail Panel ─────────────────────────────────────────────────────────────
-function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera, onUpdateMqttGroup, svmsDeviceFeatures, svmsKnownEvents, milesightKnownEvents, sunellKnownEvents, onEdit }: {
+function DetailPanel({ item, onClose, cameraDevices, mqttServers, mqttDevices, deviceCameraLinks, onLinkDeviceCamera, onLinkMqttServerCamera, onUpdateMqttGroup, svmsDeviceFeatures, svmsKnownEvents, milesightKnownEvents, sunellKnownEvents, onEdit }: {
   item: SelectedItemType;
   onClose: () => void;
   cameraDevices: MqttDeviceConfig[];
   mqttServers: MqttServerConfig[];
+  mqttDevices: MqttDevice[];
   deviceCameraLinks: DeviceCameraLink[];
   onLinkDeviceCamera: (devEui: string, mqttServerId: string, cameraId: string | null, mqttDeviceId?: string, groupId?: string) => void;
   onLinkMqttServerCamera: (serverId: string, cameraId: string | null) => void;
@@ -573,6 +588,10 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
     ? cameraDevices.find(c => c.id === item.data.id) || item.data
     : null;
 
+  const latestMqttDev = item.kind === 'mqtt-device'
+    ? mqttDevices.find(d => d.id === item.data.id) || item.data
+    : null;
+
   return (
     <div className="animate-in fade-in duration-300">
       {/* Content */}
@@ -580,7 +599,7 @@ function DetailPanel({ item, onClose, cameraDevices, mqttServers, deviceCameraLi
       {item.kind === 'i3ai-server' && <I3AiServerDetail srv={item.data} onEdit={() => onEdit?.(item)} />}
       {item.kind === 'svms-device' && <SvmsDeviceDetail dev={item.data} srv={item.server} svmsDeviceFeatures={svmsDeviceFeatures} svmsKnownEvents={svmsKnownEvents} />}
       {item.kind === 'mqtt-group' && <MqttGroupDetail group={item.data} devices={item.mqttDevices} allCameras={cameraDevices} onUpdateMqttGroup={onUpdateMqttGroup} onEdit={() => onEdit?.(item)} />}
-      {item.kind === 'mqtt-device' && <MqttDeviceDetail dev={item.data} group={item.group} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} milesightKnownEvents={milesightKnownEvents} />}
+      {item.kind === 'mqtt-device' && latestMqttDev && <MqttDeviceDetail dev={latestMqttDev} group={item.group} allCameras={cameraDevices} deviceCameraLinks={deviceCameraLinks} onLinkDeviceCamera={onLinkDeviceCamera} milesightKnownEvents={milesightKnownEvents} />}
       {item.kind === 'camera' && latestCam && <CameraDetail cam={latestCam} sunellKnownEvents={sunellKnownEvents} onEdit={() => onEdit?.(item)} />}
     </div>
   );
@@ -883,6 +902,50 @@ function MqttDeviceDetail({ dev, group, allCameras, deviceCameraLinks, onLinkDev
   const [dragOverCatId, setDragOverCatId] = useState<string | null>(null);
   const [showEventList, setShowEventList] = useState(true);
 
+  const [packetLossX, setPacketLossX] = useState<string>(dev.packetLossConfig?.x?.toString() || '');
+  const [packetLossY, setPacketLossY] = useState<string>(dev.packetLossConfig?.y?.toString() || '');
+  const [countTimeOut, setCountTimeOut] = useState<string>(dev.packetLossConfig?.countTimeOut?.toString() || '');
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [defaultConfig, setDefaultConfig] = useState<{ x: number, y: number, countTimeOut: number } | null>(null);
+
+  useEffect(() => {
+    apiClient.get('/api/v1/mqtt-devices/packet-loss-config')
+      .then(res => {
+        if (res.data?.success && res.data.config) {
+          setDefaultConfig(res.data.config);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    setPacketLossX(dev.packetLossConfig?.x?.toString() || '');
+    setPacketLossY(dev.packetLossConfig?.y?.toString() || '');
+    setCountTimeOut(dev.packetLossConfig?.countTimeOut?.toString() || '');
+  }, [dev.id, dev.packetLossConfig?.x, dev.packetLossConfig?.y, dev.packetLossConfig?.countTimeOut]);
+
+  const handleSavePacketLossConfig = async () => {
+    const x = packetLossX ? parseInt(packetLossX, 10) : undefined;
+    const y = packetLossY ? parseInt(packetLossY, 10) : undefined;
+    const ct = countTimeOut ? parseInt(countTimeOut, 10) : undefined;
+    let packetLossConfig: { x?: number, y?: number, countTimeOut?: number } | null = null;
+    if ((x !== undefined && !isNaN(x)) || (y !== undefined && !isNaN(y)) || (ct !== undefined && !isNaN(ct))) {
+      packetLossConfig = {};
+      if (x !== undefined && !isNaN(x)) packetLossConfig.x = x;
+      if (y !== undefined && !isNaN(y)) packetLossConfig.y = y;
+      if (ct !== undefined && !isNaN(ct)) packetLossConfig.countTimeOut = ct;
+    }
+
+    setIsSavingConfig(true);
+    try {
+      await apiClient.patch(`/api/v1/mqtt-devices/${dev.id}`, { packetLossConfig });
+    } catch (err) {
+      console.error('Update config error:', err);
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
   const MILESIGHT_EVENTS = milesightKnownEvents.map(evt => {
     const i18nKey = `app.logtype.${evt.event_description || evt.event_type}`;
     const i18nLabel = t(i18nKey);
@@ -951,19 +1014,79 @@ function MqttDeviceDetail({ dev, group, allCameras, deviceCameraLinks, onLinkDev
         {dev.deviceNickname || deviceInfo.deviceNickname ? `${dev.deviceNickname || deviceInfo.deviceNickname} (${deviceInfo.deviceName || 'MQTT Device'})` : (deviceInfo.deviceName || 'MQTT Device')}
       </h3>
       {dev.status === 'connected' && (
-        <div className="mb-1">
-          <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${
-            dev.connectionStatus === 'offline'
-              ? 'text-tertiary bg-tertiary/10 border-tertiary/20'
-              : 'text-secondary bg-secondary/10 border-secondary/20'
-          }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${
-              dev.connectionStatus === 'offline' ? 'bg-tertiary animate-pulse' : 'bg-secondary'
-            }`} />
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${dev.connectionStatus === 'offline'
+            ? 'text-tertiary bg-tertiary/10 border-tertiary/20'
+            : 'text-secondary bg-secondary/10 border-secondary/20'
+            }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${dev.connectionStatus === 'offline' ? 'bg-tertiary animate-pulse' : 'bg-secondary'
+              }`} />
             {dev.connectionStatus === 'offline' ? 'OFFLINE' : 'ONLINE'}
           </span>
+
+          {typeof dev.packetLoss === 'number' && (
+            <div className="relative group flex items-center">
+              <span
+                className="cursor-help inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border text-green-400 bg-green-400/10 border-green-400/20"
+              >
+                LOSS: {Math.round(dev.packetLoss)}%
+              </span>
+              {dev.packetLossHistory && (
+                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap bg-surface-container-high text-on-surface text-[10px] px-2.5 py-1.5 rounded border border-outline-variant/20 shadow-xl font-mono tracking-widest font-bold">
+                  ({dev.packetLossHistory})
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       )}
+
+      <div className="mb-2 p-3 bg-surface-container/20 border border-outline-variant/10 rounded-md">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Cài đặt sức khỏe kết nối</span>
+          <button
+            onClick={handleSavePacketLossConfig}
+            disabled={isSavingConfig}
+            className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border border-cyan-500/20 rounded transition-colors disabled:opacity-50"
+          >
+            {isSavingConfig ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+        <div className="flex gap-3">
+          <label className="flex-1 flex flex-col gap-1">
+            <span className="text-[9px] font-medium text-on-surface-variant/70">Thời gian giữa những lần kiểm tra (giây)</span>
+            <input
+              type="number"
+              value={packetLossX}
+              onChange={(e) => setPacketLossX(e.target.value)}
+              placeholder={defaultConfig ? `Mặc định: ${defaultConfig.x}` : "e.g. 60"}
+              className="w-full bg-surface-container border border-outline-variant/20 focus:border-cyan-500/50 rounded px-2 py-1.5 text-[11px] text-on-surface outline-none"
+            />
+          </label>
+          <label className="flex-1 flex flex-col gap-1">
+            <span className="text-[9px] font-medium text-on-surface-variant/70">Số lần kiểm tra tối thiểu</span>
+            <input
+              type="number"
+              value={packetLossY}
+              onChange={(e) => setPacketLossY(e.target.value)}
+              placeholder={defaultConfig ? `Mặc định: ${defaultConfig.y}` : "e.g. 5"}
+              className="w-full bg-surface-container border border-outline-variant/20 focus:border-cyan-500/50 rounded px-2 py-1.5 text-[11px] text-on-surface outline-none"
+            />
+          </label>
+          <label className="flex-1 flex flex-col gap-1">
+            <span className="text-[9px] font-medium text-on-surface-variant/70" title="Số lần mất tín hiệu liên tiếp để báo offline">Số lần mất tín hiệu tối đa</span>
+            <input
+              type="number"
+              value={countTimeOut}
+              onChange={(e) => setCountTimeOut(e.target.value)}
+              placeholder={defaultConfig ? `Mặc định: ${defaultConfig.countTimeOut ?? 3}` : "e.g. 3"}
+              className="w-full bg-surface-container border border-outline-variant/20 focus:border-cyan-500/50 rounded px-2 py-1.5 text-[11px] text-on-surface outline-none"
+            />
+          </label>
+        </div>
+      </div>
+
       <InfoRow label={t('app.monitor.dev_eui')} value={devEui} mono />
       <InfoRow label={t('app.monitor.profile')} value={deviceInfo.deviceProfileName || ''} />
       <InfoRow label={t('app.monitor.alarm_count')} value={dev.logCount || 0} />

@@ -5,7 +5,6 @@ const { normalizeFeature } = require('../helpers/featureNormalizer');
 const milesightEventRegistry = require('./milesightEventRegistry.service');
 const { appendLog } = require('./system-state.service');
 const persistedDevices = require('./persisted-devices.service');
-const milesightHeartbeat = require('./milesight-heartbeat.service');
 const signalQualityService = require('./signalQualityMilesight.service');
 
 const mqttClients = new Map();
@@ -40,6 +39,9 @@ function normalizeDeviceInfo(deviceInfo = {}, fallbackTopic = '') {
 
 function ensureDeviceEntry(deviceConfig) {
   const id = deviceConfig.id || makeId();
+  const idx = mqttDeviceList.findIndex(d => d.id === id);
+  const existing = idx !== -1 ? mqttDeviceList[idx] : null;
+
   const entry = {
     id,
     groupId: deviceConfig.groupId,
@@ -49,19 +51,22 @@ function ensureDeviceEntry(deviceConfig) {
     brokerPort: String(deviceConfig.brokerPort || '').trim(),
     protocol: deviceConfig.protocol || 'mqtt',
     status: deviceConfig.status || 'connecting',
-    cameraId: deviceConfig.cameraId || null,
-    features: deviceConfig.features || {},
+    // Preserve config fields from existing entry if not explicitly provided
+    cameraId: deviceConfig.cameraId !== undefined ? (deviceConfig.cameraId || null) : (existing?.cameraId || null),
+    features: deviceConfig.features || existing?.features || {},
+    packetLossConfig: deviceConfig.packetLossConfig !== undefined ? deviceConfig.packetLossConfig : existing?.packetLossConfig,
     lastSeen: deviceConfig.lastSeen || new Date().toISOString(),
-    deviceNickname: deviceConfig.deviceNickname || deviceConfig.name || undefined,
+    deviceNickname: deviceConfig.deviceNickname || deviceConfig.name || existing?.deviceNickname || undefined,
+    // Preserve batteryLevel from existing if not explicitly provided
+    batteryLevel: deviceConfig.batteryLevel !== undefined ? deviceConfig.batteryLevel : existing?.batteryLevel,
   };
 
   if (entry.deviceNickname && entry.deviceInfo) {
     entry.deviceInfo.deviceNickname = entry.deviceNickname;
   }
 
-  const idx = mqttDeviceList.findIndex(d => d.id === id);
   if (idx === -1) mqttDeviceList.push(entry);
-  else mqttDeviceList[idx] = { ...mqttDeviceList[idx], ...entry };
+  else mqttDeviceList[idx] = { ...existing, ...entry };
   return entry;
 }
 
@@ -126,22 +131,36 @@ function connectMqttDevice(deviceConfig, options = {}) {
         entry.topic = msgTopic || entry.topic;
         entry.lastSeen = new Date().toISOString();
         // Mark device as online in heartbeat monitor on every received message
-        milesightHeartbeat.markDeviceOnline(id);
+        const wasOffline = entry.connectionStatus === 'offline';
+        signalQualityService.markDeviceOnline(id);
 
         let rssi = null;
         let sf = null;
-        if (parsedBody.rxInfo && parsedBody.rxInfo.length > 0) {
-          rssi = parsedBody.rxInfo[0].rssi;
+        // rxInfo/txInfo có thể ở top-level (parsedBody) hoặc bên trong payload - fallback cả 2
+        const rxInfoArray = parsedBody.rxInfo || payload?.rxInfo;
+        const txInfoObj = parsedBody.txInfo || payload?.txInfo;
+        if (rxInfoArray && rxInfoArray.length > 0) {
+          rssi = rxInfoArray[0].rssi;
         }
-        if (parsedBody.txInfo && parsedBody.txInfo.modulation && parsedBody.txInfo.modulation.lora) {
-          sf = parsedBody.txInfo.modulation.lora.spreadingFactor;
+        if (txInfoObj?.modulation?.lora) {
+          sf = txInfoObj.modulation.lora.spreadingFactor;
         }
-        signalQualityService.processIncomingLog(entry.deviceInfo?.devEui || deviceInfo.devEui, rssi, sf, entry);
+        const signalResult = signalQualityService.processIncomingLog(entry.deviceInfo?.devEui || deviceInfo.devEui, rssi, sf);
+        if (signalResult) entry.signalQuality = signalResult;
+
+        // Extract battery level BEFORE upsert so it's persisted in mqttDeviceList
+        const objectData = payload?.object;
+        if (objectData && typeof objectData.battery === 'number') {
+          entry.batteryLevel = objectData.battery;
+        }
 
         upsertMqttDevice(entry);
 
-        const milesightEvents = payload?.object?.events;
-        const buttonEvent = payload?.object?.button_event;
+        // If device just came back online, immediately emit state to FE
+        if (wasOffline) _emitMqttStateUpdate();
+
+        const milesightEvents = objectData?.events;
+        const buttonEvent = objectData?.button_event;
 
         if ((!Array.isArray(milesightEvents) || milesightEvents.length === 0) && (!buttonEvent)) {
           _emitMqttStateUpdate();
@@ -206,7 +225,7 @@ function removeMqttDevice(id) {
   for (let i = deviceCameraLinks.length - 1; i >= 0; i -= 1) {
     if (deviceCameraLinks[i].mqttDeviceId === id) deviceCameraLinks.splice(i, 1);
   }
-  milesightHeartbeat.removeDevice(id);
+  signalQualityService.removeDevice(id);
   persistedDevices.removeMqttDevice(id);
   _emitMqttStateUpdate();
 }
@@ -318,7 +337,10 @@ async function _appendEventLogs(entry, parsedBody, payload, events, log_source =
       },
       server_unique_id: entry.groupId,
       mqtt_device_id: entry.id,
-      raw: isolatedPayload,
+      raw: {
+        ...isolatedPayload,
+        signalQuality: entry.signalQuality || null,
+      },
     });
   }
 }

@@ -34,7 +34,6 @@ const sunellEventRegistry = require('./src/services/sunellEventRegistry.service'
 const { bootstrapPersistedDevices, getFilePath: getPersistedDevicesPath } = require('./src/services/persisted-devices.service');
 const trafficService = require('./src/services/traffic.service');
 const eventGroupService = require('./src/services/eventGroup.service');
-const milesightHeartbeat = require('./src/services/milesight-heartbeat.service');
 const signalQualityService = require('./src/services/signalQualityMilesight.service');
 
 const fs = require('fs');
@@ -122,6 +121,22 @@ setInterval(() => {
   trafficService.saveTrafficRecords();
 }, 60 * 1000); // 1 phút
 
+// ─── Clear all logs API ───────────────────────────────────────────────────────
+app.delete('/api/v1/logs/all', (req, res) => {
+  try {
+    const { allLogs, getClientSockets } = socketState;
+    allLogs.splice(0, allLogs.length); // clear in-memory
+    _lastSavedLogCount = 0;
+    fs.writeFileSync(_allLogsFilePath, '[]', 'utf8');
+    getClientSockets().emit('clear-logs'); // broadcast to all FE clients
+    console.log('[allLogs] Cleared all logs (API + file)');
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('[allLogs] Failed to clear logs:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 httpServer.listen(port, '0.0.0.0', () => {
   console.log(`\nMIDDLE SERVER RUNNING AT: http://0.0.0.0:${port}`);
   console.log(`CLIENT SOCKET SERVER READY (PORT ${port})`);
@@ -139,14 +154,11 @@ httpServer.listen(port, '0.0.0.0', () => {
   bootstrapPersistedDevices()
     .then(() => {
       const milesightSettings = loadMilesightSettings();
-      milesightHeartbeat.startHeartbeatMonitor(milesightSettings.heartbeat);
       signalQualityService.startCron();
     })
     .catch((err) => {
       console.error('[PERSISTED_DEVICES] Bootstrap failed:', err);
-      // Still start heartbeat monitor even if bootstrap had issues
       const milesightSettings = loadMilesightSettings();
-      milesightHeartbeat.startHeartbeatMonitor(milesightSettings.heartbeat);
       signalQualityService.startCron();
     });
 });

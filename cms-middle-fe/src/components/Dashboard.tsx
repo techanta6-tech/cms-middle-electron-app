@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSocketManager } from '../hooks/useSocketManager';
 import { ConnectionsMonitor } from './ConnectionsMonitor';
 import { LogPopup } from './LogPopup';
-import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut, ChevronDown, MapPinned, Car, Tv } from 'lucide-react';
+import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut, ChevronDown, MapPinned, Car, Tv, Trash2 } from 'lucide-react';
 import { ConfigSystem } from './ConfigSystem';
 import apiClient from '../api/apiClient';
 import { LogEntry } from './LogEntry';
@@ -322,63 +322,6 @@ function LogFilter({
       </button>
       {open && (
         <div className="absolute right-3 top-[95%] z-50 bg-surface-container-high border border-outline-variant/90 shadow-lg rounded-md w-[90%] max-w-[230px] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-          {/* Groups */}
-          <div className="px-2 pt-2 pb-0.5">
-            <button
-              onClick={() => setShowServers(!showServers)}
-              className="flex items-center justify-between w-full mb-1 p-1 rounded-md transition-colors"
-            >
-              <div className="flex items-center gap-1.5">
-                <Cpu className="w-3.5 h-3.5 text-secondary" />
-                <span className="text-[12px] font-black uppercase tracking-widest text-secondary">{t('app.filter.groups') || 'NHÓM THIẾT BỊ'}</span>
-              </div>
-              <ChevronDown className={`w-3.5 h-3.5 text-secondary/50 transition-transform duration-300 ${showServers ? 'rotate-180' : ''}`} />
-            </button>
-            {showServers && (
-              groupList.length === 0 ? (
-                <p className="text-[11px] text-on-surface-variant/40 py-0.5 pl-1">{t('app.filter.no_groups') || 'Không có nhóm'}</p>
-              ) : (
-                <div className="flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-1 duration-200 cursor-pointer">
-                  <button
-                    onClick={() => {
-                      if (isAllServersChecked) {
-                        onToggleAllGroups([]);
-                      } else {
-                        onToggleAllGroups(groupList.map(g => g.id));
-                      }
-                    }}
-                    className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 pb-1 pt-1 first:pt-0.5 shrink-0"
-                  >
-                    <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${isAllServersChecked ? 'bg-secondary border-secondary' : 'border-outline-variant'
-                      }`}>
-                      {isAllServersChecked && <Check className="w-2 h-2 text-white stroke-[3]" />}
-                    </div>
-                    <span className="text-[10px] font-semibold text-on-surface truncate">{t('app.filter.all')}</span>
-                  </button>
-                  {groupList.map(grp => {
-                    const id = grp.id;
-                    const checked = selectedGroups.has(id);
-                    return (
-                      <button
-                        key={id}
-                        onClick={() => handleGroupClick(id)}
-                        className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm hover:bg-surface-container transition-colors w-full text-left border-b border-outline-variant/10 last:border-b-0 pb-1 pt-1 first:pt-0.5 last:pb-0.5"
-                      >
-                        <div className={`w-3 h-3 rounded-sm border-[1.5px] flex items-center justify-center shrink-0 transition-colors ${allGroupsSelected || checked ? 'bg-secondary border-secondary' : 'border-outline-variant'
-                          }`}>
-                          {(allGroupsSelected || checked) && <Check className="w-2 h-2 text-white stroke-[3]" />}
-                        </div>
-                        <span className="text-[10px] font-semibold text-on-surface shrink-0">{grp.name}</span>
-                        <span className="text-[8px] font-mono text-on-surface-variant/75 ml-auto truncate">{grp.type}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )
-            )}
-          </div>
-
-          <div className="mx-2 my-1 border-t border-outline-variant/10" />
 
           {/* Devices */}
           <div className="px-2 pt-2 pb-0.5">
@@ -420,9 +363,22 @@ function LogFilter({
 
                     return (
                       <div key={serverKey} id={`device-group-${serverKey}`} className="flex flex-col gap-[1px] border-b border-outline-variant/5 pb-1 mb-0.5 last:border-0 last:pb-0 last:mb-0">
-                        <div className="text-[7px] font-black uppercase tracking-widest text-on-surface/90 border-l border-outline-variant/50 pl-1 py-0 mb-0.5 mt-0.5">
+                        <button
+                          onClick={() => {
+                            const groupDevKeys = devs.map((d: {serverId: string, ip: string, originalName?: string, name: string}) => `${d.serverId}_${d.ip}_${d.originalName || d.name}`);
+                            const allChecked = groupDevKeys.every((k: string) => allDevicesSelected || selectedDevices.has(k));
+                            if (allChecked) {
+                              // deselect all in group
+                              groupDevKeys.forEach((k: string) => selectedDevices.has(k) && onToggleDevice(k));
+                            } else {
+                              // select all in group that aren't already selected
+                              groupDevKeys.forEach((k: string) => { if (!allDevicesSelected && !selectedDevices.has(k)) onToggleDevice(k); });
+                            }
+                          }}
+                          className="text-[7px] font-black uppercase tracking-widest text-on-surface/90 border-l border-outline-variant/50 pl-1 py-0 mb-0.5 mt-0.5 hover:text-tertiary hover:border-tertiary/60 transition-colors w-full text-left"
+                        >
                           {groupLabel}
-                        </div>
+                        </button>
                         {devs.map(dev => {
                           const uniqueKey = `${dev.serverId}_${dev.ip}_${dev.originalName || dev.name}`;
                           const checked = allDevicesSelected || selectedDevices.has(uniqueKey);
@@ -1742,96 +1698,31 @@ export function Dashboard() {
 
           <div className="w-px h-3 bg-outline-variant/15" /> */}
 
-          {/* View System Data */}
-          {/* <div className="ViewSystemData flex items-center gap-1.5">
-            <button
-              onClick={async () => {
-                console.log("=== FRONTEND STATE (NEW ARCH) ===");
-                console.log("1. Canonical Logs (FE view source):", logs);
-                console.log("2. Snapshot Logs (LogData):", newSvmsLogs);
-                console.log("3. SVMS Servers (map):", servers);
-                console.log("4. SVMS Devices (map):", devices);
-                console.log("5. SVMS Servers (snapshot raw):", newSvmsServers);
-                console.log("6. SVMS Devices (snapshot raw):", newSvmsDevices);
-                console.log("7. MQTT Servers (canonical):", mqttServers);
-                console.log("8. MQTT Servers (snapshot):", mqttMilesightServers);
-                console.log("9. MQTT Devices (snapshot):", mqttMilesightDevices);
-                console.log("10. Camera Devices:", cameraDevices);
+          {/* View System Data - hidden */}
+          {/* <div className="ViewSystemData flex items-center gap-1.5">...</div> */}
 
-                console.log("12. Connections RECEIVE:", receiveServers);
-                console.log("13. Event Types (FE filter):", eventTypes);
-                console.log("14. Total Log Count:", totalLogCount);
-                console.log("15. Socket Connected:", isConnected);
-                console.log("16. System Config:", systemConfig);
+          {/* Clear History Button */}
+          <button
+            onClick={async () => {
+              if (!window.confirm('Xóa toàn bộ lịch sử event? Hành động này không thể hoàn tác.')) return;
+              try {
+                await apiClient.delete('/api/v1/logs/all');
+                socket.emit('clear-logs');
+              } catch (err) {
+                console.error('[CLEAR_LOGS] Failed:', err);
+                alert('Xóa lịch sử thất bại!');
+              }
+            }}
+            className="flex items-center gap-1 px-2 py-0.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-[8px] font-bold uppercase tracking-widest rounded border border-red-500/20 transition-all cursor-pointer"
+            title="Xóa toàn bộ lịch sử event"
+          >
+            <Trash2 className="w-3 h-3" />
+            Xóa lịch sử
+          </button>
 
-                let backendState = null;
-                try {
-                  const res = await apiClient.get('/api/v1/debug/state');
-                  backendState = res.data;
-                  console.log("17. Backend In-Memory State:", backendState);
-                } catch (err) {
-                  console.warn('[DEBUG] Unable to fetch BE state:', err);
-                }
-
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                const debugData = {
-                  _export_time: new Date().toISOString(),
-                  _summary: {
-                    totalAllLogs: logs.length,
-                    totalSnapshotLogs: newSvmsLogs.length,
-                    totalMqttLogsFromAllLogs: mqttLogs.length,
-                    totalMqttServersCanonical: mqttServers.length,
-                    totalMqttDevicesSnapshot: mqttMilesightDevices.length,
-                    totalCameraDevices: cameraDevices.length,
-                    totalSvmsServersMap: Object.keys(servers).length,
-                    totalSvmsDevicesMap: Object.keys(devices).length,
-
-                    totalReceiveConnections: receiveServers.length,
-                    socketConnected: isConnected,
-                    totalLogCount,
-                    snapshot_svmsServers: newSvmsServers.length,
-                    snapshot_svmsDevices: newSvmsDevices.length,
-                    snapshot_mqttServers: mqttMilesightServers.length,
-                  },
-                  frontend: {
-                    allLogs: logs,
-                    snapshotLogs: newSvmsLogs,
-                    mqttServersCanonical: mqttServers,
-                    mqttServersSnapshot: mqttMilesightServers,
-                    mqttDevicesSnapshot: mqttMilesightDevices,
-                    mqttLogsFromAllLogs: mqttLogs,
-                    cameraDevices,
-                    svmsServersMap: servers,
-                    svmsDevicesMap: devices,
-                    svmsServersSnapshot: newSvmsServers,
-                    svmsDevicesSnapshot: newSvmsDevices,
-
-                    receiveConnections: receiveServers,
-                    systemConfig,
-                    eventTypes,
-                  },
-                  backend: backendState,
-                };
-
-                const jsonStr = JSON.stringify(debugData, null, 2);
-                const blob = new Blob([jsonStr], { type: 'text/plain;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `cms-debug-data_${timestamp}.txt`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-
-                alert(`Da xuat file: cms-debug-data_${timestamp}.txt\n\nTotal Logs: ${logs.length}\nMQTT Servers: ${mqttServers.length}\nMQTT Devices: ${mqttMilesightDevices.length}\nCamera Devices: ${cameraDevices.length}\nBackend state: ${backendState ? 'OK' : 'UNAVAILABLE'}`);
-              }} className="px-2 py-0.5 bg-primary text-on-primary text-[8px] font-bold uppercase tracking-widest rounded shadow-sm hover:opacity-80 transition-opacity"
-            >
-              {t('app.footer.view_system_data')}
-            </button>
-          </div> */}
 
           <div className="flex-1" />
+
 
           {/* Language dropdown (UI placeholder) */}
           <div className="relative">

@@ -187,6 +187,7 @@ function persistMqttDevice(deviceConfig) {
     protocol: deviceConfig.protocol || 'mqtt',
     cameraId: deviceConfig.cameraId || null,
     features: deviceConfig.features || {},
+    packetLossConfig: deviceConfig.packetLossConfig || undefined,
     deviceNickname: deviceConfig.deviceNickname || deviceConfig.deviceInfo?.deviceNickname || undefined,
     recordedAt: new Date().toISOString(),
   };
@@ -384,6 +385,7 @@ async function bootstrapPersistedDevices() {
       deviceInfo: persisted.deviceInfo || parseDeviceInfoFromTopic(persisted.topic),
       cameraId: persisted.cameraId || null,
       features: persisted.features || {},
+      packetLossConfig: persisted.packetLossConfig || undefined,
       deviceNickname: persisted.deviceNickname || persisted.deviceInfo?.deviceNickname || undefined,
       status: 'connecting',
     };

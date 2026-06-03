@@ -312,6 +312,19 @@ export interface MqttDevice {
   features?: Record<string, boolean | { enabled: boolean; cameraId?: string | null }>;
   lastSeen?: string;
   deviceNickname?: string;  // Nickname do người dùng đặt (Tên gợi nhớ)
+  signalQuality?: {
+    level: 'STRONG' | 'MEDIUM' | 'WEAK' | 'ABNORMAL' | 'UNKNOWN' | 'OUT_OF_TABLE';
+    reason: string;
+    input: any;
+  };
+  packetLoss?: number;
+  packetLossConfig?: {
+    x: number;
+    y: number;
+    countTimeOut?: number;
+  };
+  packetLossHistory?: string;
+  batteryLevel?: number;
 }
 
 export interface CameraFeatures {

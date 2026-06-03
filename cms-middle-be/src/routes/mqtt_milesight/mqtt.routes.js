@@ -1,5 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { mqttGroups, mqttDeviceList } = require('../../socketState');
 const {
   connectMqttDevice,
@@ -83,6 +85,20 @@ router.delete('/api/v1/mqtt-groups/:id', (req, res) => {
   res.json({ success: true });
 });
 
+router.get('/api/v1/mqtt-devices/packet-loss-config', (req, res) => {
+  const configPath = path.join(__dirname, '../../../signalQualityMilesightConfig.json');
+  let defaults = { x: 60, y: 5, countTimeOut: 3 };
+  try {
+    if (fs.existsSync(configPath)) {
+      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (typeof parsed.X === 'number') defaults.x = parsed.X;
+      if (typeof parsed.Y === 'number') defaults.y = parsed.Y;
+      if (typeof parsed.countTimeOut === 'number') defaults.countTimeOut = parsed.countTimeOut;
+    }
+  } catch (e) { }
+  res.json({ success: true, config: defaults });
+});
+
 router.get('/api/v1/mqtt-devices', (req, res) => {
   res.json({ success: true, devices: getMqttDevicesList() });
 });
@@ -161,6 +177,16 @@ router.patch('/api/v1/mqtt-devices/:id', (req, res) => {
   if (!device) return res.status(404).json({ success: false, message: 'MQTT device not found' });
   if (req.body.cameraId !== undefined) device.cameraId = req.body.cameraId || null;
   if (req.body.features) device.features = { ...(device.features || {}), ...req.body.features };
+  if ('packetLossConfig' in req.body) {
+    if (req.body.packetLossConfig === null) {
+      device.packetLossConfig = undefined;
+    } else {
+      device.packetLossConfig = {
+        ...(device.packetLossConfig || {}),
+        ...req.body.packetLossConfig
+      };
+    }
+  }
   persistedDevices.persistMqttDevice(device);
   emitMqttState();
   res.json({ success: true, device });
@@ -260,6 +286,16 @@ router.patch('/api/v1/mqtt-servers/:id', (req, res) => {
   if (!device) return res.status(404).json({ success: false, message: 'MQTT device not found' });
   if (req.body.cameraId !== undefined) device.cameraId = req.body.cameraId || null;
   if (req.body.features) device.features = { ...(device.features || {}), ...req.body.features };
+  if ('packetLossConfig' in req.body) {
+    if (req.body.packetLossConfig === null) {
+      device.packetLossConfig = undefined;
+    } else {
+      device.packetLossConfig = {
+        ...(device.packetLossConfig || {}),
+        ...req.body.packetLossConfig
+      };
+    }
+  }
   persistedDevices.persistMqttDevice(device);
   emitMqttState();
   res.json({ success: true, server: device, device });

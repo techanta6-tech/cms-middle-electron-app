@@ -7,7 +7,8 @@ const CONFIG_PATH = path.join(__dirname, '../../signalQualityMilesightConfig.jso
 
 let config = {
   X: 60,
-  Y: 5
+  Y: 5,
+  countTimeOut: 3
 };
 
 try {
@@ -16,13 +17,15 @@ try {
     const parsed = JSON.parse(rawData);
     if (typeof parsed.X === 'number') config.X = parsed.X;
     if (typeof parsed.Y === 'number') config.Y = parsed.Y;
+    if (typeof parsed.countTimeOut === 'number') config.countTimeOut = parsed.countTimeOut;
   }
 } catch (err) {
   console.error('[SignalQuality] Failed to load config', err);
 }
 
 const milesightLossRate = new Map();
-let cronRuns = 0;
+const lastSeenMap = new Map();
+const startupTime = Date.now();
 let cronIntervalId = null;
 
 function evaluateByPacketLoss(packetLossRate) {
@@ -84,8 +87,8 @@ function isButtonDevice(entry) {
          profileName.includes('button') || devName.includes('button');
 }
 
-function processIncomingLog(devEui, rssis, sf, entry) {
-  if (!devEui) return;
+function processIncomingLog(devEui, rssis, sf) {
+  if (!devEui) return null;
   const now = Date.now();
 
   if (!milesightLossRate.has(devEui)) {
@@ -93,17 +96,31 @@ function processIncomingLog(devEui, rssis, sf, entry) {
   }
   milesightLossRate.get(devEui).push(now);
 
-  if (entry && typeof rssis === 'number') {
+  if (typeof rssis === 'number') {
     const resolvedSf = typeof sf === 'number' ? sf : 7;
-    const result = evaluateMilesightSignal({ rssis, sf: resolvedSf });
-    entry.signalQuality = result;
+    return evaluateMilesightSignal({ rssis, sf: resolvedSf });
   }
+  
+  return null;
+}
+
+function markDeviceOnline(deviceId) {
+  lastSeenMap.set(deviceId, Date.now());
+  const entry = mqttDeviceList.find((d) => d.id === deviceId);
+  if (entry && entry.connectionStatus !== 'online') {
+    entry.connectionStatus = 'online';
+  }
+}
+
+function removeDevice(deviceId) {
+  lastSeenMap.delete(deviceId);
 }
 
 function _emitState() {
   const clientSockets = getClientSockets();
   if (clientSockets) {
-    const deviceList = mqttDeviceList.map((d) => ({ ...d }));
+    const { getMqttDevicesList } = require('./mqtt.service');
+    const deviceList = getMqttDevicesList();
     clientSockets.emit('update-mqtt-devices', deviceList);
     clientSockets.emit('update-mqtt-milesight-devices', deviceList);
   }
@@ -113,14 +130,15 @@ function startCron() {
   if (cronIntervalId) clearInterval(cronIntervalId);
   
   cronIntervalId = setInterval(() => {
-    cronRuns++;
     const now = Date.now();
-    const PERIOD_MS = config.X * config.Y * 1000;
-    const thresholdTime = now - PERIOD_MS;
     let changed = false;
 
     // Cleanup and count Z
     for (const [devEui, timestamps] of milesightLossRate.entries()) {
+      const entry = mqttDeviceList.find(d => d.deviceInfo?.devEui === devEui);
+      const devX = entry?.packetLossConfig?.x ?? config.X;
+      const devY = entry?.packetLossConfig?.y ?? config.Y;
+      const thresholdTime = now - (devX * devY * 1000);
       const recentTimestamps = timestamps.filter(t => t >= thresholdTime);
       if (recentTimestamps.length === 0) {
         milesightLossRate.delete(devEui);
@@ -129,37 +147,75 @@ function startCron() {
       }
     }
 
-    if (cronRuns <= config.Y) {
-      return; // Skip evaluation for first Y runs
-    }
-
     for (const entry of mqttDeviceList) {
-      if (isButtonDevice(entry)) continue;
-
       const devEui = entry.deviceInfo?.devEui;
       if (!devEui) continue;
 
-      const timestamps = milesightLossRate.get(devEui) || [];
-      let Z = timestamps.length;
-      if (Z > config.Y) Z = config.Y;
-
-      const packetLossRate = ((config.Y - Z) / config.Y) * 100;
-      entry.packetLoss = packetLossRate;
+      const devX = entry.packetLossConfig?.x ?? config.X;
+      const devY = entry.packetLossConfig?.y ?? config.Y;
+      const bucketSizeMs = devX * 1000;
+      const PERIOD_MS = bucketSizeMs * devY;
       
-      const result = evaluateMilesightSignal({ packetLossRate });
-      entry.signalQuality = result;
-      changed = true;
+      if (now - startupTime < PERIOD_MS) continue;
+
+      const timestamps = milesightLossRate.get(devEui) || [];
+      
+      let Z = 0;
+      const history = new Array(devY).fill(0);
+      for (let i = 0; i < devY; i++) {
+        const bucketStart = now - (i + 1) * bucketSizeMs;
+        const bucketEnd = now - i * bucketSizeMs;
+        const hasLog = timestamps.some(t => t > bucketStart && t <= bucketEnd);
+        if (hasLog) {
+          Z++;
+          history[devY - 1 - i] = 1;
+        }
+      }
+
+      const packetLossRate = ((devY - Z) / devY) * 100;
+      
+      let entryChanged = false;
+      const historyStr = history.join('-');
+      if (entry.packetLossHistory !== historyStr) {
+        entry.packetLossHistory = historyStr;
+        entryChanged = true;
+      }
+      
+      if (entry.packetLoss !== packetLossRate) {
+        entry.packetLoss = packetLossRate;
+        entry.signalQuality = evaluateByPacketLoss(packetLossRate);
+        entryChanged = true;
+      }
+      
+      const lastSeen = lastSeenMap.has(entry.id)
+        ? lastSeenMap.get(entry.id)
+        : (entry.lastSeen ? new Date(entry.lastSeen).getTime() : null);
+
+      const countTimeOut = entry.packetLossConfig?.countTimeOut ?? config.countTimeOut;
+      
+      if (lastSeen) {
+        if (now - lastSeen > (countTimeOut * bucketSizeMs) && entry.connectionStatus !== 'offline') {
+          entry.connectionStatus = 'offline';
+          entryChanged = true;
+        }
+      } else if (now - startupTime > (countTimeOut * bucketSizeMs) && entry.connectionStatus !== 'offline') {
+          entry.connectionStatus = 'offline';
+          entryChanged = true;
+      }
+      
+      if (entryChanged) changed = true;
     }
 
     if (changed) {
       _emitState();
     }
-  }, config.X * 1000);
-  console.log(`[SIGNAL_QUALITY] Cron started with X=${config.X}s, Y=${config.Y}`);
+  }, 1000);
 }
 
 module.exports = {
   startCron,
   processIncomingLog,
-  evaluateMilesightSignal
+  evaluateMilesightSignal,
+  markDeviceOnline,
+  removeDevice
 };

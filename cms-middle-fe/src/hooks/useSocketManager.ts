@@ -968,6 +968,17 @@ export function useSocketManager() {
     socket.on('connect', requestFullSync);
     if (socket.connected) requestFullSync();
 
+    // ─── Clear logs handler ───────────────────────────────────────────────────
+    const onClearLogs = () => {
+      logBufferRef.current = [];
+      eventTypeBufferRef.current = [];
+      setNewSvmsLogs([]);
+      setLogs([]);
+      setTotalLogCount(0);
+      console.log('[SOCKET] clear-logs received - FE logs cleared');
+    };
+    socket.on('clear-logs', onClearLogs);
+
     // ─── New System Data listeners ────────────────────────────────────────────────────────
     const onNewSvmsLog = (data: LogData) => {
       eventTypeBufferRef.current.push({
@@ -1107,6 +1118,7 @@ export function useSocketManager() {
       socket.off('sync-new-system-data', onSyncNewSystemData);
       socket.off('logs-batch', onLogsBatch);
       socket.off('connect', requestFullSync);
+      socket.off('clear-logs', onClearLogs);
       socket.off('update-svms-device-features', onUpdateSvmsDeviceFeatures);
       socket.off('update-svms-known-events', onUpdateSvmsKnownEvents);
       socket.off('update-milesight-known-events', onUpdateMilesightKnownEvents);

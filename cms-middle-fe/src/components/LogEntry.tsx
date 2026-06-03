@@ -78,15 +78,28 @@ export function LogEntry({ log, onClick, mqttServers }: { log: LogData, onClick:
     >
       <div className='h-full flex flex-col pl-3 flex-1 min-w-0'>
         <div className={`log-entry-indicator absolute left-0 top-0 bottom-0 w-1 ${bgBorderClass}`}></div>
-        <div className="flex items-start mb-1 gap-4">
-          <span className={`log-entry-type text-[10px] font-bold ${colorClass} uppercase flex items-center gap-1.5  shrink-0`}>
-            <Icon className="displayType w-3.5 h-3.5 bg-red" />
-            {displayType}
+        <div className="flex items-start mb-1 gap-2 ">
+          <span className={`log-entry-type text-[10px] font-bold uppercase flex items-center gap-1.5 shrink-0`}>
+            <Icon className="displayType w-3.5 h-3.5" />
           </span>
+          <p className={`displayDesc text-[11px] font-medium leading-relaxed truncate uppercase`}>{displayDesc}</p>
         </div>
-        <p className="displayDesc text-[11px] text-on-surface mb-1 font-medium leading-relaxed truncate uppercase">{displayDesc}</p>
-        {/* <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{serverName} // {log.device_info.name} // {timeStr}</div> */}
-        <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate">{log.device_info.name} / {timeStr}</div>
+        <div className="text-[9px] font-mono text-on-surface-variant/70 italic truncate flex items-center gap-1.5">
+          <span>{log.device_info.name} / {timeStr}</span>
+          {log.raw?.signalQuality && (
+            <span
+              className={`px-1 py-0.5 rounded text-[8px] font-bold tracking-wider uppercase leading-none border ${log.raw.signalQuality.level === 'STRONG' ? 'text-secondary bg-secondary/10 border-secondary/20' :
+                log.raw.signalQuality.level === 'MEDIUM' ? 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20' :
+                  log.raw.signalQuality.level === 'WEAK' ? 'text-amber-400 bg-amber-400/10 border-amber-400/20' :
+                    log.raw.signalQuality.level === 'ABNORMAL' ? 'text-tertiary bg-tertiary/10 border-tertiary/20' :
+                      'text-on-surface-variant bg-surface-container border-outline-variant/20'
+                }`}
+              title={log.raw.signalQuality.reason}
+            >
+              SIGNAL: {log.raw.signalQuality.level}
+            </span>
+          )}
+        </div>
       </div>
       {log.snapshot && (
         <div className="rounded-sm overflow-hidden border border-outline-variant/20 shrink-0 w-24 mr-2">
