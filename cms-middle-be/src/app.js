@@ -17,6 +17,7 @@ const camerasRoutes = require('./routes/cameras.routes');
 const deviceCameraLinkRoutes = require('./routes/device-camera-link.routes');
 const gridLayoutRoutes = require('./routes/grid-layout.routes');
 const eMapLayoutRoutes = require('./routes/emap-layout.routes');
+const areaLayoutRoutes = require('./routes/area-layout.routes');
 const trafficRoutes = require('./routes/traffic.routes');
 const i3AiRoutes = require('./routes/i3ai.routes');
 const { createRtspSnapshotRouter } = require('./module/rtspSnapshotStream');
@@ -167,6 +168,7 @@ app.use(camerasRoutes);
 app.use(deviceCameraLinkRoutes);
 app.use(gridLayoutRoutes);
 app.use(eMapLayoutRoutes);
+app.use(areaLayoutRoutes);
 app.use(trafficRoutes);
 app.use(i3AiRoutes);
 app.use(createRtspSnapshotRouter({ authMiddleware }));
@@ -192,6 +194,7 @@ app.get('/api/v1/debug/state', (req, res) => {
     deviceCameraLinks: socketState.deviceCameraLinks,
     gridLayout: socketState.gridLayout,
     eMapLayout: socketState.eMapLayout,
+    areaLayout: socketState.areaLayout,
   });
 });
 

@@ -52,6 +52,7 @@ function getSystemSnapshot() {
     deviceCameraLinks,
     gridLayout,
     eMapLayout,
+    areaLayout,
   } = require('../socketState');
   const svmsEventRegistry = require('./svmsEventRegistry.service');
   const milesightEventRegistry = require('./milesightEventRegistry.service');
@@ -153,6 +154,10 @@ function getSystemSnapshot() {
     eMapLayout: {
       pins: [...(eMapLayout.pins || [])],
       tileProviderId: eMapLayout.tileProviderId || 'openstreetmap',
+    },
+    areaLayout: {
+      nodes: [...(areaLayout.nodes || [])],
+      updatedAt: areaLayout.updatedAt || null,
     },
     knownEvents: {
       svms: svmsEventRegistry.getEvents(),

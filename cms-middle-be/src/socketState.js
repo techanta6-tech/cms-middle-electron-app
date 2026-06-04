@@ -3,6 +3,7 @@ const { Server } = require('socket.io');
 const { allLogs, ALL_LOGS_MAX, svmsServers, svmsDevices, mqttDeviceList, prefilter } = require('./newSystemDataState');
 const { trafficRecords, TRAFFIC_RECORDS_MAX } = require('./trafficState');
 const emapLayoutService = require('./services/emap-layout.service');
+const areaLayoutService = require('./services/area-layout.service');
 
 /**
  * Global array to store metadata for registered external connections.
@@ -69,6 +70,12 @@ const gridLayout = { grids: [], gridCols: 3 };
 const eMapLayout = emapLayoutService.loadLayout();
 
 /**
+ * Persisted Area Management layout.
+ * Structure: { nodes: [{ id, name, type, parentId, areaMap?: { polygon?: {}, pin?: {} } }] }
+ */
+const areaLayout = areaLayoutService.loadLayout();
+
+/**
  * In-memory store for per-device event feature config for SVMS devices.
  * Structure: [{ serverId: string, deviceIndex: string, features: Record<string, boolean> }]
  * features key = log_type (e.g. 'crosswire', 'motion'), value = boolean enabled
@@ -107,7 +114,7 @@ module.exports = {
   mqttGroups,
   cameraDevices,
   deviceCameraLinks,
-  gridLayout, eMapLayout, svmsDeviceFeatures,
+  gridLayout, eMapLayout, areaLayout, svmsDeviceFeatures,
   // ─── Aggregated stores (re-exported from aggregatedState.js) ───
   allLogs,
   ALL_LOGS_MAX,

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AddExternalServerProps, MqttServerConfig } from '../types';
-import { TriangleAlert, Cloud, Terminal, Radio, X } from 'lucide-react';
+import { Cloud, Terminal, X } from 'lucide-react';
 
-export const AddExternalServer = React.memo(function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '', initialPort = '', initialConnectionType = 'svms', mqttToEdit }: AddExternalServerProps) {
+export const AddExternalServer = React.memo(function AddExternalServer({ onSave, onSaveMqtt, onClose, initialIp = '', initialPort = '', initialConnectionType = 'svms', mqttToEdit, typeSwitcher }: AddExternalServerProps) {
   const { t } = useTranslation();
   // Connection type: 'svms' or 'mqtt'
-  const [connectionType, setConnectionType] = useState<'svms' | 'mqtt'>(mqttToEdit ? 'mqtt' : initialConnectionType);
+  const [connectionType] = useState<'svms' | 'mqtt'>(mqttToEdit ? 'mqtt' : initialConnectionType);
 
   // SVMS fields
   const [ip, setIp] = useState(initialIp);
@@ -70,38 +70,7 @@ export const AddExternalServer = React.memo(function AddExternalServer({ onSave,
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="add-external-server-form p-8 space-y-6">
-          {/* Connection Type Switcher */}
-          {false && !mqttToEdit && (
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-primary uppercase tracking-widest block ml-1">
-                {t('app.add_server.conn_type')}
-              </label>
-              {/* <div className="flex bg-black/40 p-1 rounded-sm border border-outline-variant/30">
-                <button
-                  type="button"
-                  onClick={() => setConnectionType('svms')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xs text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${connectionType === 'svms'
-                    ? 'bg-secondary text-white shadow-lg shadow-secondary/20'
-                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                    }`}
-                >
-                  <Terminal className={`w-3.5 h-3.5 ${connectionType === 'svms' ? 'animate-pulse' : ''}`} />
-                  SVMS
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConnectionType('mqtt')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xs text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${connectionType === 'mqtt'
-                    ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/20'
-                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                    }`}
-                >
-                  <Radio className={`w-3.5 h-3.5 ${connectionType === 'mqtt' ? 'animate-pulse' : ''}`} />
-                  MQTT
-                </button>
-              </div> */}
-            </div>
-          )}
+          {typeSwitcher}
 
           {/* ─── SVMS Form ─────────────────────────────────────────────── */}
           {connectionType === 'svms' && (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../api/apiClient';
 import { Camera, X, Eye, EyeOff } from 'lucide-react';
@@ -10,9 +11,10 @@ interface CameraFormProps {
   onSuccess: () => void;
   initialType?: 'sunell' | 'other';
   cameraToEdit?: ManualAddedCamera;
+  typeSwitcher?: ReactNode;
 }
 
-export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, initialType = 'other', cameraToEdit }: CameraFormProps) {
+export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, initialType = 'other', cameraToEdit, typeSwitcher }: CameraFormProps) {
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -182,6 +184,8 @@ export const CameraForm = React.memo(function CameraForm({ onCancel, onSuccess, 
 
         {/* Form Body */}
         <form onSubmit={handleSubmitDevice} className="add-external-server-form p-8 space-y-6">
+          {typeSwitcher}
+
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5 col-span-2">

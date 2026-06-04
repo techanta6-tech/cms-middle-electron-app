@@ -34,6 +34,7 @@ const sunellEventRegistry = require('./src/services/sunellEventRegistry.service'
 const { bootstrapPersistedDevices, getFilePath: getPersistedDevicesPath } = require('./src/services/persisted-devices.service');
 const trafficService = require('./src/services/traffic.service');
 const eventGroupService = require('./src/services/eventGroup.service');
+const areaLayoutService = require('./src/services/area-layout.service');
 
 const fs = require('fs');
 
@@ -97,6 +98,13 @@ setInterval(() => {
 
   // Lưu traffic records
   trafficService.saveTrafficRecords();
+
+  // Lưu area layout khi có thay đổi
+  const savedAreaLayout = areaLayoutService.saveIfDirty(socketState.areaLayout);
+  if (savedAreaLayout) {
+    socketState.areaLayout.updatedAt = savedAreaLayout.updatedAt;
+    console.log(`[Area-Layout] Da luu ${savedAreaLayout.nodes.length} nodes ra ${areaLayoutService.getFilePath()}`);
+  }
 }, 60 * 1000); // 1 phút
 
 httpServer.listen(port, '0.0.0.0', () => {
@@ -105,6 +113,7 @@ httpServer.listen(port, '0.0.0.0', () => {
   console.log(`PERSISTED DEVICE REGISTRY: ${getPersistedDevicesPath()}`);
   console.log(`ALL LOGS PERSIST FILE: ${_allLogsFilePath}`);
   console.log(`TRAFFIC PERSIST FILE: ${trafficService.getFilePath()}`);
+  console.log(`AREA LAYOUT PERSIST FILE: ${areaLayoutService.getFilePath()}`);
 
   startMonitoring();
 

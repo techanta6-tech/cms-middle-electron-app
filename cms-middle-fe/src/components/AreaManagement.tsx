@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { MapContainer, Marker, TileLayer, Polygon, Polyline, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
 import { 
   Folder, 
   FolderPlus, 
@@ -10,21 +12,100 @@ import {
   Edit3, 
   Camera, 
   Radio, 
-  Cpu, 
   Search, 
   X, 
   Save, 
   Layers, 
   Building2, 
   Network, 
-  Eye, 
-  FileText,
   Activity,
   AlertTriangle,
   RefreshCw
 } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
 import apiClient from '../api/apiClient';
+import { AddExternalServer } from './AddExternalServer';
+import { CameraForm } from './CameraForm';
+import type { MqttServerConfig } from '../types';
+import 'leaflet/dist/leaflet.css';
+
+const LeafletMapContainer = MapContainer as any;
+const LeafletTileLayer = TileLayer as any;
+const LeafletMarker = Marker as any;
+const LeafletPolygon = Polygon as any;
+const LeafletPolyline = Polyline as any;
+
+type LatLngTuple = [number, number];
+type AreaMapMode = 'draw-polygon' | 'place-device' | null;
+type LeafletMap = any;
+
+type AreaNodeMapData = {
+  color?: string;
+  polygon?: {
+    points: LatLngTuple[];
+    color: string;
+    fillOpacity: number;
+    lineOpacity: number;
+    updatedAt: string;
+  };
+  pin?: {
+    point: LatLngTuple;
+    color: string;
+    updatedAt: string;
+  };
+};
+
+const HCM_CENTER: LatLngTuple = [10.7769, 106.7009];
+const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_ATTRIBUTION = '&copy; OpenStreetMap contributors';
+
+const DEFAULT_GROUP_AREA_COLOR = '#c084fc';
+const DEFAULT_DEVICE_LOCATION_COLOR = '#c084fc';
+const AREA_FILL_OPACITY = 0.16;
+const AREA_LINE_OPACITY = 0.5;
+const AREA_BORDER_WEIGHT = 1.5;
+
+function normalizeHexColor(hex: string) {
+  const normalized = hex.replace('#', '');
+  if (!/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$/.test(normalized)) return null;
+  return normalized.length === 3
+    ? normalized.split('').map(char => char + char).join('')
+    : normalized;
+}
+
+function mixHexColor(hex: string, target: number, amount: number) {
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) return hex;
+
+  const channels = [0, 2, 4].map(index => parseInt(normalized.slice(index, index + 2), 16));
+  const mixed = channels.map(channel => Math.round(channel + (target - channel) * amount));
+  return `#${mixed.map(channel => channel.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function getAreaBorderColor(color: string) {
+  return mixHexColor(color, 0, 0.28);
+}
+
+function getAreaFillColor(color: string) {
+  return mixHexColor(color, 255, 0.18);
+}
+
+function hexToRgba(hex: string, opacity: number) {
+  const value = normalizeHexColor(hex);
+  if (!value) return hex;
+  const red = parseInt(value.slice(0, 2), 16);
+  const green = parseInt(value.slice(2, 4), 16);
+  const blue = parseInt(value.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
+
+function makeAreaPointIcon(color: string, size = 12) {
+  return L.divIcon({
+    className: '',
+    html: `<div class="area-map-point-dot" style="width:${size}px;height:${size}px;background:${color};"></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
 
 export interface AreaNode {
   id: string;
@@ -35,6 +116,7 @@ export interface AreaNode {
   port?: string;
   vendor?: string;
   devEui?: string;
+  areaMap?: AreaNodeMapData;
 }
 
 const DEFAULT_AREA_NODES: AreaNode[] = [
@@ -47,6 +129,45 @@ const DEFAULT_AREA_NODES: AreaNode[] = [
   { id: 'dev-3', name: 'MQTT Radar Hàng Rào', type: 'mqtt-sensor', parentId: 'g-sub-hn', devEui: '24e124707c229983', vendor: 'Milesight' }
 ];
 
+function AreaMapEvents({
+  enabled,
+  onLeftClick,
+  onRightClick,
+  onMouseMove,
+  onMapReady,
+}: {
+  enabled: boolean;
+  onLeftClick: (point: LatLngTuple) => void;
+  onRightClick: () => void;
+  onMouseMove: (point: LatLngTuple | null) => void;
+  onMapReady: (map: LeafletMap) => void;
+}) {
+  const map = useMapEvents({
+    click(event) {
+      if (!enabled) return;
+      onLeftClick([event.latlng.lat, event.latlng.lng]);
+    },
+    contextmenu(event) {
+      if (!enabled) return;
+      event.originalEvent?.preventDefault();
+      onRightClick();
+    },
+    mousemove(event) {
+      if (!enabled) return;
+      onMouseMove([event.latlng.lat, event.latlng.lng]);
+    },
+    mouseout() {
+      onMouseMove(null);
+    },
+  });
+
+  useEffect(() => {
+    onMapReady(map);
+  }, [map, onMapReady]);
+
+  return null;
+}
+
 interface AreaManagementProps {
   servers?: Record<string, any>;
   devices?: Record<string, any>;
@@ -54,18 +175,22 @@ interface AreaManagementProps {
   mqttGroups?: any[];
   mqttDevicesByServer?: Record<string, any[]>;
   cameraDevices?: any[];
+  fetchCameras?: () => void;
+  handleAddMqttServer?: (config: MqttServerConfig) => void;
+  areaLayout?: { nodes: AreaNode[]; updatedAt?: string | null };
+  saveAreaLayout?: (nodes: AreaNode[]) => void;
 }
 
 export function AreaManagement({
   servers = {},
   devices = {},
-  mqttServers = [],
   mqttGroups = [],
   mqttDevicesByServer = {},
-  cameraDevices = []
+  fetchCameras,
+  handleAddMqttServer,
+  areaLayout,
+  saveAreaLayout
 }: AreaManagementProps) {
-  const { t } = useTranslation();
-
   // Load state from localStorage or seed default data
   const [nodes, setNodes] = useState<AreaNode[]>(() => {
     const saved = localStorage.getItem('CMS_AREA_NODES');
@@ -82,18 +207,63 @@ export function AreaManagement({
   // Save changes to localStorage
   useEffect(() => {
     localStorage.setItem('CMS_AREA_NODES', JSON.stringify(nodes));
-  }, [nodes]);
+
+    if (!hasHydratedAreaLayoutRef.current || !saveAreaLayout) return;
+    const signature = JSON.stringify(nodes);
+    if (signature === lastSavedNodesSignatureRef.current) return;
+
+    if (saveAreaLayoutTimerRef.current) {
+      window.clearTimeout(saveAreaLayoutTimerRef.current);
+    }
+    saveAreaLayoutTimerRef.current = window.setTimeout(() => {
+      lastSavedNodesSignatureRef.current = signature;
+      saveAreaLayout(nodes);
+      saveAreaLayoutTimerRef.current = null;
+    }, 500);
+  }, [nodes, saveAreaLayout]);
+
+  useEffect(() => {
+    if (!areaLayout?.updatedAt) return;
+
+    const incomingNodes = Array.isArray(areaLayout.nodes) ? areaLayout.nodes : [];
+    // eslint-disable-next-line react-hooks/immutability
+    hasHydratedAreaLayoutRef.current = true;
+    // eslint-disable-next-line react-hooks/immutability
+    lastSavedNodesSignatureRef.current = JSON.stringify(incomingNodes);
+    setNodes(incomingNodes.length > 0 ? incomingNodes : DEFAULT_AREA_NODES);
+  }, [areaLayout?.nodes, areaLayout?.updatedAt]);
+
+  useEffect(() => {
+    return () => {
+      if (saveAreaLayoutTimerRef.current) {
+        window.clearTimeout(saveAreaLayoutTimerRef.current);
+      }
+    };
+  }, []);
 
   // Selected item and search
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set(['g-root-south', 'g-root-north']));
+  const [areaMapMode, setAreaMapMode] = useState<AreaMapMode>(null);
+  const [draftPolygon, setDraftPolygon] = useState<LatLngTuple[]>([]);
+  const [draftHoverPoint, setDraftHoverPoint] = useState<LatLngTuple | null>(null);
+  const rightClickTimerRef = useRef<number | null>(null);
+  const colorInputRef = useRef<HTMLInputElement | null>(null);
+  const areaMapRef = useRef<LeafletMap | null>(null);
+  const areaMapModeRef = useRef<AreaMapMode>(null);
+  const selectedNodeRef = useRef<AreaNode | null>(null);
+  const draftPolygonRef = useRef<LatLngTuple[]>([]);
+  const saveAreaLayoutTimerRef = useRef<number | null>(null);
+  const lastSavedNodesSignatureRef = useRef('');
+  const hasHydratedAreaLayoutRef = useRef(false);
 
   // Modal Panel state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addType, setAddType] = useState<'group' | 'svms-device' | 'sunell-camera' | 'mqtt-sensor'>('group');
   const [addName, setAddName] = useState('');
   const [addParentId, setAddParentId] = useState<string>('none');
+  const [externalAddForm, setExternalAddForm] = useState<'sunell' | 'mqtt' | null>(null);
   
   // Selection states for modal lists
   const [selectedModalItems, setSelectedModalItems] = useState<Set<string>>(new Set());
@@ -113,24 +283,17 @@ export function AreaManagement({
     return nodes.find(n => n.id === selectedNodeId) || null;
   }, [nodes, selectedNodeId]);
 
-  // Find matched camera RTSP URL if any
-  const selectedNodeRtspUrl = useMemo(() => {
-    if (!selectedNode) return null;
+  useEffect(() => {
+    selectedNodeRef.current = selectedNode;
+  }, [selectedNode]);
 
-    // 1. Check if we can match it in cameraDevices (by id or IP)
-    const matched = cameraDevices.find(c => 
-      c.id === selectedNode.id || 
-      (selectedNode.ip && (c.cameraIp === selectedNode.ip || c.ip === selectedNode.ip))
-    );
-    if (matched?.rtspUrl) return matched.rtspUrl;
+  useEffect(() => {
+    areaMapModeRef.current = areaMapMode;
+  }, [areaMapMode]);
 
-    // 2. Fallback: if it's a sunell-camera and has IP, construct default RTSP URL
-    if (selectedNode.type === 'sunell-camera' && selectedNode.ip) {
-      return `rtsp://admin:admin1234@${selectedNode.ip}:554/snl/live/1/1`;
-    }
-
-    return null;
-  }, [selectedNode, cameraDevices]);
+  useEffect(() => {
+    draftPolygonRef.current = draftPolygon;
+  }, [draftPolygon]);
 
   // All group nodes for dropdown selection
   const groupNodes = useMemo(() => {
@@ -147,8 +310,19 @@ export function AreaManagement({
       setEditVendor(selectedNode.vendor || '');
       setEditDevEui(selectedNode.devEui || '');
       setIsEditing(false);
+      setAreaMapMode(null);
+      setDraftPolygon([]);
+      setDraftHoverPoint(null);
     }
   }, [selectedNode]);
+
+  useEffect(() => {
+    return () => {
+      if (rightClickTimerRef.current) {
+        window.clearTimeout(rightClickTimerRef.current);
+      }
+    };
+  }, []);
 
   // Toggle group expansion state
   const toggleGroupExpand = (groupId: string, e: React.MouseEvent) => {
@@ -208,8 +382,16 @@ export function AreaManagement({
         const parts = key.split('::');
         const dType = parts[0];
         
-        if (dType === 'svms') {
-          const serverId = parts[1];
+        if (dType === 'svms-server') {
+          const name = parts[2];
+          newNodes.push({
+            id: `svms-server-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            name: name,
+            type: 'group',
+            parentId: addParentId === 'none' ? null : addParentId,
+            vendor: 'SVMS Server'
+          });
+        } else if (dType === 'svms') {
           const ip = parts[2];
           const name = parts[3];
           newNodes.push({
@@ -222,7 +404,6 @@ export function AreaManagement({
             vendor: 'SVMS Server'
           });
         } else if (dType === 'mqtt') {
-          const groupId = parts[1];
           const devEui = parts[2];
           const name = parts[3];
           newNodes.push({
@@ -234,7 +415,6 @@ export function AreaManagement({
             vendor: 'Milesight'
           });
         } else if (dType === 'sunell') {
-          const id = parts[1];
           const ip = parts[2];
           const name = parts[3];
           newNodes.push({
@@ -417,8 +597,430 @@ export function AreaManagement({
     );
   };
 
+  const renderLockedParentSelector = () => (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[10px] font-bold uppercase text-on-surface-variant/80 tracking-wider">Thuộc Nhóm/Khu vực</label>
+      <select
+        value={addParentId}
+        disabled
+        className="w-full bg-background/60 border border-outline-variant/20 rounded-xl px-3 py-2.5 text-xs text-on-surface-variant cursor-not-allowed opacity-80 focus:outline-none"
+      >
+        <option value="none">Không có (Cấp Gốc / Root)</option>
+        {groupNodes.map(g => (
+          <option key={g.id} value={g.id}>{g.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+
+  const handleExternalTypeChange = (nextType: typeof addType) => {
+    setAddType(nextType);
+    setAddName('');
+    setSelectedModalItems(new Set());
+    setExpandedModalParents(new Set());
+
+    if (nextType === 'sunell-camera') {
+      setIsAddModalOpen(false);
+      setExternalAddForm('sunell');
+      return;
+    }
+
+    if (nextType === 'mqtt-sensor') {
+      setIsAddModalOpen(false);
+      setExternalAddForm('mqtt');
+      return;
+    }
+
+    setExternalAddForm(null);
+    setIsAddModalOpen(true);
+  };
+
+  const renderAddTypeSwitcher = (currentType: typeof addType, tone: 'primary' | 'cyan' = 'primary') => {
+    const accentClass = tone === 'cyan' ? 'text-cyan-500' : 'text-primary';
+    const focusClass = tone === 'cyan'
+      ? 'focus:border-cyan-500/50 focus:ring-cyan-500/20'
+      : 'focus:border-primary/50 focus:ring-primary/20';
+
+    return (
+      <div className="flex flex-col gap-1.5">
+        <label className={`text-[10px] font-black uppercase tracking-widest block ml-1 ${accentClass}`}>Loại phần tử cần thêm</label>
+        <select
+          value={currentType}
+          onChange={e => handleExternalTypeChange(e.target.value as typeof addType)}
+          className={`w-full bg-black/40 border border-outline-variant/30 ${focusClass} focus:ring-1 rounded-sm px-4 py-3 text-sm font-mono text-on-surface outline-none transition-all`}
+        >
+          <option value="group">📁 Nhóm / Khu Vực (Group)</option>
+          <option value="svms-device">📹 SVMS Camera/Thiết bị</option>
+          <option value="sunell-camera">📹 Sunell Camera</option>
+          <option value="mqtt-sensor">📡 MQTT Radar/Cảm biến</option>
+        </select>
+      </div>
+    );
+  };
+
+  const getNodeById = (nodeId?: string | null) => nodes.find(node => node.id === nodeId) || null;
+  const getNodePolygon = (nodeId?: string | null) => getNodeById(nodeId)?.areaMap?.polygon?.points || [];
+  const getNodePin = (nodeId?: string | null) => getNodeById(nodeId)?.areaMap?.pin?.point;
+  const getNodeMapColor = (node: AreaNode | null) => {
+    if (!node) return DEFAULT_GROUP_AREA_COLOR;
+    if (node.type !== 'group') return DEFAULT_DEVICE_LOCATION_COLOR;
+    return node.areaMap?.color ||
+      node.areaMap?.polygon?.color ||
+      DEFAULT_GROUP_AREA_COLOR;
+  };
+
+  const updateNodeAreaMap = (nodeId: string, updater: (areaMap: AreaNodeMapData) => AreaNodeMapData) => {
+    setNodes(prev => prev.map(node => (
+      node.id === nodeId
+        ? { ...node, areaMap: updater(node.areaMap || {}) }
+        : node
+    )));
+  };
+
+  const zoomToPolygon = (polygon?: LatLngTuple[]) => {
+    if (!areaMapRef.current || !polygon || polygon.length < 3) return;
+    const bounds = L.latLngBounds(polygon.map(point => L.latLng(point[0], point[1])));
+    areaMapRef.current.fitBounds(bounds, {
+      padding: [64, 64],
+      maxZoom: 17,
+      animate: true,
+    });
+  };
+
+  const zoomToPoint = (point?: LatLngTuple) => {
+    if (!areaMapRef.current || !point) return;
+    areaMapRef.current.setView(point, Math.max(areaMapRef.current.getZoom(), 17), { animate: true });
+  };
+
+  const handleStartAreaMapEdit = () => {
+    if (!selectedNode) return;
+
+    if (selectedNode.type === 'group') {
+      const currentPolygon = getNodePolygon(selectedNode.id);
+      const parentPolygon = selectedNode.parentId ? getNodePolygon(selectedNode.parentId) : undefined;
+
+      if (currentPolygon.length >= 3) {
+        setDraftPolygon(currentPolygon);
+        zoomToPolygon(currentPolygon);
+      } else {
+        if (selectedNode.parentId && (!parentPolygon || parentPolygon.length < 3)) {
+          alert('Cần tạo khu vực cho nhóm/khu vực cha trước.');
+          return;
+        }
+        setDraftPolygon([]);
+        zoomToPolygon(parentPolygon);
+      }
+      setDraftHoverPoint(null);
+      setAreaMapMode('draw-polygon');
+      return;
+    }
+
+    const currentLocation = getNodePin(selectedNode.id);
+    const parentPolygon = selectedNode.parentId ? getNodePolygon(selectedNode.parentId) : undefined;
+
+    if (currentLocation) {
+      zoomToPoint(currentLocation);
+    } else {
+      if (!selectedNode.parentId || !parentPolygon || parentPolygon.length < 3) {
+        alert('Cần tạo khu vực cho nhóm/khu vực cha trước khi đặt vị trí thiết bị.');
+        return;
+      }
+      zoomToPolygon(parentPolygon);
+    }
+    setDraftHoverPoint(null);
+    setAreaMapMode('place-device');
+  };
+
+  const handleDeleteAreaMapShape = () => {
+    if (!selectedNode) return;
+
+    if (selectedNode.type === 'group') {
+      updateNodeAreaMap(selectedNode.id, areaMap => {
+        const next = { ...areaMap };
+        delete next.polygon;
+        return next;
+      });
+      setDraftPolygon([]);
+      setDraftHoverPoint(null);
+    } else {
+      updateNodeAreaMap(selectedNode.id, areaMap => {
+        const next = { ...areaMap };
+        delete next.pin;
+        return next;
+      });
+    }
+    setAreaMapMode(null);
+  };
+
+  const handleAreaMapLeftClick = (point: LatLngTuple) => {
+    const activeNode = selectedNodeRef.current;
+    const activeMode = areaMapModeRef.current;
+    if (!activeNode) return;
+
+    if (activeNode.type === 'group' && activeMode === 'draw-polygon') {
+      setDraftPolygon(prev => [...prev, point]);
+      return;
+    }
+
+    if (activeNode.type !== 'group' && activeMode === 'place-device') {
+      updateNodeAreaMap(activeNode.id, areaMap => ({
+        ...areaMap,
+        pin: {
+          point,
+          color: DEFAULT_DEVICE_LOCATION_COLOR,
+          updatedAt: new Date().toISOString(),
+        },
+      }));
+      setAreaMapMode(null);
+    }
+  };
+
+  const finishDraftPolygon = () => {
+    const activeNode = selectedNodeRef.current;
+    const activeDraft = draftPolygonRef.current;
+    if (!activeNode || activeNode.type !== 'group' || activeDraft.length < 3) return;
+    const color = getNodeMapColor(activeNode);
+    updateNodeAreaMap(activeNode.id, areaMap => ({
+      ...areaMap,
+      polygon: {
+        points: activeDraft,
+        color,
+        fillOpacity: AREA_FILL_OPACITY,
+        lineOpacity: AREA_LINE_OPACITY,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+    setAreaMapMode(null);
+    setDraftHoverPoint(null);
+  };
+
+  const handleAreaMapRightClick = () => {
+    const activeNode = selectedNodeRef.current;
+    const activeMode = areaMapModeRef.current;
+    if (!activeNode || activeNode.type !== 'group' || activeMode !== 'draw-polygon') return;
+
+    if (rightClickTimerRef.current) {
+      window.clearTimeout(rightClickTimerRef.current);
+      rightClickTimerRef.current = null;
+      finishDraftPolygon();
+      return;
+    }
+
+    rightClickTimerRef.current = window.setTimeout(() => {
+      setDraftPolygon(prev => prev.slice(0, -1));
+      rightClickTimerRef.current = null;
+    }, 260);
+  };
+
+  const renderAreaMapManagement = () => {
+    const selectedColor = getNodeMapColor(selectedNode);
+    const selectedPolygon = selectedNode?.type === 'group' ? getNodePolygon(selectedNode.id) : [];
+    const selectedPin = selectedNode?.type !== 'group' ? getNodePin(selectedNode?.id) : undefined;
+    const polygonNodes = nodes.filter(node => node.type === 'group' && node.areaMap?.polygon?.points?.length);
+    const pinnedNodes = nodes.filter(node => node.type !== 'group' && node.areaMap?.pin?.point);
+
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3 border-b border-outline-variant/10 pb-2">
+          <h2 className="text-xs font-black uppercase text-primary tracking-widest">Quản lý khu vực</h2>
+          <div className="flex items-center gap-2">
+            {selectedNode?.type === 'group' && (
+              <>
+                <input
+                  ref={colorInputRef}
+                  type="color"
+                  value={selectedColor}
+                  onChange={event => {
+                    if (!selectedNode) return;
+                    const color = event.target.value;
+                    updateNodeAreaMap(selectedNode.id, areaMap => ({
+                      ...areaMap,
+                      color,
+                      polygon: areaMap.polygon
+                        ? { ...areaMap.polygon, color, updatedAt: new Date().toISOString() }
+                        : areaMap.polygon,
+                    }));
+                  }}
+                  className="sr-only"
+                />
+                <button
+                  type="button"
+                  onClick={() => colorInputRef.current?.click()}
+                  title="Cập nhật màu sắc"
+                  className="h-7 w-9 rounded-lg border-2 transition-transform hover:scale-105"
+                  style={{
+                    borderColor: selectedColor,
+                    backgroundColor: hexToRgba(getAreaFillColor(selectedColor), AREA_FILL_OPACITY),
+                  }}
+                />
+              </>
+            )}
+            <button
+              type="button"
+              onClick={handleStartAreaMapEdit}
+              className="px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 text-[10px] font-black uppercase tracking-widest transition-colors"
+            >
+              {selectedNode?.type === 'group'
+                ? (selectedPolygon.length ? 'Sửa' : 'Tạo')
+                : (selectedPin ? 'Sửa' : 'Tạo')}
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteAreaMapShape}
+              disabled={selectedNode?.type === 'group'
+                ? !selectedNode || !selectedPolygon.length
+                : !selectedNode || !selectedPin}
+              className="px-3 py-1.5 rounded-lg bg-error/10 border border-error/20 text-error hover:bg-error/20 disabled:opacity-40 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-widest transition-colors"
+            >
+              Xóa
+            </button>
+          </div>
+        </div>
+        <div className="h-[420px] min-h-[320px] overflow-hidden rounded-2xl border border-outline-variant/15 bg-surface-container">
+          <div className={`relative h-full w-full overflow-hidden ${areaMapMode ? 'cursor-crosshair' : ''}`} onContextMenu={event => event.preventDefault()}>
+            <style>{`
+              .area-map-point-dot {
+                border-radius: 999px;
+                border: 2px solid rgba(255,255,255,0.92);
+                box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+              }
+            `}</style>
+            <LeafletMapContainer center={HCM_CENTER} zoom={12} minZoom={3} className="h-full w-full z-0">
+              <AreaMapEvents
+                enabled={!!areaMapMode}
+                onLeftClick={handleAreaMapLeftClick}
+                onRightClick={handleAreaMapRightClick}
+                onMouseMove={point => {
+                  if (areaMapModeRef.current !== 'draw-polygon') return;
+                  setDraftHoverPoint(point);
+                }}
+                onMapReady={map => {
+                  areaMapRef.current = map;
+                }}
+              />
+              <LeafletTileLayer attribution={OSM_ATTRIBUTION} url={OSM_TILE_URL} />
+              {polygonNodes.map(node => {
+                const polygon = node.areaMap?.polygon;
+                const points = polygon?.points || [];
+                const color = polygon?.color || DEFAULT_GROUP_AREA_COLOR;
+                return points.length >= 3 && !(selectedNode?.id === node.id && areaMapMode === 'draw-polygon') ? (
+                  <LeafletPolygon
+                    key={node.id}
+                    positions={points}
+                    interactive={false}
+                    pathOptions={{
+                      color: getAreaBorderColor(color),
+                      weight: AREA_BORDER_WEIGHT,
+                      opacity: Math.max(polygon?.lineOpacity ?? AREA_LINE_OPACITY, 0.85),
+                      fillColor: getAreaFillColor(color),
+                      fillOpacity: polygon?.fillOpacity ?? AREA_FILL_OPACITY,
+                    }}
+                  />
+                ) : null;
+              })}
+              {selectedNode?.type === 'group' && areaMapMode === 'draw-polygon' && draftPolygon.length > 0 && (
+                <>
+                  <LeafletPolyline
+                    positions={draftPolygon}
+                    interactive={false}
+                    pathOptions={{ color: selectedColor, weight: 1, opacity: AREA_LINE_OPACITY }}
+                  />
+                  {draftHoverPoint && (
+                    <>
+                      <LeafletPolyline
+                        positions={[draftPolygon[draftPolygon.length - 1], draftHoverPoint]}
+                        interactive={false}
+                        pathOptions={{ color: selectedColor, weight: 1, opacity: AREA_LINE_OPACITY }}
+                      />
+                      <LeafletPolyline
+                        positions={[draftHoverPoint, draftPolygon[0]]}
+                        interactive={false}
+                        pathOptions={{ color: selectedColor, weight: 1, opacity: AREA_LINE_OPACITY, dashArray: '4 6' }}
+                      />
+                    </>
+                  )}
+                  {draftPolygon.length >= 3 && (
+                    <LeafletPolygon
+                      positions={draftPolygon}
+                      interactive={false}
+                      pathOptions={{
+                        color: getAreaBorderColor(selectedColor),
+                        weight: AREA_BORDER_WEIGHT,
+                        opacity: 0.85,
+                        fillColor: getAreaFillColor(selectedColor),
+                        fillOpacity: AREA_FILL_OPACITY,
+                      }}
+                    />
+                  )}
+                  {draftPolygon.map((point, index) => (
+                    <LeafletMarker
+                      key={`${point[0]}-${point[1]}-${index}`}
+                      position={point}
+                      icon={makeAreaPointIcon(selectedColor, 12)}
+                      interactive={false}
+                    />
+                  ))}
+                </>
+              )}
+              {pinnedNodes.map(node => {
+                const pin = node.areaMap?.pin;
+                if (!pin) return null;
+                return (
+                  <LeafletMarker
+                    key={node.id}
+                    position={pin.point}
+                    icon={makeAreaPointIcon(DEFAULT_DEVICE_LOCATION_COLOR, 18)}
+                    interactive={false}
+                  />
+                );
+              })}
+            </LeafletMapContainer>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="AreaManagement flex flex-col flex-1 h-full min-h-0 bg-background relative">
+      {externalAddForm === 'sunell' && (
+        <CameraForm
+          onCancel={() => {
+            setExternalAddForm(null);
+            setAddType('group');
+          }}
+          onSuccess={() => {
+            setExternalAddForm(null);
+            setAddType('group');
+            fetchCameras?.();
+          }}
+          initialType="sunell"
+          typeSwitcher={renderAddTypeSwitcher('sunell-camera', 'cyan')}
+        />
+      )}
+      {externalAddForm === 'mqtt' && (
+        <AddExternalServer
+          onSave={() => undefined}
+          onSaveMqtt={(config) => {
+            if (!handleAddMqttServer) {
+              alert('Chưa cấu hình hàm thêm MQTT server.');
+              return;
+            }
+            handleAddMqttServer(config);
+            setExternalAddForm(null);
+            setAddType('group');
+          }}
+          initialIp=""
+          initialPort=""
+          initialMode="receive"
+          initialConnectionType="mqtt"
+          typeSwitcher={renderAddTypeSwitcher('mqtt-sensor', 'cyan')}
+          onClose={() => {
+            setExternalAddForm(null);
+            setAddType('group');
+          }}
+        />
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.9fr] gap-4 flex-1 min-h-0 overflow-hidden">
         
         {/* SIDEBAR LEFT */}
@@ -670,82 +1272,7 @@ export function AreaManagement({
                     )}
                   </div>
 
-                  {/* Subgroup/device list representation */}
-                  {selectedNode.type === 'group' && (
-                    <div className="flex flex-col gap-3">
-                      <h2 className="text-xs font-black uppercase text-primary tracking-widest border-b border-outline-variant/10 pb-2">Danh sách thành viên</h2>
-                      {nodes.filter(n => n.parentId === selectedNode.id).length === 0 ? (
-                        <div className="p-6 text-center italic text-xs text-on-surface-variant/40 bg-surface-container-high/20 rounded-2xl border border-outline-variant/10">
-                          Khu vực này hiện tại đang trống. Click nút chỉnh sửa để thêm thiết bị hoặc nhóm vào đây.
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {nodes.filter(n => n.parentId === selectedNode.id).map(cNode => (
-                            <div
-                              key={cNode.id}
-                              onClick={() => setSelectedNodeId(cNode.id)}
-                              className="p-4 bg-surface-container hover:bg-surface-container-high border border-outline-variant/15 hover:border-primary/45 rounded-2xl cursor-pointer flex items-center justify-between transition-all group"
-                            >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="p-2.5 bg-surface-container-highest rounded-xl text-primary">
-                                  {cNode.type === 'group' ? <Folder className="w-4 h-4 text-warning" /> :
-                                   cNode.type === 'mqtt-sensor' ? <Radio className="w-4 h-4 text-tertiary" /> :
-                                   <Camera className="w-4 h-4 text-primary" />}
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                  <span className="text-xs font-bold text-white group-hover:text-primary transition-colors truncate">{cNode.name}</span>
-                                  <span className="text-[10px] text-on-surface-variant/75 mt-0.5 uppercase tracking-wide">
-                                    {cNode.type === 'group' ? 'Phân khu' : cNode.type}
-                                  </span>
-                                </div>
-                              </div>
-                              <ChevronRight className="w-4 h-4 text-on-surface-variant/60 group-hover:text-primary transition-colors shrink-0" />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Simulated Activity Stream Panel */}
-                  {selectedNode.type !== 'group' && (
-                    <div className="flex flex-col gap-3 mt-4">
-                      <h2 className="text-xs font-black uppercase text-primary tracking-widest border-b border-outline-variant/10 pb-2">Luồng hoạt động giả lập</h2>
-                      {selectedNodeRtspUrl ? (
-                        <div className="flex flex-col gap-3">
-                          <AreaLivePlayer 
-                            cameraId={selectedNode.id} 
-                            cameraName={selectedNode.name} 
-                            rtspUrl={selectedNodeRtspUrl} 
-                            cameraIp={selectedNode.ip} 
-                          />
-                          <div className="p-3 bg-surface-container border border-outline-variant/10 rounded-xl flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-2">
-                              <Activity className="w-3.5 h-3.5 text-success shrink-0" />
-                              <span className="font-semibold text-white">Đang phát luồng camera thực tế</span>
-                            </div>
-                            <span className="text-[9px] font-mono text-on-surface-variant/80 select-all truncate max-w-[200px]">{selectedNodeRtspUrl}</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="p-8 bg-surface-container-high/20 rounded-2xl border border-outline-variant/10 flex flex-col items-center justify-center text-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-success/15 text-success border border-success/20 flex items-center justify-center animate-pulse">
-                            <Eye className="w-6 h-6" />
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-xs font-bold text-white">Thiết bị đang hoạt động</span>
-                            <span className="text-[10px] text-on-surface-variant/70 mt-0.5">Mọi trạng thái kết nối và ping TCP đều bình thường</span>
-                          </div>
-                          <div className="mt-2 p-3 bg-surface-container/60 border border-outline-variant/5 rounded-xl font-mono text-[9px] text-left text-success w-full max-w-md flex gap-2">
-                            <FileText className="w-4 h-4 shrink-0" />
-                            <div className="flex-1 overflow-hidden truncate">
-                              [PING OK] {new Date().toISOString()} - Response in 12ms. Device model {selectedNode.vendor || 'Generic'}.
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {renderAreaMapManagement()}
                 </div>
               )}
             </div>
@@ -789,8 +1316,7 @@ export function AreaManagement({
                 <select
                   value={addType}
                   onChange={e => {
-                    setAddType(e.target.value as any);
-                    setSelectedModalItems(new Set()); // Reset selection when type changes
+                    handleExternalTypeChange(e.target.value as typeof addType);
                   }}
                   className="w-full bg-background border border-outline-variant/30 rounded-xl px-3 py-2.5 text-xs text-on-surface font-semibold focus:outline-none focus:border-primary/50"
                 >
@@ -801,42 +1327,29 @@ export function AreaManagement({
                 </select>
               </div>
 
-              {/* Parent group selector */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold uppercase text-on-surface-variant/80 tracking-wider">Thuộc Nhóm/Khu vực</label>
-                <select
-                  value={addParentId}
-                  onChange={e => setAddParentId(e.target.value)}
-                  className="w-full bg-background border border-outline-variant/30 rounded-xl px-3 py-2.5 text-xs text-on-surface focus:outline-none focus:border-primary/50"
-                >
-                  <option value="none">Không có (Cấp Gốc / Root)</option>
-                  {groupNodes.map(g => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* DYNAMIC CONTENTS depending on addType */}
-
               {addType === 'group' ? (
-                /* Element Name */
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold uppercase text-on-surface-variant/80 tracking-wider">Tên hiển thị nhóm</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ví dụ: Tòa nhà Văn phòng, Bãi đỗ xe..."
-                    value={addName}
-                    onChange={e => setAddName(e.target.value)}
-                    className="w-full bg-background border border-outline-variant/30 rounded-xl px-3 py-2.5 text-xs text-on-surface focus:outline-none focus:border-primary/50"
-                  />
+                /* Form thêm GROUP */
+                <div className="flex flex-col gap-4">
+                  {renderLockedParentSelector()}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold uppercase text-on-surface-variant/80 tracking-wider">Tên hiển thị nhóm</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ví dụ: Tòa nhà Văn phòng, Bãi đỗ xe..."
+                      value={addName}
+                      onChange={e => setAddName(e.target.value)}
+                      className="w-full bg-background border border-outline-variant/30 rounded-xl px-3 py-2.5 text-xs text-on-surface focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
                 </div>
               ) : (
-                /* Dynamic Lists Picker */
-                <div className="flex flex-col gap-2">
+                /* Form thêm THIẾT BỊ */
+                <div className="flex flex-col gap-4">
+                  {renderLockedParentSelector()}
                   {addType === 'svms-device' && (
-                    <div className="flex flex-col gap-2 border-t border-outline-variant/10 pt-3 mt-1">
-                      <span className="text-[10px] font-bold uppercase text-on-surface-variant/80 tracking-wider">Chọn thiết bị SVMS ({selectedModalItems.size} đã chọn)</span>
+                    <div className="flex flex-col gap-2">
+                      <span className="text-[10px] font-bold uppercase text-on-surface-variant/80 tracking-wider">Chọn SVMS server / thiết bị ({selectedModalItems.size} đã chọn)</span>
                       <div className="flex flex-col gap-2 max-h-60 overflow-y-auto custom-scrollbar border border-outline-variant/20 rounded-xl p-3 bg-background/50">
                         {Object.values(servers).filter((srv: any) => srv.type !== 'mqtt' && !srv.id?.toString().startsWith('mqtt-')).length === 0 ? (
                           <span className="text-xs italic text-on-surface-variant/50">Không có server SVMS khả dụng</span>
@@ -844,15 +1357,26 @@ export function AreaManagement({
                           Object.values(servers).filter((srv: any) => srv.type !== 'mqtt' && !srv.id?.toString().startsWith('mqtt-')).map((srv: any) => {
                             const isExpanded = expandedModalParents.has(srv.id);
                             const serverDevices = devices[srv.id]?.devices || [];
+                            const serverName = srv.server_name || srv.id;
+                            const serverKey = `svms-server::${srv.id}::${serverName}`;
+                            const isServerChecked = selectedModalItems.has(serverKey);
                             return (
                               <div key={srv.id} className="flex flex-col gap-1 border-b border-outline-variant/10 pb-1 last:border-0 last:pb-0">
                                 <div 
                                   onClick={() => toggleModalParentExpand(srv.id)}
                                   className="flex items-center justify-between p-2 hover:bg-surface-container rounded-lg cursor-pointer transition-colors"
                                 >
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <input
+                                      type="checkbox"
+                                      checked={isServerChecked}
+                                      onClick={e => e.stopPropagation()}
+                                      onChange={() => toggleModalItemSelection(serverKey)}
+                                      className="w-3.5 h-3.5 rounded border-outline-variant text-primary focus:ring-primary/30"
+                                      title="Thêm SVMS server"
+                                    />
                                     <Folder className="w-3.5 h-3.5 text-warning shrink-0" />
-                                    <span className="text-xs font-bold text-white truncate">{srv.server_name || srv.id}</span>
+                                    <span className="text-xs font-bold text-white truncate">{serverName}</span>
                                   </div>
                                   <div className="flex items-center gap-1.5">
                                     <span className="text-[9px] px-1.5 py-0.5 bg-primary/20 text-primary rounded font-mono font-bold uppercase">{serverDevices.length} thiết bị</span>

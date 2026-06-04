@@ -1,12 +1,110 @@
-import React, { useState, useRef, useMemo } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import React, { useEffect, useState, useRef, useMemo } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MapContainer, Marker, TileLayer, Polygon } from 'react-leaflet';
+import L from 'leaflet';
 import { useTranslation } from 'react-i18next';
-import { Terminal, CameraOff, ChevronLeft, ChevronRight, Image as ImageIcon, Search, Camera, Calendar, Info, Eye, Play, Settings, ChevronDown } from 'lucide-react';
-import { EMap } from './EMap';
+import { Terminal, CameraOff, Image as ImageIcon, Search, Camera, Calendar, Info, Eye, Play, Settings, ChevronDown, Cctv, LandPlot } from 'lucide-react';
+// import { EMap } from './EMap';
 import { LogFilter } from './Dashboard';
 import { DeviceDraggablePanel } from './DeviceDraggablePanel';
 import type { LogData, ServerData, DeviceData, EventTypeItem } from '../types';
 import type { EMapPin } from './EMap';
 import type { GridDevice } from './AlertWall';
+import 'leaflet/dist/leaflet.css';
+
+const LeafletMapContainer = MapContainer as any;
+const LeafletTileLayer = TileLayer as any;
+const LeafletMarker = Marker as any;
+const LeafletPolygon = Polygon as any;
+
+type LatLngTuple = [number, number];
+type AreaPinKind = 'group' | 'device';
+
+type AreaNodeMapData = {
+  color?: string;
+  polygon?: {
+    points: LatLngTuple[];
+    color: string;
+    fillOpacity: number;
+    lineOpacity: number;
+  };
+  pin?: {
+    point: LatLngTuple;
+    color: string;
+  };
+};
+
+type AreaNode = {
+  id: string;
+  name: string;
+  type: 'group' | 'svms-device' | 'sunell-camera' | 'mqtt-sensor';
+  parentId: string | null;
+  ip?: string;
+  devEui?: string;
+  areaMap?: AreaNodeMapData;
+};
+
+const HCM_CENTER: LatLngTuple = [10.7769, 106.7009];
+const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_ATTRIBUTION = '&copy; OpenStreetMap contributors';
+const DEFAULT_GROUP_AREA_COLOR = '#c084fc';
+const PRIMARY_PIN_COLOR = '#c084fc';
+const ALERT_PIN_COLOR = '#ef4444';
+const AREA_BORDER_WEIGHT = 1.5;
+
+function normalizeHexColor(hex: string) {
+  const normalized = hex.replace('#', '');
+  if (!/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$/.test(normalized)) return null;
+  return normalized.length === 3
+    ? normalized.split('').map(char => char + char).join('')
+    : normalized;
+}
+
+function mixHexColor(hex: string, target: number, amount: number) {
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) return hex;
+
+  const channels = [0, 2, 4].map(index => parseInt(normalized.slice(index, index + 2), 16));
+  const mixed = channels.map(channel => Math.round(channel + (target - channel) * amount));
+  return `#${mixed.map(channel => channel.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function getAreaBorderColor(color: string) {
+  return mixHexColor(color, 0, 0.28);
+}
+
+function getAreaFillColor(color: string) {
+  return mixHexColor(color, 255, 0.18);
+}
+
+function makeAreaPointIcon(color: string, isAlert = false, kind: AreaPinKind = 'device') {
+  const iconMarkup = renderToStaticMarkup(
+    kind === 'group'
+      ? <LandPlot size={13} strokeWidth={2.6} />
+      : <Cctv size={13} strokeWidth={2.6} />
+  );
+
+  return L.divIcon({
+    className: '',
+    html: `<div class="new-dashboard-area-pin ${isAlert ? 'new-dashboard-area-pin-alert' : ''}" style="background:${isAlert ? ALERT_PIN_COLOR : color};"><span class="new-dashboard-area-pin-icon">${iconMarkup}</span></div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+}
+
+function normalizeAddress(value?: string) {
+  return String(value || '').split(':')[0].toLowerCase();
+}
+
+function getPolygonCenter(points: LatLngTuple[]): LatLngTuple {
+  if (points.length === 0) return HCM_CENTER;
+  const sum = points.reduce(
+    (acc, point) => [acc[0] + point[0], acc[1] + point[1]] as LatLngTuple,
+    [0, 0] as LatLngTuple
+  );
+  return [sum[0] / points.length, sum[1] / points.length];
+}
 
 interface NewDashboardProps {
   logs: LogData[];
@@ -41,6 +139,7 @@ interface NewDashboardProps {
   tileProviderId: string;
   knownDevices: GridDevice[];
   onSaveLayout: (pins: EMapPin[], tileProviderId?: string) => void;
+  areaLayout?: { nodes: AreaNode[]; updatedAt?: string | null };
 }
 
 export const NewDashboard = React.memo(function NewDashboard({
@@ -70,31 +169,28 @@ export const NewDashboard = React.memo(function NewDashboard({
   tileProviderId,
   knownDevices,
   onSaveLayout,
+  areaLayout,
 }: NewDashboardProps) {
   const { t } = useTranslation();
-  const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(true);
+  void pins;
+  void tileProviderId;
+  void knownDevices;
+  void onSaveLayout;
+  void displayLogs;
+  const [isLeftPanelVisible] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'events' | 'notifications'>('events');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; log: LogData } | null>(null);
+  const [areaClusterLevel, setAreaClusterLevel] = useState(0);
+  const [isAreaClusterMenuOpen, setIsAreaClusterMenuOpen] = useState(false);
   const leftPanelRef = useRef<HTMLDivElement>(null);
+  const [alertAreaNodeIds, setAlertAreaNodeIds] = useState<Set<string>>(new Set());
+  const alertTimersRef = useRef<Record<string, number>>({});
+  const processedAreaLogCountRef = useRef(0);
+  const hasInitializedAreaLogRef = useRef(false);
 
-  // Load area nodes from localStorage to find group names
-  const areaNodes = React.useMemo(() => {
-    const saved = localStorage.getItem('CMS_AREA_NODES');
-    if (saved) {
-      try {
-        return JSON.parse(saved) as any[];
-      } catch (e) {
-        console.error('Failed to load area nodes for group names in NewDashboard', e);
-      }
-    }
-    return [
-      { id: 'g-root-south', name: 'Khu vực Miền Nam', type: 'group', parentId: null },
-      { id: 'g-root-north', name: 'Khu vực Miền Bắc', type: 'group', parentId: null },
-      { id: 'g-sub-hcm', name: 'Tòa nhà văn phòng HCM', type: 'group', parentId: 'g-root-south' },
-      { id: 'g-sub-hn', name: 'Nhà máy Hà Nội', type: 'group', parentId: 'g-root-north' },
-    ];
-  }, []);
+  // Area data comes from BE area-layout; localStorage is no longer the source for New Dashboard map.
+  const areaNodes = React.useMemo(() => areaLayout?.nodes || [], [areaLayout]);
 
   const getCameraGroupName = React.useCallback((deviceIpOrId: string, deviceName: string) => {
     const ip = String(deviceIpOrId || '').toLowerCase();
@@ -113,10 +209,214 @@ export const NewDashboard = React.memo(function NewDashboard({
     return deviceName; // fallback if not in group
   }, [areaNodes]);
 
+  const areaNodeById = useMemo(() => {
+    const map = new Map<string, AreaNode>();
+    areaNodes.forEach(node => map.set(node.id, node));
+    return map;
+  }, [areaNodes]);
+
+  const getAreaNodeLevel = React.useCallback((node: AreaNode): number => {
+    let level = 1;
+    let parentId = node.parentId;
+    const visited = new Set<string>([node.id]);
+
+    while (parentId) {
+      const parent = areaNodeById.get(parentId);
+      if (!parent || visited.has(parent.id)) break;
+      visited.add(parent.id);
+      level += 1;
+      parentId = parent.parentId;
+    }
+
+    return level;
+  }, [areaNodeById]);
+
+  const isLogForAreaNode = React.useCallback((log: LogData, node: AreaNode) => {
+    if (node.type === 'mqtt-sensor') {
+      return (
+        (log.log_source === 'milesight-radar' || log.log_source === 'milesight-button') &&
+        (
+          normalizeAddress((log as any).mqtt_device_id) === normalizeAddress(node.id) ||
+          normalizeAddress((log as any).mqtt_device_id) === normalizeAddress(node.devEui) ||
+          normalizeAddress(log.device_info?.id) === normalizeAddress(node.devEui)
+        )
+      );
+    }
+
+    if (node.type === 'sunell-camera') {
+      return log.log_source === 'sunell-camera' && normalizeAddress(log.device_info?.id) === normalizeAddress(node.ip);
+    }
+
+    if (node.type === 'svms-device') {
+      const rawDeviceName = String(log.raw?.device_name || '').toLowerCase();
+      const rawDeviceIp = normalizeAddress(log.raw?.device_ip);
+      return log.log_source === 'svms' && (
+        (rawDeviceIp && rawDeviceIp === normalizeAddress(node.ip)) ||
+        (rawDeviceName && rawDeviceName === String(node.name || '').toLowerCase()) ||
+        (
+          normalizeAddress(log.device_info?.id) === normalizeAddress(node.ip) &&
+          String(log.device_info?.name || '').toLowerCase() === String(node.name || '').toLowerCase()
+        )
+      );
+    }
+
+    return false;
+  }, []);
+
+  const areaPolygons = useMemo(() => (
+    areaNodes
+      .filter(node => node.type === 'group' && node.areaMap?.polygon?.points?.length)
+      .map(node => ({
+        id: node.id,
+        level: getAreaNodeLevel(node),
+        point: getPolygonCenter(node.areaMap?.polygon?.points || []),
+        points: node.areaMap?.polygon?.points || [],
+        color: node.areaMap?.polygon?.color || node.areaMap?.color || DEFAULT_GROUP_AREA_COLOR,
+        fillOpacity: node.areaMap?.polygon?.fillOpacity ?? 0.16,
+        lineOpacity: node.areaMap?.polygon?.lineOpacity ?? 0.5,
+      }))
+  ), [areaNodes, getAreaNodeLevel]);
+
+  const areaDevicePins = useMemo(() => (
+    areaNodes
+      .filter(node => node.type !== 'group' && node.areaMap?.pin?.point)
+      .map(node => ({
+        id: node.id,
+        level: getAreaNodeLevel(node),
+        point: node.areaMap?.pin?.point as LatLngTuple,
+        color: PRIMARY_PIN_COLOR,
+      }))
+  ), [areaNodes, getAreaNodeLevel]);
+
+  const isDescendantOfGroup = React.useCallback((node: AreaNode, groupId: string) => {
+    let parentId = node.parentId;
+    const visited = new Set<string>([node.id]);
+
+    while (parentId) {
+      if (parentId === groupId) return true;
+      const parent = areaNodeById.get(parentId);
+      if (!parent || visited.has(parent.id)) break;
+      visited.add(parent.id);
+      parentId = parent.parentId;
+    }
+
+    return false;
+  }, [areaNodeById]);
+
+  useEffect(() => {
+    if (!hasInitializedAreaLogRef.current) {
+      processedAreaLogCountRef.current = logs.length;
+      hasInitializedAreaLogRef.current = true;
+      return;
+    }
+
+    if (logs.length < processedAreaLogCountRef.current) {
+      processedAreaLogCountRef.current = 0;
+    }
+
+    const newLogs = logs.slice(processedAreaLogCountRef.current);
+    processedAreaLogCountRef.current = logs.length;
+    if (newLogs.length === 0) return;
+
+    const deviceNodesWithPins = areaNodes.filter(node => node.type !== 'group' && node.areaMap?.pin?.point);
+    const alertedNodeIds = new Set<string>();
+
+    newLogs.forEach(log => {
+      deviceNodesWithPins.forEach(node => {
+        if (isLogForAreaNode(log, node)) {
+          alertedNodeIds.add(node.id);
+        }
+      });
+    });
+
+    if (alertedNodeIds.size === 0) return;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAlertAreaNodeIds(prev => new Set([...prev, ...alertedNodeIds]));
+    alertedNodeIds.forEach(nodeId => {
+      if (alertTimersRef.current[nodeId]) {
+        window.clearTimeout(alertTimersRef.current[nodeId]);
+      }
+      alertTimersRef.current[nodeId] = window.setTimeout(() => {
+        setAlertAreaNodeIds(prev => {
+          const next = new Set(prev);
+          next.delete(nodeId);
+          return next;
+        });
+        delete alertTimersRef.current[nodeId];
+      }, 3000);
+    });
+  }, [areaNodes, isLogForAreaNode, logs]);
+
+  useEffect(() => {
+    const timers = alertTimersRef.current;
+    return () => {
+      Object.values(timers).forEach(timer => window.clearTimeout(timer));
+    };
+  }, []);
+
+  const areaClusterLevels = useMemo(() => {
+    const levels = new Set<number>();
+    areaPolygons.forEach(polygon => levels.add(polygon.level));
+    areaDevicePins.forEach(pin => levels.add(pin.level));
+    const sortedLevels = Array.from(levels).sort((a, b) => a - b);
+    const deepestLevel = sortedLevels[sortedLevels.length - 1];
+    return sortedLevels.filter(level => level !== deepestLevel);
+  }, [areaDevicePins, areaPolygons]);
+
+  useEffect(() => {
+    if (areaClusterLevel !== 0 && !areaClusterLevels.includes(areaClusterLevel)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAreaClusterLevel(0);
+    }
+  }, [areaClusterLevel, areaClusterLevels]);
+
+  const visibleAreaPolygons = useMemo(() => (
+    areaClusterLevel === 0
+      ? []
+      : areaPolygons.filter(polygon => polygon.level === areaClusterLevel)
+  ), [areaClusterLevel, areaPolygons]);
+
+  const visibleAreaPins = useMemo(() => {
+    if (areaClusterLevel === 0) {
+      return areaDevicePins.map(pin => ({
+        ...pin,
+        kind: 'device' as AreaPinKind,
+        isAlert: alertAreaNodeIds.has(pin.id),
+      }));
+    }
+
+    const groupPins = areaPolygons
+      .filter(polygon => polygon.level === areaClusterLevel)
+      .map(polygon => ({
+        id: `group-${polygon.id}`,
+        point: polygon.point,
+        color: polygon.color,
+        kind: 'group' as AreaPinKind,
+        isAlert: areaNodes.some(node =>
+          node.type !== 'group' &&
+          node.areaMap?.pin?.point &&
+          alertAreaNodeIds.has(node.id) &&
+          isDescendantOfGroup(node, polygon.id)
+        ),
+      }));
+
+    const devicePinsAtLevel = areaDevicePins
+      .filter(pin => pin.level === areaClusterLevel)
+      .map(pin => ({
+        id: pin.id,
+        point: pin.point,
+        color: pin.color,
+        kind: 'device' as AreaPinKind,
+        isAlert: alertAreaNodeIds.has(pin.id),
+      }));
+
+    return [...groupPins, ...devicePinsAtLevel];
+  }, [alertAreaNodeIds, areaClusterLevel, areaDevicePins, areaNodes, areaPolygons, isDescendantOfGroup]);
+
   const getLogDisplayDetails = React.useCallback((log: LogData) => {
     let displayType = '';
     let displayDesc = '';
-    const logType = typeof log.log_type === 'string' ? log.log_type.toLowerCase() : 'info';
     const source = String(log.log_source || '');
 
     switch (source) {
@@ -226,7 +526,7 @@ export const NewDashboard = React.memo(function NewDashboard({
     });
 
     return [...svmsDevs, ...indepCams, ...mqttDevs];
-  }, [devices, cameraDevices, mqttDevicesByServer, mqttServers]);
+  }, [devices, cameraDevices, mqttDevicesByServer]);
 
   const filteredDisplayLogs = useMemo(() => {
     if (!searchQuery) return displayLogs;
@@ -507,7 +807,7 @@ export const NewDashboard = React.memo(function NewDashboard({
           )}
         </button> */}
 
-        {/* EMap Component */}
+        {/* Old EMap layout/log-alert flow is intentionally disabled here.
         <EMap
           pins={pins}
           tileProviderId={tileProviderId}
@@ -515,6 +815,110 @@ export const NewDashboard = React.memo(function NewDashboard({
           knownDevices={knownDevices}
           onSaveLayout={onSaveLayout}
         />
+        */}
+        <div className="absolute right-3 top-3 z-[1000]">
+          <button
+            type="button"
+            onClick={() => setIsAreaClusterMenuOpen(prev => !prev)}
+            className="flex items-center gap-2 rounded-lg border border-outline-variant/30 bg-surface-container-high/95 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-on-surface shadow-xl backdrop-blur transition-colors hover:bg-surface-container-highest"
+          >
+            <Settings className="w-3.5 h-3.5 text-primary" />
+            {areaClusterLevel === 0 ? 'Không gom' : `Level ${areaClusterLevel}`}
+            <ChevronDown className={`w-3.5 h-3.5 text-on-surface-variant transition-transform ${isAreaClusterMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {isAreaClusterMenuOpen && (
+            <div className="absolute right-0 mt-2 w-52 rounded-xl border border-outline-variant/30 bg-surface-container-high/95 p-2 shadow-2xl backdrop-blur">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-[11px] font-bold text-on-surface hover:bg-surface-container-highest">
+                <input
+                  type="radio"
+                  checked={areaClusterLevel === 0}
+                  onChange={() => {
+                    setAreaClusterLevel(0);
+                    setIsAreaClusterMenuOpen(false);
+                  }}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                Không gom
+              </label>
+              {areaClusterLevels.map(level => (
+                <label
+                  key={level}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-[11px] font-bold text-on-surface hover:bg-surface-container-highest"
+                >
+                  <input
+                    type="radio"
+                    checked={areaClusterLevel === level}
+                    onChange={() => {
+                      setAreaClusterLevel(level);
+                      setIsAreaClusterMenuOpen(false);
+                    }}
+                    className="h-3.5 w-3.5 accent-primary"
+                  />
+                  Gom level {level}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="h-full w-full overflow-hidden">
+          <style>{`
+            .new-dashboard-area-pin {
+              width: 22px;
+              height: 22px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              border-radius: 999px;
+              border: 3px solid rgba(255,255,255,0.92);
+              box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+              color: #fff;
+              transition: transform 120ms ease;
+            }
+            .new-dashboard-area-pin-icon {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              line-height: 0;
+            }
+            .new-dashboard-area-pin:hover {
+              transform: scale(1.25);
+            }
+            .new-dashboard-area-pin-alert {
+              animation: new-dashboard-area-pin-pulse 0.9s ease-in-out infinite;
+            }
+            @keyframes new-dashboard-area-pin-pulse {
+              0%, 100% { transform: scale(1.10); }
+              50% { transform: scale(1.15); }
+            }
+          `}</style>
+          <LeafletMapContainer center={HCM_CENTER} zoom={12} minZoom={3} className="h-full w-full z-0">
+            <LeafletTileLayer attribution={OSM_ATTRIBUTION} url={OSM_TILE_URL} />
+            {visibleAreaPolygons.map(polygon => (
+              polygon.points.length >= 3 ? (
+                <LeafletPolygon
+                  key={polygon.id}
+                  positions={polygon.points}
+                  interactive={false}
+                  pathOptions={{
+                    color: getAreaBorderColor(polygon.color),
+                    weight: AREA_BORDER_WEIGHT,
+                    opacity: Math.max(polygon.lineOpacity, 0.85),
+                    fillColor: getAreaFillColor(polygon.color),
+                    fillOpacity: polygon.fillOpacity,
+                  }}
+                />
+              ) : null
+            ))}
+            {visibleAreaPins.map(pin => (
+              <LeafletMarker
+                key={pin.id}
+                position={pin.point}
+                icon={makeAreaPointIcon(pin.color, pin.isAlert, pin.kind)}
+                interactive
+              />
+            ))}
+          </LeafletMapContainer>
+        </div>
       </div>
 
       {/* Floating Log Context Menu */}

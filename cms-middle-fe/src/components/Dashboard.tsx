@@ -549,8 +549,10 @@ export function Dashboard() {
     handleLinkMqttServerCamera,
     gridLayout,
     eMapLayout,
+    areaLayout,
     saveGridLayout,
     saveEMapLayout,
+    saveAreaLayout,
     svmsDeviceFeatures,
     svmsKnownEvents,
     milesightKnownEvents,
@@ -1118,6 +1120,10 @@ export function Dashboard() {
                 mqttGroups={mqttGroups}
                 mqttDevicesByServer={mqttDevicesByServer}
                 cameraDevices={cameraDevices}
+                fetchCameras={fetchCameras}
+                handleAddMqttServer={handleAddMqttServer}
+                areaLayout={areaLayout}
+                saveAreaLayout={saveAreaLayout}
               />
             )}
             {mainTab === 'newDashboard' && (
@@ -1148,6 +1154,7 @@ export function Dashboard() {
                 tileProviderId={eMapLayout.tileProviderId}
                 knownDevices={eMapKnownDevices}
                 onSaveLayout={saveEMapLayout}
+                areaLayout={areaLayout}
               />
             )}
           </div>

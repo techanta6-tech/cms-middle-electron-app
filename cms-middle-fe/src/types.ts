@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 export interface SystemConnection {
   ip: string;
   port: string;
@@ -148,6 +150,7 @@ export interface AddExternalServerProps {
   initialMode?: 'receive';
   initialConnectionType?: 'svms' | 'mqtt';
   mqttToEdit?: MqttServerConfig;
+  typeSwitcher?: ReactNode;
 }
 
 export interface ServerData {
