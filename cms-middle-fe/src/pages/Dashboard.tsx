@@ -3,7 +3,7 @@ import type { EventTypeItem, LogData, ServerData, DeviceData, MqttDevice, MqttGr
 import { useTranslation } from 'react-i18next';
 import { useSocketManager } from '../hooks/useSocketManager';
 import { LogPopup } from './components/LogPopup';
-import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut, ChevronDown, MapPinned, Car, Tv, Trash2 } from 'lucide-react';
+import { SlidersHorizontal, Terminal, Check, Cpu, MonitorSmartphone, Settings, Monitor, Network, PanelRightOpen, PanelRightClose, Languages, LogOut, ChevronDown, MapPinned, Car, Tv, Trash2, AlertCircle } from 'lucide-react';
 import { ConfigSystem } from './components/ConfigSystem';
 import apiClient from '../api/apiClient';
 import { LogEntry } from './components/LogEntry';
@@ -1000,6 +1000,14 @@ export function Dashboard() {
                   <MapPinned className={`w-5 h-5 ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`} />
                   <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'emap' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.emap')}</h2>
                 </button>
+                {/* Nút chuyển sang màn hình Alert Wall */}
+                <button
+                  className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'alert' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
+                  onClick={() => setMainTab('alert')}
+                >
+                  <AlertCircle className={`w-5 h-5 ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`} />
+                  <h2 className={`text-[10px] font-bold tracking-[0.2em] uppercase ${mainTab === 'alert' ? 'text-primary' : 'text-on-surface'}`}>{t('app.sidebar.alert_wall')}</h2>
+                </button>
                 {/* Nút chuyển sang màn hình Quản lý Thiết bị (Devices Manager) */}
                 <button
                   className={`flex items-center gap-2 px-3 py-3 border-b-2 transition-all ${isNarrow ? 'flex-1 justify-center' : ''} ${mainTab === 'devices' ? 'border-primary' : 'border-transparent opacity-60 hover:opacity-100 hover:bg-surface-container/50'}`}
@@ -1429,60 +1437,6 @@ export function Dashboard() {
                     </div>
                   );
                 })}
-
-                {/* SVMS Camera Devices Section */}
-                {/* <div className="flex items-center gap-2 mb-1 px-1">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">{t('app.alert_wall.svms_camera_devices')}</span>
-                  <div className="flex-1 h-px bg-primary/10"></div>
-                </div>
-
-                {Object.values(devices).flatMap(server => {
-                  if (!server.server) return [];
-                  return (server.devices || []).map(dev => {
-                    const dragDevice = {
-                      server_serial: server.server.serial,
-                      server_id: server.server.server_id,
-                      device_ip: dev.ip,
-                      device_name: dev.name,
-                      device_type: dev.type || 'vms'
-                    };
-                    const assignedGrids = grids.filter(g => gridHasDevice(g, dragDevice));
-                    const assignedText = assignedGrids.map(g => g.gridID + 1).join(', ');
-                    return (
-                      <div
-                        key={`${server.server.server_id}-${dev.ip}-${dev.name}`}
-                        draggable
-                        title={assignedGrids.length > 0 ? `${t('app.alert_wall.assigned_to_grid')}${assignedText}` : undefined}
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData('application/json', JSON.stringify({
-                            ...dragDevice
-                          }));
-                        }}
-                        className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-primary/5 border-primary/20' : 'bg-surface-container border-outline-variant/10'}`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex flex-col">
-                            <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-primary transition-colors truncate">{dev.name}</span>
-                            <div className="flex gap-0.5 overflow-hidden">
-                              <span className="text-[9px] text-on-surface-variant/70 font-mono">
-                                {server.server.server_id} - {dev.ip}</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-1 shrink-0">
-                            <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium">{dev.type || 'vms'}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  });
-                })}
-
-                {!Object.values(devices).some(s => s.devices?.length > 0) && (
-                  <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
-                    <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.alert_wall.no_svms_devices')}</span>
-                  </div>
-                )} */}
-
                 {/* MQTT Sensor Devices Section */}
                 <div className="flex items-center gap-2 mt-1 mb-1 px-1">
                   <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/80">
@@ -1546,54 +1500,6 @@ export function Dashboard() {
                     <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.alert_wall.no_mqtt_devices')}</span>
                   </div>
                 )}
-
-                {/* Sunell Cameras Section */}
-                {/* <div className="flex items-center gap-2 mt-4 mb-1 px-1">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-secondary/80">Sunell Camera</span>
-                  <div className="flex-1 h-px bg-secondary/10"></div>
-                </div>
-                {cameraDevices.filter(cam => cam.type === 'sunell').map(cam => {
-                  const dragDevice = {
-                    server_serial: 'SUNELL',
-                    server_id: 'SUNELL-LOCAL',
-                    device_ip: cam.id,
-                    device_name: cam.name || cam.cameraIp,
-                    device_type: 'sunell'
-                  };
-                  const assignedGrids = grids.filter((g: any) => gridHasDevice(g, dragDevice));
-                  const assignedText = assignedGrids.map((g: any) => g.gridID + 1).join(', ');
-                  return (
-                    <div
-                      key={cam.id}
-                      draggable
-                      title={assignedGrids.length > 0 ? `${t('app.alert_wall.assigned_to_grid')}${assignedText}` : undefined}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('application/json', JSON.stringify({
-                          ...dragDevice
-                        }));
-                      }}
-                      className={`p-3 hover:bg-surface-container-high border rounded-sm cursor-grab active:cursor-grabbing flex flex-col gap-1 shadow-sm transition-all text-on-surface group ${assignedGrids.length > 0 ? 'bg-secondary/5 border-secondary/20' : 'bg-surface-container border-outline-variant/10'}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex flex-col">
-                          <span className="text-[11px] font-bold uppercase tracking-widest group-hover:text-secondary transition-colors truncate">{cam.name || cam.cameraIp}</span>
-                          <div className="flex gap-0.5 overflow-hidden">
-                            <span className="text-[9px] text-on-surface-variant/70 font-mono">
-                              {cam.cameraIp}:{cam.cameraPort}</span>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className="text-[9px] px-1.5 py-0.5 bg-surface-container-highest rounded text-on-surface-variant uppercase font-medium">sunell</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {cameraDevices.filter(cam => cam.type === 'sunell').length === 0 && (
-                  <div className="p-4 flex flex-col items-center justify-center opacity-30 gap-2 text-center border border-dashed border-outline-variant/10 rounded">
-                    <span className="text-[9px] uppercase font-bold tracking-widest">{t('app.devices.no_sunell_cameras')}</span>
-                  </div>
-                )} */}
               </div>
             )}
           </aside>
