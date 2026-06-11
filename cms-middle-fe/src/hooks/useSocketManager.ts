@@ -360,15 +360,6 @@ export function useSocketManager() {
     }
   }, [systemConfig.be.ip, systemConfig.be.port]);
 
-  // Fetch on mount + on socket reconnect
-  useEffect(() => {
-    fetchConnections();
-    fetchMqttServers();
-    socket.on('connect', fetchConnections);
-    socket.on('connect', fetchMqttServers);
-    return () => { socket.off('connect', fetchConnections); socket.off('connect', fetchMqttServers); };
-  }, [fetchConnections]);
-
   // Fetch MQTT servers from BE
   const fetchMqttServers = useCallback(async () => {
     try {
@@ -385,6 +376,15 @@ export function useSocketManager() {
       console.error('[FETCH_MQTT_STATE] Failed:', err);
     }
   }, [systemConfig.be.ip, systemConfig.be.port]);
+
+  // Fetch on mount + on socket reconnect
+  useEffect(() => {
+    fetchConnections();
+    fetchMqttServers();
+    socket.on('connect', fetchConnections);
+    socket.on('connect', fetchMqttServers);
+    return () => { socket.off('connect', fetchConnections); socket.off('connect', fetchMqttServers); };
+  }, [fetchConnections, fetchMqttServers]);
 
   const fetchCameras = useCallback(async () => {
     try {

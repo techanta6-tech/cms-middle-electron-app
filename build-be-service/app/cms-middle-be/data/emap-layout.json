@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "pins": [
+    {
+      "id": "emap-1780991533029-hf6ja0",
+      "lat": 36.352128629932906,
+      "lng": 42.303680421808465,
+      "label": "Milesight 24c124000c515126",
+      "devices": [
+        {
+          "server_serial": "013973ad",
+          "server_id": "013973ad",
+          "device_ip": "24c124000c515126",
+          "device_name": "Milesight 24c124000c515126",
+          "device_type": "mqtt-sensor",
+          "mqtt_device_id": "c4a4f2bb"
+        }
+      ],
+      "createdAt": "2026-06-09T07:52:13.029Z",
+      "updatedAt": "2026-06-09T09:01:48.337Z"
+    },
+    {
+      "id": "emap-1780996220728-gayk7h",
+      "lat": 9.070453758726007,
+      "lng": 75.74704174089729,
+      "label": "PHUCDEMOSVMSID (3)",
+      "devices": [
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.207:80",
+          "device_name": "Channel 1",
+          "device_type": "camera"
+        },
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.207:80",
+          "device_name": "Channel 2",
+          "device_type": "camera"
+        },
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.202:2000",
+          "device_name": "Channel 3",
+          "device_type": "camera"
+        }
+      ],
+      "createdAt": "2026-06-09T09:10:20.728Z",
+      "updatedAt": "2026-06-09T09:10:20.728Z"
+    },
+    {
+      "id": "emap-1780996223397-m51u6k",
+      "lat": 89.93108804194233,
+      "lng": 59.155659891686994,
+      "label": "PHUCDEMOSVMSID (3)",
+      "devices": [
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.207:80",
+          "device_name": "Channel 1",
+          "device_type": "camera"
+        },
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.207:80",
+          "device_name": "Channel 2",
+          "device_type": "camera"
+        },
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.202:2000",
+          "device_name": "Channel 3",
+          "device_type": "camera"
+        }
+      ],
+      "createdAt": "2026-06-09T09:10:23.397Z",
+      "updatedAt": "2026-06-09T09:10:23.397Z"
+    },
+    {
+      "id": "emap-1780996225025-9g8qof",
+      "lat": 8.789199378610471,
+      "lng": 23.366919986584143,
+      "label": "PHUCDEMOSVMSID (3)",
+      "devices": [
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.207:80",
+          "device_name": "Channel 1",
+          "device_type": "camera"
+        },
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.207:80",
+          "device_name": "Channel 2",
+          "device_type": "camera"
+        },
+        {
+          "server_serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID",
+          "device_ip": "192.168.1.202:2000",
+          "device_name": "Channel 3",
+          "device_type": "camera"
+        }
+      ],
+      "createdAt": "2026-06-09T09:10:25.025Z",
+      "updatedAt": "2026-06-09T09:10:25.025Z"
+    }
+  ],
+  "tileProviderId": "openstreetmap",
+  "updatedAt": "2026-06-09T09:10:25.029Z"
+}

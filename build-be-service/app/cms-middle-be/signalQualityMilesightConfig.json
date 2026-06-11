@@ -1,0 +1,8 @@
+{
+  "_note_X": "Khoảng thời gian (giây) giữa mỗi lần chạy cron kiểm tra",
+  "X": 60,
+  "_note_Y": "Số lượng gói tin kỳ vọng nhận được (tương đương số lần cron tối thiểu) dùng làm mốc đánh giá Packet Loss",
+  "Y": 5,
+  "_note_Z": "VD: 60s một lần gửi, 5 gói tin -> khi đủ 5 gói tin sẽ bắt đầu tính -> ban đầu mất 5 phút để đánh giá package loss",
+  "countTimeOut": 3
+}

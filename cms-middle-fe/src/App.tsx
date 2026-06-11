@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import LoginPage from './components/LoginPage';
+import LoginPage from './pages/Login/LoginPage';
 import { authApi } from './api/authApi';
-import { Dashboard } from './components/Dashboard';
+import { Dashboard } from './pages/Dashboard';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   if (!authApi.isAuthenticated()) {

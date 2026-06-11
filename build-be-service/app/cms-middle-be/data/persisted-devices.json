@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "svmsServers": [
+    {
+      "serverId": "PHUCDEMOSVMSID",
+      "data": {
+        "id": "PHUCDEMOSVMSID",
+        "serial": "ALL AI",
+        "server_ip": "192.168.52.1",
+        "server_name": "Ten SVMS Server Cua Phuc",
+        "version": "1.2.0.1  64 07.24.2023",
+        "location": "",
+        "day": 13,
+        "month": 4,
+        "year": 2026,
+        "svms_ipv4_ip": "127.0.0.1",
+        "sender_ip": "127.0.0.1",
+        "lastSeen": "2026-06-04T10:17:38.766Z",
+        "type": "direct",
+        "connectionStatus": "connected",
+        "lastLogReceived": "2026-06-04T10:07:06.182Z"
+      },
+      "recordedAt": "2026-06-04T10:17:38.767Z"
+    }
+  ],
+  "svmsDevices": [
+    {
+      "serverId": "PHUCDEMOSVMSID",
+      "data": {
+        "server": {
+          "serial": "ALL AI",
+          "server_id": "PHUCDEMOSVMSID"
+        },
+        "devices": [
+          {
+            "name": "Channel 1",
+            "ip": "192.168.1.207:80",
+            "type": "camera",
+            "index": 0,
+            "device_ip": "192.168.1.207",
+            "device_port": 80,
+            "connectionStatus": "connected",
+            "lastLogReceived": "2026-06-04T10:20:19.793Z"
+          },
+          {
+            "name": "Channel 2",
+            "ip": "192.168.1.207:80",
+            "type": "camera",
+            "index": 1,
+            "device_ip": "192.168.1.207",
+            "device_port": 80,
+            "connectionStatus": "connected",
+            "lastLogReceived": "2026-06-04T10:20:19.793Z"
+          },
+          {
+            "name": "Channel 3",
+            "ip": "192.168.1.202:2000",
+            "type": "camera",
+            "index": 2,
+            "device_ip": "192.168.1.202",
+            "device_port": 2000,
+            "connectionStatus": "connected",
+            "lastLogReceived": "2026-06-04T10:20:19.793Z"
+          }
+        ],
+        "sender_ip": "127.0.0.1",
+        "lastSeen": "2026-06-04T10:20:19.793Z"
+      },
+      "recordedAt": "2026-06-04T10:20:19.794Z"
+    }
+  ],
+  "mqttServers": [],
+  "mqttGroups": [
+    {
+      "id": "013973ad",
+      "name": "Phòng 1",
+      "cameraId": null,
+      "createdAt": "2026-06-09T07:39:59.303Z",
+      "updatedAt": "2026-06-09T07:39:59.304Z"
+    }
+  ],
+  "mqttDevices": [
+    {
+      "id": "c4a4f2bb",
+      "groupId": "013973ad",
+      "topic": "application/32dc910f-31ae-4526-ac0b-6344e171f00f/device/24c124000c515126/event/up",
+      "deviceInfo": {
+        "tenantId": "",
+        "tenantName": "",
+        "applicationId": "32dc910f-31ae-4526-ac0b-6344e171f00f",
+        "applicationName": "",
+        "deviceProfileId": "",
+        "deviceProfileName": "",
+        "deviceName": "Radar Té Ngã Giường 1",
+        "devEui": "24c124000c515126",
+        "deviceClassEnabled": "",
+        "tags": {}
+      },
+      "brokerHost": "192.168.1.121",
+      "brokerPort": "1883",
+      "protocol": "mqtt",
+      "cameraId": null,
+      "features": {},
+      "recordedAt": "2026-06-09T07:42:26.326Z"
+    }
+  ],
+  "cameras": [],
+  "i3AiServers": [],
+  "updatedAt": "2026-06-09T07:42:26.326Z"
+}

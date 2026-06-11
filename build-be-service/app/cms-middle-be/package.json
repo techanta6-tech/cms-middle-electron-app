@@ -1,0 +1,43 @@
+{
+  "name": "cms-ai-vms-middle",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "bin": "index.js",
+  "scripts": {
+    "test": "node index.js",
+    "dev": "nodemon index.js",
+    "build": "pkg . --targets node18-win-x64 --output ../build-be/cms-demo-be.exe && copy /Y ..\\cameraModule.js ..\\build-be\\cameraModule.js && xcopy node_modules\\@ffmpeg-installer ..\\build-be\\node_modules\\@ffmpeg-installer\\ /E /I /Y"
+  },
+  "pkg": {
+    "assets": [
+      "node_modules/axios/**/*"
+    ]
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "axios": "^1.13.6",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "express-mcp-handler": "^0.3.0",
+    "fs": "^0.0.1-security",
+    "install": "^0.13.0",
+    "jsonwebtoken": "^9.0.3",
+    "mqtt": "^5.15.1",
+    "node-cron": "^4.2.1",
+    "npm": "^11.12.0",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14",
+    "pkg": "^5.8.1"
+  }
+}

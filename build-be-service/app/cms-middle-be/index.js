@@ -1,0 +1,200 @@
+const path = require('path');
+const isPkg = Boolean(process.pkg);
+const runtimeDir = isPkg ? path.dirname(process.execPath) : __dirname;
+const sharedEnvDir = isPkg ? runtimeDir : path.join(__dirname, '..');
+
+if (isPkg && !process.env.USER_DATA_PATH) {
+  process.env.USER_DATA_PATH = runtimeDir;
+}
+
+require('dotenv').config({ path: path.join(runtimeDir, '.env') });
+require('dotenv').config({ path: path.join(sharedEnvDir, '.env.generated') });
+if (process.env.USER_DATA_PATH) {
+  require('dotenv').config({ path: path.join(process.env.USER_DATA_PATH, '.env.generated') });
+}
+
+process.on('uncaughtException', (err) => {
+  console.error('[Backend] Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Backend] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+const { createServer } = require('http');
+const { port, SVMS_PORT_LIST, CONNECTIVITY_TIMEOUT_MS } = require('./src/config');
+const app = require('./src/app');
+const socketState = require('./src/socketState');
+const setupSocketEvents = require('./src/socketEvents');
+const { startMonitoring, stopMonitoring } = require('./src/services/check-server.service');
+const connectivityMonitor = require('./src/services/connectivity-monitor.service');
+const svmsEventRegistry = require('./src/services/svmsEventRegistry.service');
+const milesightEventRegistry = require('./src/services/milesightEventRegistry.service');
+const sunellEventRegistry = require('./src/services/sunellEventRegistry.service');
+const { bootstrapPersistedDevices, getFilePath: getPersistedDevicesPath } = require('./src/services/persisted-devices.service');
+const trafficService = require('./src/services/traffic.service');
+const eventGroupService = require('./src/services/eventGroup.service');
+const signalQualityService = require('./src/services/signalQualityMilesight.service');
+const mqttService = require('./src/services/mqtt.service');
+const { stopAllRtspConnections } = require('./src/module/rtspSnapshotStream');
+
+const fs = require('fs');
+
+/**
+ * Load Milesight-specific settings from data/milesightSettings.json.
+ * Falls back to defaults if the file is missing or malformed.
+ */
+function loadMilesightSettings() {
+  const defaults = {
+    heartbeat: {
+      offlineThresholdMinutes: 1,
+      checkIntervalSeconds: 15,
+    },
+  };
+  try {
+    const settingsPath = path.join(runtimeDir, 'data', 'milesightSettings.json');
+    if (fs.existsSync(settingsPath)) {
+      const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      return {
+        ...defaults,
+        ...parsed,
+        heartbeat: { ...defaults.heartbeat, ...(parsed.heartbeat || {}) },
+      };
+    }
+  } catch (err) {
+    console.warn('[MILESIGHT_SETTINGS] Cannot load milesightSettings.json:', err.message);
+  }
+  return defaults;
+}
+
+svmsEventRegistry.loadRegistry();
+milesightEventRegistry.loadRegistry();
+sunellEventRegistry.loadRegistry();
+trafficService.loadTrafficRecords();
+eventGroupService.loadEventGroups();
+
+const httpServer = createServer(app);
+
+socketState.init(httpServer);
+setupSocketEvents();
+
+// ─── allLogs persistence: lưu ra file mỗi 1 phút ─────────────────────────
+const _writableBase = process.env.USER_DATA_PATH || process.cwd();
+const _allLogsDir = path.join(_writableBase, 'data');
+const _allLogsFilePath = path.join(_allLogsDir, 'allLogs.json');
+
+if (!fs.existsSync(_allLogsDir)) {
+  fs.mkdirSync(_allLogsDir, { recursive: true });
+}
+
+// Khôi phục allLogs từ file khi khởi động (nếu có)
+try {
+  if (fs.existsSync(_allLogsFilePath)) {
+    const raw = fs.readFileSync(_allLogsFilePath, 'utf8');
+    const restored = JSON.parse(raw);
+    if (Array.isArray(restored) && restored.length > 0) {
+      const { allLogs, ALL_LOGS_MAX } = socketState;
+      // Nạp lại dữ liệu cũ, giới hạn theo ALL_LOGS_MAX
+      const toRestore = restored.slice(-ALL_LOGS_MAX).map(log => eventGroupService.normalizeLog(log));
+      allLogs.push(...toRestore);
+      console.log(`[allLogs] Khoi phuc ${toRestore.length} logs tu ${_allLogsFilePath}`);
+    }
+  }
+} catch (err) {
+  console.error('[allLogs] Loi khi khoi phuc allLogs:', err.message);
+}
+
+// Lưu allLogs ra file mỗi 1 phút
+let _lastSavedLogCount = 0;
+const persistenceInterval = setInterval(() => {
+  try {
+    const { allLogs } = socketState;
+    // Chỉ ghi file khi có thay đổi (tránh ghi liên tục không cần thiết)
+    if (allLogs.length === _lastSavedLogCount) return;
+
+    fs.writeFileSync(_allLogsFilePath, JSON.stringify(allLogs), 'utf8');
+    _lastSavedLogCount = allLogs.length;
+    console.log(`[allLogs] Da luu ${allLogs.length} logs ra ${_allLogsFilePath}`);
+  } catch (err) {
+    console.error('[allLogs] Loi khi luu allLogs:', err.message);
+  }
+
+  // Lưu traffic records
+  trafficService.saveTrafficRecords();
+}, 60 * 1000); // 1 phút
+
+let isShuttingDown = false;
+
+async function shutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`[Backend] ${signal} received. Shutting down...`);
+
+  clearInterval(persistenceInterval);
+  stopMonitoring();
+  connectivityMonitor.clearAllTimers();
+  signalQualityService.stopCron();
+  mqttService.disconnectAllMqttDevices();
+  stopAllRtspConnections();
+
+  try {
+    fs.writeFileSync(_allLogsFilePath, JSON.stringify(socketState.allLogs), 'utf8');
+    trafficService.saveTrafficRecords();
+  } catch (err) {
+    console.error('[Backend] Failed to persist data during shutdown:', err);
+  }
+
+  const socketServer = socketState.getClientSockets();
+  if (socketServer) {
+    await new Promise((resolve) => socketServer.close(resolve));
+  }
+
+  await new Promise((resolve) => httpServer.close(resolve));
+  console.log('[Backend] Shutdown complete.');
+  process.exit(0);
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+// ─── Clear all logs API ───────────────────────────────────────────────────────
+app.delete('/api/v1/logs/all', (req, res) => {
+  try {
+    const { allLogs, getClientSockets } = socketState;
+    allLogs.splice(0, allLogs.length); // clear in-memory
+    _lastSavedLogCount = 0;
+    fs.writeFileSync(_allLogsFilePath, '[]', 'utf8');
+    getClientSockets().emit('clear-logs'); // broadcast to all FE clients
+    console.log('[allLogs] Cleared all logs (API + file)');
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('[allLogs] Failed to clear logs:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+httpServer.listen(port, '0.0.0.0', () => {
+  console.log(`\nMIDDLE SERVER RUNNING AT: http://0.0.0.0:${port}`);
+  console.log(`CLIENT SOCKET SERVER READY (PORT ${port})`);
+  console.log(`PERSISTED DEVICE REGISTRY: ${getPersistedDevicesPath()}`);
+  console.log(`ALL LOGS PERSIST FILE: ${_allLogsFilePath}`);
+  console.log(`TRAFFIC PERSIST FILE: ${trafficService.getFilePath()}`);
+
+  startMonitoring();
+
+  console.log('\nCONNECTIVITY MONITOR INITIALIZED');
+  console.log(`   Timeout: ${CONNECTIVITY_TIMEOUT_MS}ms`);
+  console.log(`   SVMS Ports: ${SVMS_PORT_LIST.join(', ')}`);
+  console.log(`   Timers: ${JSON.stringify(connectivityMonitor.getTimerStats())}\n`);
+
+  bootstrapPersistedDevices()
+    .then(() => {
+      const milesightSettings = loadMilesightSettings();
+      signalQualityService.startCron();
+    })
+    .catch((err) => {
+      console.error('[PERSISTED_DEVICES] Bootstrap failed:', err);
+      const milesightSettings = loadMilesightSettings();
+      signalQualityService.startCron();
+    });
+});

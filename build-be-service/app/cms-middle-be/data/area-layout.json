@@ -1,0 +1,282 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "g-root-south",
+      "name": "Khu vực Miền Nam",
+      "type": "group",
+      "parentId": null,
+      "areaMap": {
+        "polygon": {
+          "points": [
+            [
+              10.799932682675593,
+              106.64110749737019
+            ],
+            [
+              10.804986428658886,
+              106.709070298877
+            ],
+            [
+              10.761521436990837,
+              106.70632432709895
+            ],
+            [
+              10.74467285415401,
+              106.64316697620369
+            ]
+          ],
+          "color": "#9b77bd",
+          "fillOpacity": 0.16,
+          "lineOpacity": 0.5,
+          "updatedAt": "2026-06-04T08:53:54.127Z"
+        },
+        "color": "#9b77bd"
+      }
+    },
+    {
+      "id": "g-root-north",
+      "name": "Khu vực Miền Bắc",
+      "type": "group",
+      "parentId": null,
+      "areaMap": {
+        "color": "#9684a6",
+        "polygon": {
+          "points": [
+            [
+              10.798845031784877,
+              106.63942357028739
+            ],
+            [
+              10.798676571510738,
+              106.6104192433817
+            ],
+            [
+              10.73816840876335,
+              106.60539186178619
+            ],
+            [
+              10.741875257549756,
+              106.63800027665056
+            ]
+          ],
+          "color": "#9684a6",
+          "fillOpacity": 0.16,
+          "lineOpacity": 0.5,
+          "updatedAt": "2026-06-04T08:54:13.554Z"
+        }
+      }
+    },
+    {
+      "id": "g-sub-hcm",
+      "name": "Tòa nhà văn phòng HCM",
+      "type": "group",
+      "parentId": "g-root-south",
+      "areaMap": {
+        "color": "#deec6f",
+        "polygon": {
+          "points": [
+            [
+              10.796393075431551,
+              106.64487748744125
+            ],
+            [
+              10.747198266779451,
+              106.64693696627478
+            ],
+            [
+              10.757981377951698,
+              106.67473993052762
+            ],
+            [
+              10.796056152039018,
+              106.67268045169408
+            ]
+          ],
+          "color": "#deec6f",
+          "fillOpacity": 0.16,
+          "lineOpacity": 0.5,
+          "updatedAt": "2026-06-04T08:54:29.515Z"
+        }
+      }
+    },
+    {
+      "id": "g-sub-hn",
+      "name": "Nhà máy Hà Nội",
+      "type": "group",
+      "parentId": "g-root-north",
+      "areaMap": {
+        "color": "#ff1f35",
+        "polygon": {
+          "points": [
+            [
+              10.793354625453821,
+              106.61500329698093
+            ],
+            [
+              10.793354625453821,
+              106.63697107120532
+            ],
+            [
+              10.759660077721762,
+              106.63319536001052
+            ],
+            [
+              10.75831221740699,
+              106.61019784636933
+            ]
+          ],
+          "color": "#ff1f35",
+          "fillOpacity": 0.16,
+          "lineOpacity": 0.5,
+          "updatedAt": "2026-06-04T08:54:39.333Z"
+        }
+      }
+    },
+    {
+      "id": "dev-1",
+      "name": "SVMS Camera Lối Vào",
+      "type": "svms-device",
+      "parentId": "g-sub-hcm",
+      "ip": "192.168.1.100",
+      "port": "80",
+      "vendor": "Hikvision",
+      "areaMap": {
+        "pin": {
+          "point": [
+            10.780891306682431,
+            106.65311197010118
+          ],
+          "color": "#c084fc",
+          "updatedAt": "2026-06-04T08:54:46.593Z"
+        }
+      }
+    },
+    {
+      "id": "dev-2",
+      "name": "Sunell Camera Bãi Xe",
+      "type": "sunell-camera",
+      "parentId": "g-sub-hcm",
+      "ip": "192.168.1.150",
+      "areaMap": {
+        "pin": {
+          "point": [
+            10.768424247261557,
+            106.66375261074116
+          ],
+          "color": "#c084fc",
+          "updatedAt": "2026-06-04T08:54:49.030Z"
+        }
+      }
+    },
+    {
+      "id": "dev-3",
+      "name": "MQTT Radar Hàng Rào",
+      "type": "mqtt-sensor",
+      "parentId": "g-sub-hn",
+      "devEui": "24e124707c229983",
+      "vendor": "Milesight",
+      "areaMap": {
+        "pin": {
+          "point": [
+            10.779109225805138,
+            106.619002388511
+          ],
+          "color": "#c084fc",
+          "updatedAt": "2026-06-04T08:54:42.715Z"
+        }
+      }
+    },
+    {
+      "id": "group-1780563931198",
+      "name": "Anta6",
+      "type": "group",
+      "parentId": "g-root-south",
+      "areaMap": {
+        "polygon": {
+          "points": [
+            [
+              10.739528047309578,
+              106.60959062912895
+            ],
+            [
+              10.740791745182134,
+              106.62452185067212
+            ],
+            [
+              10.747110155228743,
+              106.62469347390827
+            ],
+            [
+              10.745846483796875,
+              106.61070618016377
+            ]
+          ],
+          "color": "#367ef2",
+          "fillOpacity": 0.16,
+          "lineOpacity": 0.5,
+          "updatedAt": "2026-06-04T09:06:15.916Z"
+        },
+        "color": "#367ef2"
+      }
+    },
+    {
+      "id": "svms-device-1780563943087-9b23p",
+      "name": "Channel 1",
+      "type": "svms-device",
+      "parentId": "group-1780563931198",
+      "ip": "192.168.1.207",
+      "port": "80",
+      "vendor": "SVMS Server",
+      "areaMap": {
+        "pin": {
+          "point": [
+            10.74459449707784,
+            106.61238981427393
+          ],
+          "color": "#c084fc",
+          "updatedAt": "2026-06-04T09:06:20.790Z"
+        }
+      }
+    },
+    {
+      "id": "svms-device-1780563943087-9dsjx",
+      "name": "Channel 2",
+      "type": "svms-device",
+      "parentId": "group-1780563931198",
+      "ip": "192.168.1.207",
+      "port": "80",
+      "vendor": "SVMS Server",
+      "areaMap": {
+        "pin": {
+          "point": [
+            10.740634942593326,
+            106.6115746039023
+          ],
+          "color": "#c084fc",
+          "updatedAt": "2026-06-04T09:06:23.461Z"
+        }
+      }
+    },
+    {
+      "id": "svms-device-1780563943087-klnv8",
+      "name": "Channel 3",
+      "type": "svms-device",
+      "parentId": "group-1780563931198",
+      "ip": "192.168.1.202",
+      "port": "80",
+      "vendor": "SVMS Server",
+      "areaMap": {
+        "pin": {
+          "point": [
+            10.743415060745425,
+            106.62268720844163
+          ],
+          "color": "#c084fc",
+          "updatedAt": "2026-06-04T09:06:26.460Z"
+        }
+      }
+    }
+  ],
+  "updatedAt": "2026-06-04T09:06:27.493Z"
+}

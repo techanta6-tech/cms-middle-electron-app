@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "typecheck": "tsc -b --pretty false",
+    "build": "yarn typecheck && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:traffic": "node --test --experimental-strip-types src/utils/trafficManagerLogic.test.ts"
