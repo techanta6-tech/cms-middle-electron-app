@@ -1,6 +1,20 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const fs = require('fs');
+
+// Read FE_PORT from .env.generated (written by detect-ip.js at startup)
+function readEnvFile(filePath) {
+  const vars = {};
+  if (!fs.existsSync(filePath)) return vars;
+  fs.readFileSync(filePath, 'utf8').split(/\r?\n/).forEach(line => {
+    const m = line.match(/^([^#=]+)=(.*)$/);
+    if (m) vars[m[1].trim()] = m[2].trim();
+  });
+  return vars;
+}
+const generatedEnv = readEnvFile(path.join(__dirname, '.env.generated'));
+const FE_PORT = generatedEnv.FE_PORT || process.env.FE_PORT || '5174';
 
 let windows = [];
 const isDev = !app.isPackaged;
@@ -29,8 +43,8 @@ function createWindows() {
 
     if (isDev) {
       const devUrl = config.tab 
-        ? `http://localhost:5173?tab=${config.tab}`
-        : 'http://localhost:5173';
+        ? `http://localhost:${FE_PORT}?tab=${config.tab}`
+        : `http://localhost:${FE_PORT}`;
       win.loadURL(devUrl);
       win.webContents.openDevTools();
     } else {

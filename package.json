@@ -6,7 +6,7 @@
   "scripts": {
     "dev:fe": "cd cms-middle-fe && yarn dev",
     "dev:be": "cd cms-middle-be && yarn dev",
-    "dev:electron": "wait-on tcp:5173 && electron .",
+    "dev:electron": "wait-on tcp:5174 && electron .",
     "detect-ip": "node scripts/detect-ip.js",
     "clean": "node scripts/clear-storage.js",
     "dev": "node scripts/detect-ip.js && concurrently --kill-others \"yarn dev:fe\" \"yarn dev:electron\"",
@@ -20,13 +20,13 @@
     "arch-map:update": "node scripts/update-map.js"
   },
   "dependencies": {
+    "electron": "^42.4.0",
     "express": "^5.2.1",
     "mqtt": "^5.15.1",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
-    "electron": "^34.0.0",
     "electron-builder": "^25.1.8",
     "wait-on": "^8.0.2"
   },
